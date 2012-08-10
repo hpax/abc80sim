@@ -2629,18 +2629,22 @@ int z80_run(int continuous)
 
     /* loop to do a z80 instruction */
     do {
-
         /*
          * Special hack for ABC80
          */
-        extern int event_pending;
-        extern int flush_pending;
-        if (event_pending) {
-            get_event();
-        }
-        if (flush_pending) {
-            screen_flush();
-        }
+        {
+#if 0
+	  diffstate();
+	  putchar('\n');
+	  printf("PC=%04X ", z80_state.pc.word);
+	  disassemble(z80_state.pc.word);
+#endif
+
+	  extern volatile int event_pending;
+	  void check_event(void);
+	  if ( event_pending )
+	    check_event();
+	}
         /*
          * End of special hack.
          */            

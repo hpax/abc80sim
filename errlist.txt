@@ -1,0 +1,69 @@
+ 0	Ej tillåtet öka "DIM"
+ 1	Fel antal index
+ 2	Otillåtet som kommando
+ 3	Minnet fullt
+ 4*	För stort flyttal
+ 5	För stort index
+ 6	Hittar ej detta radnummer
+ 7*	För stort heltal
+ 8	Finns ej i detta system
+ 9	Index utanför strängen
+10	Texten får ej plats i strängen
+11	Förstår ej
+12*	Felaktigt tal
+13	Fel antal eller typ av argument
+14	Otillåtet tecken efter satsen
+15	"=" saknas eller på fel plats
+16	Radnummer saknas
+17	Otillåten blandning av tal och strängar
+18	")" saknas eller på fel plats
+19*	Kan ej öppna fler filer
+20	För lång rad (> 120 tecken)
+21*	Hittar ej filen
+22	Otillåten sata
+23	"TO" saknas
+24	"NEXT saknas
+25	Felaktig sats efter "ON"
+26	Fel i ON-uttryck
+27	"NEXT" utan "FOR"
+28	Fel variabel efter "NEXT"
+29	"RETURN" utan "GOSUB"
+30*	DATA slut
+31	Fel data till kommando
+32	Filen ej öppnad
+33	"AS FILE" saknas
+34*	Slut på filen
+35*	Checksummafel vid läsning
+36*#	Checksummafil vid skrivning
+37*	Felaktigt recordformat
+38*#	Recordnummer utanför filen
+39*#	Filen skrivskyddad
+40*#	Filen raderingsskyddad
+41*#	Skivan fill
+42*#	Skivan ej klar
+43*#	Skivan skrivskyddad
+44#	Logisk fil ej öppen
+45#	Fel logiskt enhetsnummer
+46#	Fel enhetsnummer
+47#	Fel trapnummer
+48#	Fel i biblioteket
+49#	Felaktikt fysiskt filnummer
+50	Kvadratrot ur negativt tal
+51	Enheten upptagen
+52	Ej till denna enhet
+53	Felaktig rad
+54o	IEC både sändare och mottagare
+55o	IEC mottagare ej aktiv
+56o	IEC sändare ej aktiv
+57	Funktionen ej definierad
+58	Ogiltigt tecken inläst
+59	Fel programformat
+60	Bit adress > 16 bitar
+61	Komma saknas
+62	DOT-adress utanför skärmen
+63	"AS" saknas
+64	Felaktigt RENAME
+65	Spill i ASCII-aritmetik
+66	Sträng ej numerisk
+
+* = ON ERROR GOTO	# = fel på skiva	o = fel i option

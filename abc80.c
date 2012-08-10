@@ -10,10 +10,7 @@
 static char __version_string[] = VERSION;
 
 int events_in_queue = 1;
-int event_pending = 1;
-
-int flush_pending = 1;
-
+volatile int event_pending = 1;
 
 /*
  * Read a two digit hex number from a string
@@ -41,7 +38,7 @@ load_sysfile(FILE *sysfile)
     int   len;
     int   i;
 
-    while (1) {
+    while ( !feof(sysfile) ) {
         memory = mem_rom_address();
         fgets(line, 128, sysfile);
         if (line[0] != ':') {

@@ -118,7 +118,7 @@ file_get_name(char filename[])
     j = 8;
     for (i = 0;i < 8; i++) {
 	if (*memory != ' ') {
-	    filename[i] = *memory;
+	    filename[i] = *memory | 0x20;
 	} else if (j == 8) {
 	    j = i;
 	}
@@ -129,7 +129,7 @@ file_get_name(char filename[])
 	if (*memory == ' ') {
 	    break;
 	}
-	filename[j++] = *memory++;
+	filename[j++] = *memory++ | 0x20;
 	i++;
     }
     filename[j] = '\0';
@@ -269,6 +269,13 @@ file_io(uchar function)
     }
 }
 
+/* Select code for ABC/4680 bus */
+int abcbus_select = -1;
+
+
+extern void disk_reset(void);
+extern void disk_out(int, int, int);
+extern int disk_in(int, int);
 
 /*
  * This function is called from the z80 at an OUT instruction.
@@ -278,23 +285,30 @@ file_io(uchar function)
 void 
 z80_out(int port, uchar value)
 {
-    if (port == 6 && value == 131) { /* beep */
-        putchar(7);
-        fflush(stdout);
-    } else if (port == 255) {        /* File IO */
-        file_io(value);
-    } else if (port == 254) {
-        switch (value) {
-          case 0:
-            lib_open();
-            break;
+  if ( port == 1 )
+    abcbus_select = value & 0x3f;
 
-          case 1:
-            lib_close();
-            break;
-        }
+  if ( port < 6 && abcbus_select != -1) {
+    disk_out(abcbus_select, port, value);
+  }
+  
+  if (port == 6 && value == 131) { /* beep */
+    putchar(7);
+    fflush(stdout);
+  } else if (port == 255) {        /* File IO */
+    file_io(value);
+  } else if (port == 254) {
+    switch (value) {
+    case 0:
+      lib_open();
+      break;
+      
+    case 1:
+      lib_close();
+      break;
     }
-    outports[port] = value;
+  }
+  outports[port] = value;
 }
 
 
@@ -304,13 +318,32 @@ z80_out(int port, uchar value)
 int 
 z80_in(int port)
 {
-    if (port == 254) {
-        lib_getchar();
-    }
-    return (int)inports[port];
+  if ( port == 7 ) {
+    abcbus_select = -1;
+    disk_reset();		/* Reset ALL devices */
+  }
+
+  if ( port == 0 || port == 1 ) {
+    int v = 0xff;
+
+    if ( abcbus_select != -1 )
+      v = disk_in(abcbus_select, port);
+
+    return v;
+  }
+
+  if (port == 254) {
+    lib_getchar();
+  }
+  
+  if (port == 56) {
+    int v = inports[port];
+    inports[port] &= ~0x80;
+    return v;
+  }
+  
+  return (int)inports[port];
 }
-
-
 
 void
 io_init(void)

@@ -160,19 +160,19 @@ extern struct z80_state_struct z80_state;
 extern void z80_reset(void);
 extern int z80_run(int);
 extern void mem_init(void);
-extern uchar mem_read(int);
-extern void mem_write(int, int);
+extern uchar mem_read(ushort);
+extern void mem_write(ushort, uchar);
 extern uchar *mem_rom_address(void);
-extern uchar *mem_get_addr(int);
-extern int mem_read_word(int);
-extern void mem_write_word(int, int);
+extern uchar *mem_get_addr(ushort);
+extern ushort mem_read_word(ushort);
+extern void mem_write_word(ushort, ushort);
 extern void mem_block_transfer(ushort, ushort, int, ushort);
 extern void set_in_port(int, uchar);
 extern void z80_out(int, uchar);
 extern int z80_in(int);
 extern void io_init(void);
+extern int disassemble(int);
 /*
- extern int disassemble();
  extern void debug_init();
  extern void debug_shell();
 */

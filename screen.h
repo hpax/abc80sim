@@ -1,6 +1,7 @@
 #ifndef _SCREEN_H
 #define _SCREEN_H
 
+#include "SDL.h"
 
 #ifndef MAIN
 #define EXTERN extern
@@ -22,5 +23,8 @@ extern void  screen_flush(void);
 
 extern void  get_event(void);
 extern void  key_check(void);
+
+extern volatile int event_pending;
+Uint32 post_periodic(Uint32 interval, void *param);
 
 #endif /* _SCREEN_H */

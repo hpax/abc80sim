@@ -4,17 +4,15 @@
 #include "screen.h"
 #include "z80.h"
 
-
-uchar *memory;
-
 #define MEMORY_SIZE	Z80_ADDRESS_LIMIT
 
 #define ROM_START	(0x0000)
-#define ROM_END  	(0x4000)
+#define ROM_END  	(0x7c00)
 #define VIDEO_START	(0x7c00)
 #define VIDEO_LEN       (0x0400)
 #define RAM_START       (0x8000)
 
+static uchar memory[MEMORY_SIZE];
 
 /*
  * Macros to determine quickly if an address is writeable.
@@ -23,22 +21,16 @@ uchar *memory;
 #define WRITEABLE_WORD(address) (((ushort) ((address) + 1)) >= (ROM_END + 1))
 
 
-void 
-mem_init()
+void mem_init(void)
 {
-    int i;
-
-    if ((memory = (uchar *) calloc(MEMORY_SIZE, sizeof(uchar))) == NULL) {
-        fprintf(stderr, "ABC80: Coldn't allocate memory.\n");
-        exit(1);
-    }
+    memset(memory, 0xff, MEMORY_SIZE);
 }
 
 
 /*
  * hack to let us initialize the ROM memory
  */
-uchar *mem_rom_address()
+uchar *mem_rom_address(void)
 {
     return memory;
 }
@@ -47,29 +39,26 @@ uchar *mem_rom_address()
 /*
  * hack to get a pointer into the Z80 "memory"
  */
-uchar *mem_get_addr(int address)
+uchar *mem_get_addr(ushort address)
 {
-    return &memory[address & 0xffff];
+    return &memory[address];
 }
 
 
-uchar
-mem_read(int address)
+uchar mem_read(ushort address)
 {
-/*
+#if 0
     if (address >= 16384 && address < VIDEO_START) {
-        printf("Accessed:\t%d\n", address);
+	printf("Accessed:\t0x%04x %5d : %02x\n",
+	       address, address, memory[address & 0xffff]);
     }
-*/
+#endif
     return memory[address & 0xffff];
 }
 
 
-void 
-mem_write(int address, int value)
+void mem_write(ushort address, uchar value)
 {
-    address &= 0xffff;
-
     if((address >= VIDEO_START) && (address < RAM_START))
     {
 	/*
@@ -84,7 +73,7 @@ mem_write(int address, int value)
 
     } else if (WRITEABLE(address)) {
 	/* write to RAM */
-	memory[address] = (uchar)value;
+	memory[address] = value;
     }
 }
 
@@ -92,42 +81,28 @@ mem_write(int address, int value)
 /*
  * Words are stored with the low-order byte in the lower address.
  */
-int mem_read_word(int address)
+ushort mem_read_word(ushort address)
 {
-    int rval;
-    uchar *m;
+    uchar b0, b1;
 
-    address &= 0xffff;
+    b0 = memory[address];
+    b1 = memory[(ushort)(address + 1)];
 
-/*
+#if 0
     if (address >= 16384 && address < VIDEO_START) {
-        printf("Accessed:\t%d+%d\n", address, address+1);
+	printf("Accessed:\t0x%04x %5d : %02x%02x\n",
+	       address, address, b1, b0);
     }
-*/
-    m = memory + address;
-    rval = *m++;
-    rval |= *m << 8;
-    return rval;
+#endif
+
+    return (b1 << 8) + b0;
 }
 
 
-void mem_write_word(int address, int value)
+void mem_write_word(ushort address, ushort value)
 {
-    uchar *m;
-
-    address &= 0xffff;
-
-    if(WRITEABLE_WORD(address))
-    {
-	m = memory + address;
-	*m++ = value & 0xff;
-	*m = value >> 8;
-    }
-    else
-    {
-	mem_write(address++, value & 0xff);
-	mem_write(address, value >> 8);
-    }
+    mem_write(address, value);
+    mem_write(address+1, value >> 8);
 }
 
 

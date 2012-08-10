@@ -83,7 +83,6 @@ get_event(void)
     KeySym       keysym;
     char         key;
     
-    
     event_pending = 0;
 
     if (!XCheckMaskEvent(x_display, EVENT_MASK, &event)) {

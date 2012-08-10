@@ -17,14 +17,14 @@ Closef  EQU             00023H          ; Close file subroutine
 ; the ABC80 initialization routine and if
 ; it is not 0 it makes a CALL to the address.
 ;
-        ORG             0604BH
+        ORG             0404BH
         JP              Init
         JP              Exit
 ;
 ; Define an entry in device list.
 ;
 Unxdev:
-        DEFW            0
+        DEFW            Defdev
         ASCII           'UNX'
         DEFW            Unxtab
 
@@ -33,7 +33,7 @@ Unxdev:
 ; make it the default device.
 ;
 Defdev:
-        DEFW            0
+        DEFW            Libdev
         ASCII           '   '
         DEFW            Unxtab
 
@@ -51,11 +51,8 @@ Libdev:
 ; Install the entrys above in the device list
 ;
 Init:
-        LD              (Libdev),HL
-        LD              HL,Libdev
-        LD              (Defdev),HL
-        LD              HL,Defdev
-        LD              (Unxdev),HL
+        LD              HL,(Devlst)
+	LD		(Libdev),HL
         LD              HL,Unxdev
         LD              (Devlst),HL
         RET
