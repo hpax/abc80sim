@@ -1,0 +1,48 @@
+.TH ABC80 1 "Nov 8 1993" "X Version 11"
+.SH NAME
+abc80 \- An X windows based emulator of a Luxor ABC80
+.SH SYNOPSIS
+.B abc80 [-b] [-d] [-v] [hex-files]
+.SH DESCRIPTION
+\fIabc80\fR is an emulator of a Luxor ABC80 under X-windows. The
+program is built around a Z80 emulator by David Gingold <gingold@think.com>
+and Alec Wolman <wolman@crl.dec.com> who wrote it to use in an emulator for
+TRS-80. 
+.LP
+Beware that the program runs at maximum CPU at all times, it never
+blocks for IO except when reading and writing files.
+.LP
+The program emulates most of the functionality in the ABC80 including
+the real time clock. The sound chip, and most of the PIO functions
+(like the casette-tape inteface) are not emulated though. There is
+however a new device called UNX: which get installed as the default
+device. This allows reading and writing of files to the UNIX
+filesystem. The list of error code explanations is also emulated :-)
+.LP
+If the program crashes, your X-server will probably be left with auto-repeat
+turned off. This is fixed with the command: "xset r". It might be a good idea
+to define a shell alias as "abc80; xset r".
+.SH OPTIONS
+\fIabc80\fP options can appear in any order.
+.IP "\fB\-v\fP"
+Makes the program print out its current version and then exiting.
+.LP
+.IP "\fB\-d\fP"
+Stops the emulator from reading in the "device drivers" in abcdev.hex
+.LP
+.IP "\fB\-b\fP"
+Stops the emulator from reading the BASIC interpretor PROMs in the file
+abcprom. This will leave you with a bare ABC80 "hardware"
+.LP
+If any files are given on the command line, the emulator will expect these
+files to be Intel-hex coded and read them into memory before starting.
+.SH AUTHOR
+Jonas Yngvesson
+.br
+E\-mail: jonas-y\@isy.liu.se
+.SH "BUGS  :\-)"
+The list of error code explanations are "emulated" by a bitmap in a window
+which can be pulled out from under the "main" window. This error-window does
+not behave correctly (it doesn't stay stacked just under the main window) if
+windows are moved around in the screen stacking order (brought into the
+foreground or pushed into the background).
