@@ -1,0 +1,34 @@
+# Makefile to make z80 macro assembler.
+
+CC=gcc -traditional
+CFLAGS = -O2
+
+all:	zmac zdis
+
+zmac:	y.tab.o mio.o
+	$(CC) $(CFLAGS) -o zmac y.tab.o mio.o
+
+y.tab.c: zmac.y
+	yacc zmac.y
+
+zdis:	zdis.o
+	$(CC) $(CFLAGS) -o zdis zdis.o
+
+install:
+	install -s zmac /usr/local/bin
+	install -s zdis /usr/local/bin
+
+install_man:
+	cp zmac.1 /usr/man/manl/zmac.l
+	cp zdis.1 /usr/man/manl/zdis.l
+
+clean:
+	rm -f zdis.o zmac.o mio.o y.tab.c y.tab.o a.out core
+
+shar: zmac.shar.1 zmac.shar.2
+
+zmac.shar.1: Makefile zmac.y mio.c zmac.1 zdis.1
+	shar -vc Makefile zmac.y mio.c zmac.1 zdis.1 > zmac.shar.1
+
+zmac.shar.2: zdis.c serial.z serial.hex
+	shar -vc zdis.c serial.z serial.hex > zmac.shar.2
