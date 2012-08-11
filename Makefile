@@ -31,11 +31,11 @@ ABCDIR = /home/hpa/abc80/lib
 DEFINES = -DSMALL_ENDIAN -D_REENTRANT
 
 CC = gcc
-CFLAGS = -g -O2 $(DEFINES) -I/usr/X11R6/include -I/usr/include/SDL -DABCDIR=\"$(ABCDIR)\"
+CFLAGS = -W -Wall -g -O2 $(DEFINES) -I/usr/X11R6/include -I/usr/include/SDL -DABCDIR=\"$(ABCDIR)\"
 LDFLAGS = -g -L/usr/X11R6/lib
 
-OBJS = abc80.o clock.o sdlscrn.o z80.o abc80_mem.o io.o abc80font.o disk.o z80dis.o diffstate.o
-SRCS = abc80.c clock.c sdlscrn.c z80.c abc80_mem.c io.c abc80font.c disk.c z80dis.c diffstate.c
+OBJS = abc80.o clock.o sdlscrn.o z80.o abc80_mem.o io.o abc80font.o disk.o z80dis.o
+SRCS = abc80.c clock.c sdlscrn.c z80.c abc80_mem.c io.c abc80font.c disk.c z80dis.c
 HDRS = clock.h screen.h z80.h patchlevel.h
 
 all: abc80
@@ -44,6 +44,7 @@ install: abc80
 	-cp abc80 $(BINDIR)
 	-cp abcprom $(ABCDIR)
 	-cp abcdev.hex $(ABCDIR)
+	-cp ufddos.hex $(ABCDIR)
 	-cp -r font $(ABCDIR)
 	-cp abc80.man $(MANDIR)/abc80.$(MANEXT)
 

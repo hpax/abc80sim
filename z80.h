@@ -15,6 +15,7 @@
 
 #include <stdio.h>
 #include <ctype.h>
+#include <time.h>
 #include <sys/types.h>
 
 #define TRUE	(1)
@@ -172,6 +173,8 @@ extern void z80_out(int, uchar);
 extern int z80_in(int);
 extern void io_init(void);
 extern int disassemble(int);
+extern int DAsm(ushort pc, char *T, int *target);
+
 /*
  extern void debug_init();
  extern void debug_shell();

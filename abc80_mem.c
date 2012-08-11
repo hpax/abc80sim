@@ -7,7 +7,7 @@
 #define MEMORY_SIZE	Z80_ADDRESS_LIMIT
 
 #define ROM_START	(0x0000)
-#define ROM_END  	(0x7c00)
+#define ROM_END  	(0x4000)
 #define VIDEO_START	(0x7c00)
 #define VIDEO_LEN       (0x0400)
 #define RAM_START       (0x8000)
@@ -18,12 +18,11 @@ static uchar memory[MEMORY_SIZE];
  * Macros to determine quickly if an address is writeable.
  */
 #define WRITEABLE(address)  ((address) >= ROM_END)
-#define WRITEABLE_WORD(address) (((ushort) ((address) + 1)) >= (ROM_END + 1))
 
+#define DEBUG_READ(address)	0
 
 void mem_init(void)
 {
-    memset(memory, 0xff, MEMORY_SIZE);
 }
 
 
@@ -47,13 +46,11 @@ uchar *mem_get_addr(ushort address)
 
 uchar mem_read(ushort address)
 {
-#if 0
-    if (address >= 16384 && address < VIDEO_START) {
+    if (DEBUG_READ(address)) {
 	printf("Accessed:\t0x%04x %5d : %02x\n",
-	       address, address, memory[address & 0xffff]);
+	       address, address, memory[address]);
     }
-#endif
-    return memory[address & 0xffff];
+    return memory[address];
 }
 
 
@@ -88,12 +85,10 @@ ushort mem_read_word(ushort address)
     b0 = memory[address];
     b1 = memory[(ushort)(address + 1)];
 
-#if 0
-    if (address >= 16384 && address < VIDEO_START) {
+    if (DEBUG_READ(address)) {
 	printf("Accessed:\t0x%04x %5d : %02x%02x\n",
 	       address, address, b1, b0);
     }
-#endif
 
     return (b1 << 8) + b0;
 }

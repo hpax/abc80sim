@@ -33,6 +33,9 @@
  */
 struct z80_state_struct z80_state;
 
+#define TRACE 0
+static void diffstate(void);
+
 /*
  * Tables and routines for computing various flag values:
  */
@@ -2091,7 +2094,7 @@ static void do_CB_instruction(void)
 
       default:
 	REG_PC -= 2;
-/*	disassemble(REG_PC);*/
+	/* disassemble(REG_PC); */
     }
 }
 
@@ -2633,12 +2636,12 @@ int z80_run(int continuous)
          * Special hack for ABC80
          */
         {
-#if 0
-	  diffstate();
-	  putchar('\n');
-	  printf("PC=%04X ", z80_state.pc.word);
-	  disassemble(z80_state.pc.word);
-#endif
+	  if (TRACE) {
+	    diffstate();
+	    putchar('\n');
+	    printf("PC=%04X ", z80_state.pc.word);
+	    disassemble(z80_state.pc.word);
+	  }
 
 	  extern volatile int event_pending;
 	  void check_event(void);
@@ -3827,4 +3830,34 @@ z80_reset(void)
 
     /* z80_state.r = 0; */
     srand(time(NULL));  /* Seed the RNG, for reading the refresh register */
+}
+
+#define WREG(U,L) \
+    if (z80_state.L.word != old_state.L.word) {	\
+	printf(" "#U"=%04X", z80_state.L.word);	\
+	old_state.L.word = z80_state.L.word;	\
+    }
+#define BREG(U,L) \
+    if (z80_state.L != old_state.L) {		\
+	printf(" "#U"=%02X", z80_state.L);	\
+	old_state.L= z80_state.L;		\
+    }						\
+
+static void diffstate(void)
+{
+    static struct z80_state_struct old_state;
+    
+    BREG(A,af.byte.high);
+    WREG(BC,bc);
+    WREG(DE,de);
+    WREG(HL,hl);
+    WREG(IX,ix);
+    WREG(IY,iy);
+    WREG(SP,sp);
+    //WREG(PC,pc);
+    BREG(F,af.byte.low);
+    WREG(AFx,af_prime);
+    WREG(BCx,bc_prime);
+    WREG(DEx,de_prime);
+    WREG(HLx,hl_prime);
 }

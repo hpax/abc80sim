@@ -55,7 +55,7 @@ Init:
 	LD		(Libdev),HL
         LD              HL,Unxdev
         LD              (Devlst),HL
-        RET
+	JP		6543h		; Initialize DOS
 
 ;
 ; Jumptable at device driver entry

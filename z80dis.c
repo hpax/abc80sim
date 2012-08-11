@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <sysexits.h>
 #include <ctype.h>
+#include "z80.h"
 
 static char *Mnemonics[256] =
 {
@@ -232,9 +233,6 @@ static char **mtable[8] = {
   NULL
 };
 
-extern unsigned char mem_read(int);
-extern int mem_read_word(int);
-
 int disassemble(int pc)
 {
   char buffer[80];
@@ -247,20 +245,19 @@ int disassemble(int pc)
 }
 
 
-int DAsm(unsigned int pc, char *T, int *target)
+int DAsm(ushort pc, char *T, int *target)
 {
   const char *S,*P;
   char PP,*R;
-  int I,J;
+  int I;
   int table;
   char XReg;
-  unsigned int pc0 = pc;
+  ushort pc0 = pc;
 
   if ( target ) *target = -1;
 
   XReg = '?';
 
-  if (pc > 0xFFFF) return 0;
   I = mem_read(pc++);
   
   table = 0;
@@ -271,23 +268,19 @@ int DAsm(unsigned int pc, char *T, int *target)
     switch(I)
       {
       case 0xCB:
-	if (pc > 0xFFFF) return 0;
 	I = mem_read(pc++);
 	table = (table & ~3) | 1;
 	break;
       case 0xED:
-	if (pc > 0xFFFF) return 0;
 	I = mem_read(pc++);
 	table = (table & ~3) | 2;
 	break;
       case 0xDD:
-	if (pc > 0xFFFF) return 0;
 	I = mem_read(pc++);
 	XReg = 'X';
 	table |= 4;
 	break;
       case 0xFD:
-	if (pc > 0xFFFF) return 0;
 	I = mem_read(pc++);
 	XReg = 'Y';
 	table |= 4;
@@ -306,20 +299,17 @@ int DAsm(unsigned int pc, char *T, int *target)
       *R++ = XReg;
       break;
     case '*':
-      if (pc > 0xFFFF) return 0;
       I = mem_read(pc++);
       R += sprintf(R,"%02X",I);
       break;
     case '#':
     case '$':
-      if (pc > 0xFFFE) return 0;
       I = mem_read_word(pc);  pc += 2;
       R += sprintf(R,"%04X",I);
       if ( PP == '$' && target )
 	*target = I;
       break;
     case '@':
-      if (pc > 0xFFFF) return 0;
       I = mem_read(pc++);
       if ( I >= 0x80 ) I -= 256;
       I = (I+pc) & 0xFFFF;
@@ -328,7 +318,6 @@ int DAsm(unsigned int pc, char *T, int *target)
 	*target = I;
       break;
     case '+':
-      if (pc > 0xFFFF) return 0;
       I = mem_read(pc++);
       if ( I >= 0x80 ) {
 	PP = '-';
@@ -343,5 +332,6 @@ int DAsm(unsigned int pc, char *T, int *target)
   }    
   *R = '\0';
        
-  return pc-pc0;		/* Return the number of consumed bytes */
+  /* Return the number of consumed bytes */
+  return (ushort)(pc-pc0);
 }  

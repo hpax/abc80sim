@@ -42,7 +42,7 @@ set_in_port(int port, uchar value)
  * 0 == OK,  1 == FAIL
  */
 static void
-lib_open()
+lib_open(void)
 {
     int	   fileno;
 
@@ -62,7 +62,7 @@ lib_open()
  * Register B holds logical file number.
  */
 static void
-lib_close()
+lib_close(void)
 {
     int	   fileno;
 
@@ -77,7 +77,7 @@ lib_close()
  */
 static struct dirent *de = NULL;
 static void
-lib_getchar()
+lib_getchar(void)
 {
     int	        fileno;
     static int  pos;
@@ -143,7 +143,7 @@ file_get_name(char filename[])
  * 0 == OK,  1 == FAIL
  */
 static void
-file_open()
+file_open(void)
 {
     char   filename[13];
     int	   fileno;
@@ -167,7 +167,7 @@ file_open()
  * 0 == OK,  1 == FAIL
  */
 static void
-file_prepare()
+file_prepare(void)
 {
     char   filename[12];
     int	   fileno;
@@ -189,11 +189,9 @@ file_prepare()
  * Register B holds logical file number.
  */
 static void
-file_close()
+file_close(void)
 {
     int	   fileno;
-    int	   rest;
-    uchar *buf;
 
     fileno = (REG_B > 7 ? 0 : REG_B);
     fclose(files[fileno].u.fp);
@@ -207,7 +205,7 @@ file_close()
  * Register B holds logical file number.
  */
 static void
-file_read_block()
+file_read_block(void)
 {
     int	   fileno;
     uchar *buf;
@@ -226,7 +224,7 @@ file_read_block()
  * Register B holds logical file number.
  */
 static void
-file_write_block()
+file_write_block(void)
 {
     int	   fileno;
     uchar *buf;
