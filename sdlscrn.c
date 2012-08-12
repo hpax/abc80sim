@@ -137,8 +137,8 @@ static void toggle_blink(void)
 
   SDL_LockSurface(rscreen);
 
-  gw = FONT_XSIZE*FONT_XDUP;
-  gh = (FONT_YSIZE*FONT_YDUP) << mode40;
+  gw = (FONT_XSIZE*FONT_XDUP) << mode40;
+  gh = FONT_YSIZE*FONT_YDUP;
 
   for ( y = 0, gy = 0 ; y < TS_HEIGHT ; y++, gy += gh ) {
     for ( x = 0, gx = 0 ; x < width ; x++, gx += gw ) {
