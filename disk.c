@@ -122,7 +122,7 @@ static void disk_init(struct ctl_state *state)
 
   /* If any of these don't exist we simply report device not ready */
   for (i = 0; i < 8; i++) {
-    snprintf(filename, sizeof filename, "disk/%s%d", state->name, i);
+    snprintf(filename, sizeof filename, "abcdisk/%s%d", state->name, i);
     state->files[i] = fopen(filename, "r+b");
     if (!state->files[i])
       state->files[i] = fopen(filename, "rb"); /* Try open readonly */
