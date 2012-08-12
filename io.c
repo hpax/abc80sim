@@ -2,6 +2,7 @@
 #include <dirent.h>
 
 #include "z80.h"
+#include "screen.h"
 
 static uchar inports[256];
 static uchar outports[256];
@@ -330,6 +331,14 @@ z80_in(int port)
     return v;
   }
 
+  if ( port == 3 ) {
+    setmode40(1);
+  }
+
+  if ( port == 4 ) {
+    setmode40(0);
+  }
+
   if (port == 254) {
     lib_getchar();
   }
@@ -347,6 +356,8 @@ void
 io_init(void)
 {
     int i;
+
+    memset(inports, 0xff, sizeof inports);
 
     for (i = 0; i < 8; i++) {
         files[i].u.fp = NULL;

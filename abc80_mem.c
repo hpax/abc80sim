@@ -8,7 +8,8 @@
 
 #define ROM_START	(0x0000)
 #define ROM_END  	(0x4000)
-#define VIDEO_START	(0x7c00)
+#define VIDEO_START	(0x7400) /* GeJo2 80 tecken */
+#define VIDEO_MASK	(0xf400)
 #define VIDEO_LEN       (0x0400)
 #define RAM_START       (0x8000)
 
@@ -56,16 +57,15 @@ uchar mem_read(ushort address)
 
 void mem_write(ushort address, uchar value)
 {
-    if((address >= VIDEO_START) && (address < RAM_START))
-    {
+  if ((address & VIDEO_MASK) == VIDEO_START) {
 	/*
 	 * Speed hack -- check to see if the character has actually changed.
 	 * Only call the video emulator if it has.
 	 */
-	if(memory[address] != value)
+	if (memory[address] != value)
 	{
 	    memory[address] = value;
-	    screen_write(address - VIDEO_START, value);
+	    screen_write(address, value);
 	}
 
     } else if (WRITEABLE(address)) {

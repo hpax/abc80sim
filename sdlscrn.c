@@ -1,8 +1,7 @@
 /*
  * sdlscrn.c
  *
- * ABC80 screen emulation (40x24)
- * NB: 80x24 should be doable as well
+ * ABC80 screen emulation (40x24/80x24)
  */
 
 #include <stdarg.h>
@@ -16,17 +15,19 @@
 #define min(x,y) ((x)<(y)?(x):(y))
 #define max(x,y) ((x)>(y)?(x):(y))
 
-#define TS_WIDTH  40
+#define TS_WIDTH  80
 #define TS_HEIGHT 24
 
-#define FONT_XSIZE 18
-#define FONT_YSIZE 20
+#define FONT_XSIZE 6
+#define FONT_YSIZE 10
 
-#define PX_WIDTH  (TS_WIDTH*FONT_XSIZE)
-#define PX_HEIGHT (TS_HEIGHT*FONT_YSIZE)
+#define FONT_XDUP  2		/* For 80-column mode */
+#define FONT_YDUP  3
 
-typedef uint32_t font_t;
-extern font_t abc_font[256][FONT_YSIZE];
+#define PX_WIDTH  (TS_WIDTH*FONT_XSIZE*FONT_XDUP)
+#define PX_HEIGHT (TS_HEIGHT*FONT_YSIZE*FONT_YDUP)
+
+extern unsigned char abc_font[256][FONT_YSIZE];
 
 #define NCOLORS 2
 
@@ -37,11 +38,13 @@ static struct rgba { uint8_t a, r, g, b; } rgbcolors[NCOLORS] = {
   {0x00,0xff,0xff,0xff},	/* white */
 };
 
-unsigned char screendata[1024];
-static struct { int x, y; } addr_to_xy[1024];
+unsigned char screendata[2048];
+static struct { int x, y; } addr_to_xy[2][2048];
 
 static SDL_Surface *rscreen;
 static volatile uint8_t blink_mask = 0x80; /* 0x80 for inverse enable */
+
+static int mode40;
 
 /*
  * Get the pointer for a specific row -- this decodes the ABC80
@@ -49,7 +52,10 @@ static volatile uint8_t blink_mask = 0x80; /* 0x80 for inverse enable */
  */
 static inline unsigned char *screenptr(int y, int x)
 {
-  return &screendata[(((y >> 3)*5) << 3) + ((y & 7) << 7) + x];
+  if (mode40)
+    return &screendata[1024 + (((y >> 3)*5) << 3) + ((y & 7) << 7) + x];
+  else
+    return &screendata[(((y >> 3)*5) << 4) + ((y & 7) << 8) + x];
 }
 
 /*
@@ -67,25 +73,24 @@ static void lock_screen(void)
  */
 static void put_screen(int tx, int ty)
 {
-  font_t *fontp;
-  font_t v;
-  uint32_t *pixelp, fgp, bgp;
-  int x, y, z;
-  int attr;
-  int pxwid = 1;
+  unsigned char *fontp, v;
+  uint32_t *pixelp, *pixelpp, fgp, bgp;
+  int x, xx, y, yy;
   int bmask = blink_mask;
-  int gmode, gx;
+  int gx;
+  unsigned char gmode;
   unsigned char cc;
+  int xdup = FONT_XDUP << mode40;
 
   gmode = 0;
   for ( gx = 0 ; gx < tx ; gx++ ) {
     cc = *screenptr(ty,gx);
     if ( (cc & 0x68) == 0 )
-      gmode = cc & 0x10;
+      gmode = (cc & 0x10) << 3;
   }
 
   cc = *screenptr(ty,tx);
-  fontp = abc_font[(cc & 0x7f) + (gmode ? 0x80 : 0)];
+  fontp = abc_font[(cc & 0x7f) + gmode];
 
   if ( cc & bmask ) {
     bgp = colors[1];
@@ -96,17 +101,22 @@ static void put_screen(int tx, int ty)
   }
   
   pixelp = ((uint32_t *) rscreen->pixels) +
-    ty*(FONT_XSIZE*FONT_YSIZE*TS_WIDTH) +
-    tx*FONT_XSIZE;
+    ty*PX_WIDTH*FONT_YSIZE*FONT_YDUP + 
+    ((tx*FONT_XSIZE*FONT_XDUP) << mode40);
   
   for ( y = 0 ; y < FONT_YSIZE ; y++ ) {
-    v = *fontp++;
-    for ( x = 0 ; x < FONT_XSIZE ; x++ ) {
-      for ( z = 0 ; z < pxwid ; z++ )
-	*pixelp++ = v & ((font_t)1 << (FONT_XSIZE-1)) ? fgp : bgp;
-      v <<= 1;
+    for ( yy = 0 ; yy < FONT_YDUP ; yy++ ) {
+      v = *fontp;
+      pixelpp = pixelp;
+      for ( x = 0 ; x < FONT_XSIZE ; x++ ) {
+	for ( xx = 0 ; xx < xdup ; xx++) {
+	  *pixelpp++ = (v & 0x80) ? fgp : bgp;
+	}
+	v <<= 1;
+      }
+      pixelp += PX_WIDTH;
     }
-    pixelp += PX_WIDTH-pxwid*FONT_XSIZE;
+    fontp++;
   }
 }
 
@@ -116,23 +126,22 @@ static void put_screen(int tx, int ty)
  */
 static void toggle_blink(void)
 {
-  int x, y, xs;
+  int x, y;
   int gx, gy, gw, gh;
-  SDL_Rect rects[TS_WIDTH*TS_HEIGHT]; /* Absolute maximum needed */
+  SDL_Rect rects[TS_HEIGHT*TS_WIDTH/2];	/* Absolute maximum needed */
   SDL_Rect *rect = rects-1;
   int nrects = 0;
-  int bmask;
+  int width = TS_WIDTH >> mode40;
 
   blink_mask ^= 0x80;
-  bmask = blink_mask;
 
   SDL_LockSurface(rscreen);
 
-  gw = FONT_XSIZE;
-  gh = FONT_YSIZE;
+  gw = FONT_XSIZE*FONT_XDUP;
+  gh = (FONT_YSIZE*FONT_YDUP) << mode40;
 
   for ( y = 0, gy = 0 ; y < TS_HEIGHT ; y++, gy += gh ) {
-    for ( x = 0, gx = 0 ; x < TS_WIDTH ; x++, gx += gw ) {
+    for ( x = 0, gx = 0 ; x < width ; x++, gx += gw ) {
       if ( *screenptr(y,x) & 0x80 ) {
 	put_screen(x,y);
 	if ( !nrects || rect->y != gy || rect->x+rect->w != gx ) {
@@ -161,8 +170,10 @@ static void update_screen(int x0, int y0, int x1, int y1)
 {
   SDL_UnlockSurface(rscreen);
 
-  SDL_UpdateRect(rscreen, x0*FONT_XSIZE, y0*FONT_YSIZE,
-		 (x1-x0+1)*FONT_XSIZE, (y1-y0+1)*FONT_YSIZE);
+  SDL_UpdateRect(rscreen, (x0*FONT_XSIZE*FONT_XDUP) << mode40,
+		 y0*FONT_YSIZE*FONT_YDUP,
+		 ((x1-x0+1)*FONT_XSIZE*FONT_XDUP) << mode40,
+		 (y1-y0+1)*FONT_YSIZE*FONT_YDUP);
 }
 
 /*
@@ -174,12 +185,16 @@ screen_write(int addr, int value)
   int x, y, xx;
   int old;
   unsigned char *p;
+  int width = TS_WIDTH >> mode40;
 
-  x = addr_to_xy[addr].x;
-  y = addr_to_xy[addr].y;
-
-  if ( addr_to_xy[addr].y == -1 )
+  addr = ((addr & 0x800) >> 1) | (addr & 0x3ff);
+  
+  x = addr_to_xy[mode40][addr].x;
+  y = addr_to_xy[mode40][addr].y;
+  if ( y == -1 )
     return;			/* Nothing to do */
+
+  lock_screen();
 
   p = &screendata[addr];
   old = *p;
@@ -190,12 +205,31 @@ screen_write(int addr, int value)
 
   if ( (old & 0x78) == 0 || (value & 0x78) == 0 ) {
     /* Graphics control character change */
-    for ( xx = x+1 ; xx < TS_WIDTH ; xx++ )
+    for ( xx = x+1 ; xx < width ; xx++ )
       put_screen(xx,y);
-    xx = TS_WIDTH-1;
+    xx = width-1;
   }
 
   update_screen(x,y,xx,y);
+}
+
+void setmode40(int m)
+{
+  int x, y, width;
+
+  if (m != mode40) {
+    mode40 = !!m;
+
+    width = TS_WIDTH >> mode40;
+
+    lock_screen();
+
+    for (y = 0; y < TS_HEIGHT; y++)
+      for (x = 0; x < width; x++)
+	put_screen(x, y);
+
+    update_screen(0,0,width-1,23);
+  }
 }
 
 /*
@@ -205,7 +239,7 @@ void screen_init(void)
 {
   int window = 1;		/* True = run in a window */
   int debug = 1;		/* False = force clean shutdown */
-  int i, x, y;
+  int i, j, x, y;
 
   if ( SDL_Init(SDL_INIT_TIMER|SDL_INIT_VIDEO
 		| (debug ? SDL_INIT_NOPARACHUTE : 0)) )
@@ -229,18 +263,24 @@ void screen_init(void)
   }
 
   /* Initialize reverse mapping table */
-  for ( i = 0 ; i < 1024 ; i++ ) {
-    addr_to_xy[i].x = -1;
-    addr_to_xy[i].y = -1;
-  }
-  for ( y = 0 ; y < 24 ; y++ ) {
-    for ( x = 0 ; x < 40 ; x++ ) {
-      int p = screenptr(y,x)-screendata;
-      addr_to_xy[p].x = x;
-      addr_to_xy[p].y = y;
+  for ( i = 0 ; i < 2 ; i++ ) {
+    mode40 = i;
+
+    for ( j = 0 ; j < 2048 ; j++ ) {
+      addr_to_xy[i][j].x = -1;
+      addr_to_xy[i][j].y = -1;
+    }
+
+    for ( y = 0 ; y < TS_HEIGHT ; y++ ) {
+      for ( x = 0 ; x < (TS_WIDTH >> i); x++ ) {
+	int p = screenptr(y,x)-screendata;
+	addr_to_xy[i][p].x = x;
+	addr_to_xy[i][p].y = y;
+      }
     }
   }
 
+  mode40 = 1;
   
   /* Blink timer */
   SDL_AddTimer(400, post_periodic, (void *)toggle_blink);
