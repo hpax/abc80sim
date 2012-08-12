@@ -65,15 +65,21 @@ load_sysfile(FILE *sysfile)
  * Load the BASIC interpretor into memory
  * This is stored as a raw byte-dump.
  */
-static void
-load_basic(FILE *sysfile)
+static int no_basic = 0;
+
+extern const unsigned char abcrom40[16384];
+extern const unsigned char abcrom80[16384];
+
+void load_basic(int mode40)
 {
     uchar *memory;
+    const unsigned char *rom = mode40 ? abcrom40 : abcrom80;
 
     memory = mem_rom_address();
-    fread(memory, sizeof(unsigned char), 0x4000, sysfile);
-}
 
+    if (!no_basic)
+	memcpy(memory, rom, 16384);
+}
 
 /*
  * Print usage message
@@ -93,7 +99,6 @@ int main(int argc, char **argv)
 {
     char  sysfile_name[256];
     FILE *sysfile;
-    int   no_basic = 0;
     int   no_device = 0;
     int   c;
 
@@ -124,21 +129,6 @@ int main(int argc, char **argv)
     screen_init();                         
     mem_init();
     io_init();
-
-    /*
-     * Load the BASIC interpretor unless
-     * we are asked not to.
-     */
-    if (!no_basic) {
-        sprintf(sysfile_name, "%s/abcprom", ABCDIR);
-        if ((sysfile = fopen(sysfile_name, "r")) == NULL) {
-            fprintf(stderr, "ABC80: Can't open BAISC file: %s\n", 
-                    sysfile_name);
-            exit(1);
-        }
-        load_basic(sysfile);
-        fclose(sysfile);
-    }
 
     /*
      * Load the device driver code unless

@@ -174,6 +174,7 @@ extern int z80_in(int);
 extern void io_init(void);
 extern int disassemble(int);
 extern int DAsm(ushort pc, char *T, int *target);
+extern void load_basic(int);
 
 /*
  extern void debug_init();

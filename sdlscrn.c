@@ -229,6 +229,8 @@ void setmode40(int m)
 	put_screen(x, y);
 
     update_screen(0,0,width-1,23);
+
+    load_basic(m);
   }
 }
 
@@ -280,13 +282,16 @@ void screen_init(void)
     }
   }
 
-  mode40 = 1;
+  mode40 = 0;
   
   /* Blink timer */
   SDL_AddTimer(400, post_periodic, (void *)toggle_blink);
 
   /* Enable keyboard decoding */
   SDL_EnableUNICODE(1);
+
+  /* Load the appropriate BASIC */
+  load_basic(mode40);
 
   return;
 }

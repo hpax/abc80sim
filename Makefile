@@ -34,8 +34,10 @@ CC = gcc
 CFLAGS = -W -Wall -g -O2 $(DEFINES) -I/usr/X11R6/include -I/usr/include/SDL -DABCDIR=\"$(ABCDIR)\"
 LDFLAGS = -g -L/usr/X11R6/lib
 
-OBJS = abc80.o clock.o sdlscrn.o z80.o abc80_mem.o io.o abcfont.o disk.o z80dis.o
-SRCS = abc80.c clock.c sdlscrn.c z80.c abc80_mem.c io.c abcfont.c disk.c z80dis.c
+PERL = perl
+
+OBJS = abc80.o clock.o sdlscrn.o z80.o abc80_mem.o io.o abcfont.o disk.o z80dis.o abcrom40.o abcrom80.o
+SRCS = abc80.c clock.c sdlscrn.c z80.c abc80_mem.c io.c abcfont.c disk.c z80dis.c abcrom40.c abcrom80.c
 HDRS = clock.h screen.h z80.h patchlevel.h
 
 all: abc80
@@ -51,6 +53,10 @@ install: abc80
 abc80: $(OBJS)
 	$(CC) $(LDFLAGS) -o abc80 $(OBJS) -lSDL -lX11 -lpthread
 
+abcrom40.c: abcrom40.bin bin2c.pl
+	$(PERL) bin2c.pl abcrom40 < $< > $@ || ( rm -f $@ ; false )
+abcrom80.c: abcrom80.bin bin2c.pl
+	$(PERL) bin2c.pl abcrom80 < $< > $@ || ( rm -f $@ ; false )
 
 abc80.o:        clock.h screen.h z80.h patchlevel.h
 clock.o:        clock.h z80.h
