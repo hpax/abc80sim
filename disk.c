@@ -141,15 +141,15 @@ static void do_next_command(struct ctl_state *state)
     state->k[0] &= ~0x01;	/* Command done */
   }
   if ( state->k[0] & 0x02 ) {
-    /* SECTOR FROM HOST */
+    /* SECTOR TO HOST */
     state->in_ptr = 0;
-    state->state = disk_upload;
+    state->state = disk_download;
     state->k[0] &= ~0x02;	/* Command done */
     return;
   }
   if ( state->k[0] & 0x04 ) {
-    /* SECTOR TO HOST */
-    state->state = disk_download;
+    /* SECTOR FROM HOST */
+    state->state = disk_upload;
     state->out_ptr = 0;
     state->k[0] &= ~0x04;	/* Command done */
     return;
