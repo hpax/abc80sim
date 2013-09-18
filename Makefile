@@ -44,7 +44,6 @@ all: abc80
 
 install: abc80
 	-cp abc80 $(BINDIR)
-	-cp abcprom $(ABCDIR)
 	-cp abcdev.hex $(ABCDIR)
 	-cp ufddos.hex $(ABCDIR)
 	-cp -r font $(ABCDIR)
