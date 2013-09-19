@@ -5,6 +5,7 @@
 #include "clock.h"
 #include "screen.h"
 #include "z80.h"
+#include "rom.h"
 #include "patchlevel.h"
 
 static char __version_string[] = VERSION;
@@ -60,25 +61,25 @@ load_sysfile(FILE *sysfile)
     }
 }
 
+/*
+ * Load an internal ROM
+ */
+static void load_rom(const struct rom *rom)
+{
+    uchar *memory = mem_rom_address();
+
+    memcpy(memory + rom->offset, rom->data, rom->size);
+}
 
 /*
- * Load the BASIC interpretor into memory
- * This is stored as a raw byte-dump.
+ * Load the BASIC interpretor into memory.
  */
 static int no_basic = 0;
 
-extern const unsigned char abcrom40[16384];
-extern const unsigned char abcrom80[16384];
-
 void load_basic(int mode40)
 {
-    uchar *memory;
-    const unsigned char *rom = mode40 ? abcrom40 : abcrom80;
-
-    memory = mem_rom_address();
-
     if (!no_basic)
-	memcpy(memory, rom, 16384);
+	load_rom(mode40 ? &abcrom40 : &abcrom80);
 }
 
 /*
@@ -135,23 +136,8 @@ int main(int argc, char **argv)
      * we are asked not to.
      */
     if (!no_device) {
-        sprintf(sysfile_name, "%s/ufddos.hex", ABCDIR);
-        if ((sysfile = fopen(sysfile_name, "r")) == NULL) {
-            fprintf(stderr, "ABC80: Can't open device file: %s\n", 
-                    sysfile_name);
-            exit(1);
-        }
-        load_sysfile(sysfile);
-        fclose(sysfile);
-	
-        sprintf(sysfile_name, "%s/abcdev.hex", ABCDIR);
-        if ((sysfile = fopen(sysfile_name, "r")) == NULL) {
-            fprintf(stderr, "ABC80: Can't open device file: %s\n", 
-                    sysfile_name);
-            exit(1);
-        }
-        load_sysfile(sysfile);
-        fclose(sysfile);
+	load_rom(&ufddos);
+	load_rom(&abcdev);
     }
 
     /*

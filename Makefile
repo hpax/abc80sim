@@ -16,12 +16,6 @@ BINDIR = /home/hpa/abc80/bin
 MANDIR = /home/hpa/abc80/man/man1
 MANEXT = 1
 
-# ABCDIR should be defined to the directory where 
-# the optional prom files are stored.
-
-ABCDIR = /home/hpa/abc80/lib
-
-
 # DEFINES should contain any other definitions used to
 # configure the program.
 # Currently available configurations are:
@@ -33,35 +27,46 @@ DEFINES = -DSMALL_ENDIAN -D_REENTRANT
 CC = gcc
 CFLAGS = -W -Wall -g -O2 $(DEFINES) -I/usr/X11R6/include -I/usr/include/SDL -DABCDIR=\"$(ABCDIR)\"
 LDFLAGS = -g -L/usr/X11R6/lib
+LIBS = -lSDL -lX11 -lpthread
 
 PERL = perl
 
-OBJS = abc80.o clock.o sdlscrn.o z80.o abc80_mem.o io.o abcfont.o disk.o z80dis.o abcrom40.o abcrom80.o
-SRCS = abc80.c clock.c sdlscrn.c z80.c abc80_mem.c io.c abcfont.c disk.c z80dis.c abcrom40.c abcrom80.c
+# For Windows/MinGW use obj and .exe
+O = o
+X =
+
+GENO = abcrom40.$(O) abcrom80.$(O) abcdev.$(O) ufddos.$(O)
+GENC = abcrom40.c abcrom80.c abcdev.c ufddos.c
+
+OBJS = abc80.$(O) clock.$(O) sdlscrn.$(O) z80.$(O) abc80_mem.$(O) io.$(O) abcfont.$(O) disk.$(O) z80dis.$(O) $(GENO)
+SRCS = abc80.c clock.c sdlscrn.c z80.c abc80_mem.c io.c abcfont.c disk.c z80dis.c abcrom40.c abcrom80.c $(GENC)
 HDRS = clock.h screen.h z80.h patchlevel.h
+
+.SUFFIXES: .c .h .$(O) .bin
 
 all: abc80
 
-install: abc80
-	-cp abc80 $(BINDIR)
-	-cp abcdev.hex $(ABCDIR)
-	-cp ufddos.hex $(ABCDIR)
+install: abc80$(X)
+	-cp abc80$(X) $(BINDIR)
 	-cp abc80.man $(MANDIR)/abc80.$(MANEXT)
 
-abc80: $(OBJS)
-	$(CC) $(LDFLAGS) -o abc80 $(OBJS) -lSDL -lX11 -lpthread
+abc80$(X): $(OBJS)
+	$(CC) $(LDFLAGS) -o abc80$(X) $(OBJS) $(LIBS)
+
+.bin.c:
+	$(PERL) bin2c.pl $< > $@ || ( rm -f $@ ; false )
 
 abcrom40.c: abcrom40.bin bin2c.pl
-	$(PERL) bin2c.pl abcrom40 < $< > $@ || ( rm -f $@ ; false )
 abcrom80.c: abcrom80.bin bin2c.pl
-	$(PERL) bin2c.pl abcrom80 < $< > $@ || ( rm -f $@ ; false )
+abcdev.c: abcdev.bin bin2c.pl
+ufddos.c: ufddos.bin bin2c.pl
 
-abc80.o:        clock.h screen.h z80.h patchlevel.h
-clock.o:        clock.h z80.h
-sdlscrn.o:       screen.h z80.h
-z80.o:          z80.h
+abc80.$(O):        clock.h screen.h z80.h patchlevel.h
+clock.$(O):        clock.h z80.h
+sdlscrn.$(O):       screen.h z80.h
+z80.$(O):          z80.h
 
 
 clean:
-	$(RM) abc80 *.o *~ core
-
+	$(RM) abc80$(X) *.$(O) *~ core
+	$(RM) $(GENC)

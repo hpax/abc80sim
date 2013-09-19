@@ -20,20 +20,33 @@ eval { use bytes; };
 eval { binmode STDIN; };
 
 if ( $#ARGV != 0 ) {
-    print STDERR "Usage: $0 table_name < input_file > output_file\n";
+    print STDERR "Usage: $0 input_file [offset] > output_file\n";
     exit 1;
 }
 
-($table_name) = @ARGV;
+($input_file, $offset) = @ARGV;
 
-printf "const unsigned char %s[] = {\n", $table_name;
+$table_name = $input_file;
+$table_name =~ s/\.[^\.]*$//;	# Drop extension
+
+unless (defined ($offset)) {
+    $offset = 0x404b if ($table_name eq 'abcdev');
+    $offset = 0x6000 if ($table_name =~ /dos$/);
+}
+
+open(IN, '<', $input_file)
+    or die "$0: unable to open input file $input_file: $!\n";
+
+print "#include \"rom.h\"\n\n";
+
+printf "static const unsigned char data[] = {\n", $table_name;
 
 $pos = 0;
 $linelen = 8;
 
 $total_len = 0;
 
-while ( ($n = read(STDIN, $data, 4096)) > 0 ) {
+while ( ($n = read(IN, $data, 4096)) > 0 ) {
     $total_len += $n;
     for ( $i = 0 ; $i < $n ; $i++ ) {
 	$byte = substr($data, $i, 1);
@@ -50,8 +63,9 @@ while ( ($n = read(STDIN, $data, 4096)) > 0 ) {
     }
 }
 
-printf "\n};\n";
-
+print "\n};\n\n";
+printf "const struct rom %s = { data, %u, %u };\n",
+    $table_name, $offset, $total_len;
 
 # @st = stat STDIN;
 # printf "\nunsigned int %s_len = %u;\n", $table_name, $total_len;
