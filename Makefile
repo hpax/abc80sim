@@ -17,7 +17,7 @@ MANDIR = /home/hpa/abc80/man/man1
 MANEXT = 1
 
 # ABCDIR should be defined to the directory where 
-# the file abcprom and the font directory are stored.
+# the optional prom files are stored.
 
 ABCDIR = /home/hpa/abc80/lib
 
@@ -46,7 +46,6 @@ install: abc80
 	-cp abc80 $(BINDIR)
 	-cp abcdev.hex $(ABCDIR)
 	-cp ufddos.hex $(ABCDIR)
-	-cp -r font $(ABCDIR)
 	-cp abc80.man $(MANDIR)/abc80.$(MANEXT)
 
 abc80: $(OBJS)
