@@ -10,6 +10,7 @@
 #define NOTTHERE 0
 #define READONLY 0
 #define TRACE 0
+#define INTERLEAVE 0
 
 /* This is the interpretation of an "out" command */
 enum out_state {
@@ -43,7 +44,7 @@ static struct ctl_state mo_state =
   {
     .secperclust = 1,
     .sectors     = 40*1*16,
-#if 0
+#if INTERLEAVE
     .ilmsk       = 15,
     .ilfac       = 7,
 #endif
