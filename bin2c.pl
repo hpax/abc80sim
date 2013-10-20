@@ -32,6 +32,7 @@ $table_name =~ s/\.[^\.]*$//;	# Drop extension
 unless (defined ($offset)) {
     $offset = 0x404b if ($table_name eq 'abcdev');
     $offset = 0x6000 if ($table_name =~ /dos$/);
+    $offset = 0x7800 if ($table_name eq 'printer');
 }
 
 open(IN, '<', $input_file)

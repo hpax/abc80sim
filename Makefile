@@ -35,11 +35,17 @@ PERL = perl
 O = o
 X =
 
-GENO = abcrom40.$(O) abcrom80.$(O) abcdev.$(O) ufddos.$(O)
+GENO = abcrom40.$(O) abcrom80.$(O) ufddos.$(O) printer.$(O)
 GENC = abcrom40.c abcrom80.c abcdev.c ufddos.c
 
-OBJS = abc80.$(O) clock.$(O) sdlscrn.$(O) z80.$(O) abc80_mem.$(O) io.$(O) abcfont.$(O) disk.$(O) z80dis.$(O) $(GENO)
-SRCS = abc80.c clock.c sdlscrn.c z80.c abc80_mem.c io.c abcfont.c disk.c z80dis.c abcrom40.c abcrom80.c $(GENC)
+OBJS = abc80.$(O) clock.$(O) sdlscrn.$(O) z80.$(O) abc80_mem.$(O) io.$(O) \
+       abcfont.$(O) disk.$(O) \
+       abcprint.$(O) print.$(O) fileop.$(O) \
+       z80dis.$(O) $(GENO)
+SRCS = abc80.c clock.c sdlscrn.c z80.c abc80_mem.c io.c \
+       abcfont.c disk.c \
+       abcprint.c print.c fileop.c \
+       z80dis.c abcrom40.c abcrom80.c $(GENC)
 HDRS = clock.h screen.h z80.h patchlevel.h
 
 .SUFFIXES: .c .h .$(O) .bin
@@ -58,7 +64,7 @@ abc80$(X): $(OBJS)
 
 abcrom40.c: abcrom40.bin bin2c.pl
 abcrom80.c: abcrom80.bin bin2c.pl
-abcdev.c: abcdev.bin bin2c.pl
+printer.c: printer.bin bin2c.pl
 ufddos.c: ufddos.bin bin2c.pl
 
 abc80.$(O):        clock.h screen.h z80.h patchlevel.h
