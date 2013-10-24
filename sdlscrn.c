@@ -201,16 +201,15 @@ screen_write(int addr, int value)
 
   *p = value;
   put_screen(x,y);
-  xx = x;
+  xx = x+1;
 
-  if ( (old & 0x78) == 0 || (value & 0x78) == 0 ) {
+  if ( (old & 0x68) == 0 || (value & 0x68) == 0 ) {
     /* Graphics control character change */
-    for ( xx = x+1 ; xx < width ; xx++ )
+    for ( ; xx < width ; xx++ )
       put_screen(xx,y);
-    xx = width-1;
   }
 
-  update_screen(x,y,xx,y);
+  update_screen(x,y,xx-1,y);
 }
 
 void setmode40(int m)
