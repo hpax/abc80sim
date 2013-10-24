@@ -36,7 +36,7 @@ O = o
 X =
 
 GENO = abcrom40.$(O) abcrom80.$(O) ufddos.$(O) printer.$(O)
-GENC = abcrom40.c abcrom80.c abcdev.c ufddos.c
+GENC = abcrom40.c abcrom80.c ufddos.c printer.c
 
 OBJS = abc80.$(O) clock.$(O) sdlscrn.$(O) z80.$(O) abc80_mem.$(O) io.$(O) \
        abcfont.$(O) disk.$(O) \
