@@ -10,6 +10,7 @@
  */
 static Uint32 clock_handler(Uint32 interval, void *param)
 {
+    (void)param;
     z80_state.nminterrupt = 1;
     return interval;
 }
