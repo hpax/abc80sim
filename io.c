@@ -4,8 +4,8 @@
 #include "z80.h"
 #include "screen.h"
 
-static uchar inports[256];
-static uchar outports[256];
+static uint8_t inports[256];
+static uint8_t outports[256];
 
 #define READ_MODE   0
 #define WRITE_MODE  1
@@ -27,7 +27,7 @@ static struct {
  * Set a port to a value which the z80 can read later.
  */
 void
-set_in_port(int port, uchar value)
+set_in_port(int port, uint8_t value)
 {
     inports[port] = value;
 }
@@ -48,7 +48,7 @@ extern int printer_in(int, int);
  * dispatch possible actions.
  */
 void 
-z80_out(int port, uchar value)
+z80_out(int port, uint8_t value)
 {
   if ( port == 1 )
     abcbus_select = value & 0x3f;

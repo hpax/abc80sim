@@ -245,14 +245,14 @@ int disassemble(int pc)
 }
 
 
-int DAsm(ushort pc, char *T, int *target)
+int DAsm(uint16_t pc, char *T, int *target)
 {
   const char *S,*P;
   char PP,*R;
   int I;
   int table;
   char XReg;
-  ushort pc0 = pc;
+  uint16_t pc0 = pc;
 
   if ( target ) *target = -1;
 
@@ -333,5 +333,5 @@ int DAsm(ushort pc, char *T, int *target)
   *R = '\0';
        
   /* Return the number of consumed bytes */
-  return (ushort)(pc-pc0);
+  return (uint16_t)(pc-pc0);
 }  

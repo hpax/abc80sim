@@ -12,7 +12,7 @@ mandir          = ${datarootdir}/man
 datarootdir     = ${prefix}/share
 
 CC		= gcc
-CFLAGS		= -g -O2 -W -Wall
+CFLAGS		= -g -O2 -W -Wall -std=c99 -pedantic
 LDFLAGS		= 
 LIBS		= -lSDL -lpthread 
 

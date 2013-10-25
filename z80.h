@@ -16,19 +16,18 @@
 #include <stdio.h>
 #include <ctype.h>
 #include <time.h>
+#include <inttypes.h>
 #include <sys/types.h>
 
 #define TRUE	(1)
 #define FALSE	(0)
 
-typedef unsigned char uchar;
-
 struct twobyte
 {
 #ifdef WORDS_LITTLEENDIAN
-    uchar low, high;
+    uint8_t low, high;
 #else
-    uchar high, low;
+    uint8_t high, low;
 #endif
 };
 
@@ -36,7 +35,7 @@ struct twobyte
 typedef union
 {
     struct twobyte byte;
-    ushort word;
+    uint16_t word;
 } wordregister;
 
 struct z80_state_struct
@@ -55,18 +54,18 @@ struct z80_state_struct
     wordregister de_prime;
     wordregister hl_prime;
 
-    uchar i;	/* interrupt-page address register */
-    /* uchar r; */  /* no memory-refresh register, just fetch random values */
+    uint8_t i;	/* interrupt-page address register */
+    /* uint8_t r; */  /* no memory-refresh register, just fetch random values */
 
-    uchar iff1, iff2;
-    uchar interrupt_mode;
+    uint8_t iff1, iff2;
+    uint8_t interrupt_mode;
 
     int nmi_in_progress;	/* to prevent multiple simultaneous NMIs */
 
     int nminterrupt;	/* used to signal a non maskable interrupt */
     int interrupt;	/* used to signal an interrupt */
 
-    uchar i_vector;     /* offset into interrupt-page from _external_ device */
+    uint8_t i_vector;     /* offset into interrupt-page from _external_ device */
 };
 
 #define Z80_ADDRESS_LIMIT	(1 << 16)
@@ -161,19 +160,19 @@ extern struct z80_state_struct z80_state;
 extern void z80_reset(void);
 extern int z80_run(int);
 extern void mem_init(void);
-extern uchar mem_read(ushort);
-extern void mem_write(ushort, uchar);
-extern uchar *mem_rom_address(void);
-extern uchar *mem_get_addr(ushort);
-extern ushort mem_read_word(ushort);
-extern void mem_write_word(ushort, ushort);
-extern void mem_block_transfer(ushort, ushort, int, ushort);
-extern void set_in_port(int, uchar);
-extern void z80_out(int, uchar);
+extern uint8_t mem_read(uint16_t);
+extern void mem_write(uint16_t, uint8_t);
+extern uint8_t *mem_rom_address(void);
+extern uint8_t *mem_get_addr(uint16_t);
+extern uint16_t mem_read_word(uint16_t);
+extern void mem_write_word(uint16_t, uint16_t);
+extern void mem_block_transfer(uint16_t, uint16_t, int, uint16_t);
+extern void set_in_port(int, uint8_t);
+extern void z80_out(int, uint8_t);
 extern int z80_in(int);
 extern void io_init(void);
 extern int disassemble(int);
-extern int DAsm(ushort pc, char *T, int *target);
+extern int DAsm(uint16_t pc, char *T, int *target);
 extern void load_basic(int);
 
 /*

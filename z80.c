@@ -40,7 +40,7 @@ static void diffstate(void);
  * Tables and routines for computing various flag values:
  */
 
-static uchar sign_carry_overflow_table[] =
+static uint8_t sign_carry_overflow_table[] =
 {
     0,
     OVERFLOW_MASK | SIGN_MASK,
@@ -52,7 +52,7 @@ static uchar sign_carry_overflow_table[] =
     CARRY_MASK | SIGN_MASK,
 };
 
-static uchar half_carry_table[] =
+static uint8_t half_carry_table[] =
 {
     0,
     0,
@@ -64,7 +64,7 @@ static uchar half_carry_table[] =
     HALF_CARRY_MASK,
 };
 
-static uchar subtract_sign_carry_overflow_table[] =
+static uint8_t subtract_sign_carry_overflow_table[] =
 {
     0,
     CARRY_MASK | SIGN_MASK,
@@ -76,7 +76,7 @@ static uchar subtract_sign_carry_overflow_table[] =
     CARRY_MASK | SIGN_MASK,
 };
 
-static uchar subtract_half_carry_table[] =
+static uint8_t subtract_half_carry_table[] =
 {
     0,
     HALF_CARRY_MASK,
@@ -242,7 +242,7 @@ static void do_sbc_word_flags(int a, int b, int result)
 
 static void do_flags_dec_byte(int value)
 {
-    uchar clear, set;
+    uint8_t clear, set;
 
     clear = ~(OVERFLOW_MASK | HALF_CARRY_MASK
 	      | ZERO_MASK | SIGN_MASK);
@@ -262,7 +262,7 @@ static void do_flags_dec_byte(int value)
 
 static void do_flags_inc_byte(int value)
 {
-    uchar clear, set;
+    uint8_t clear, set;
 
     clear = ~(SUBTRACT_MASK | OVERFLOW_MASK
 	      | HALF_CARRY_MASK | ZERO_MASK | SIGN_MASK);
@@ -287,7 +287,7 @@ static void do_flags_inc_byte(int value)
 static void do_and_byte(int value)
 {
     int result;
-    uchar clear, set;
+    uint8_t clear, set;
 
     result = (REG_A &= value);
 
@@ -308,7 +308,7 @@ static void do_and_byte(int value)
 static void do_or_byte(int value)
 {
     int result;  /* the result of the or operation */
-    uchar clear, set;
+    uint8_t clear, set;
 
     result = (REG_A |= value);
 
@@ -329,7 +329,7 @@ static void do_or_byte(int value)
 static void do_xor_byte(int value)
 {
     int result;  /* the result of the xor operation */
-    uchar clear, set;
+    uint8_t clear, set;
 
     result = (REG_A ^= value);
 
@@ -438,7 +438,7 @@ static void do_sbc_word(int value)
     do_sbc_word_flags(a, value, result);
 }
 
-static void do_add_word_index(ushort *regp, int value)
+static void do_add_word_index(uint16_t *regp, int value)
 {
     int a, result;
 
@@ -512,7 +512,7 @@ static void do_cpir(void)
 
 static void do_test_bit(int value, int bit)
 {
-    uchar clear, set;
+    uint8_t clear, set;
 
     clear = ~(SIGN_MASK | ZERO_MASK | OVERFLOW_MASK | SUBTRACT_MASK);
     set = HALF_CARRY_MASK;
@@ -530,7 +530,7 @@ static int rl_byte(int value)
      * operation, setting flags as appropriate.
      */
 
-    uchar clear, set;
+    uint8_t clear, set;
     int result;
 
     clear = ~(SIGN_MASK | ZERO_MASK | HALF_CARRY_MASK | PARITY_MASK |
@@ -567,7 +567,7 @@ static int rr_byte(int value)
      * operation, setting flags as appropriate.
      */
 
-    uchar clear, set;
+    uint8_t clear, set;
     int result;
 
     clear = ~(SIGN_MASK | ZERO_MASK | HALF_CARRY_MASK | PARITY_MASK |
@@ -604,7 +604,7 @@ static int rlc_byte(int value)
      * This does not do the right thing for the RLCA instruction.
      */
 
-    uchar clear, set;
+    uint8_t clear, set;
     int result;
 
     clear = ~(SIGN_MASK | ZERO_MASK | HALF_CARRY_MASK | PARITY_MASK |
@@ -635,7 +635,7 @@ static int rlc_byte(int value)
 
 static int rrc_byte(int value)
 {
-    uchar clear, set;
+    uint8_t clear, set;
     int result;
 
     clear = ~(SIGN_MASK | ZERO_MASK | HALF_CARRY_MASK | PARITY_MASK |
@@ -670,7 +670,7 @@ static int rrc_byte(int value)
  */
 static void do_rla(void)
 {
-    uchar clear, set;
+    uint8_t clear, set;
 
     clear = ~(HALF_CARRY_MASK | SUBTRACT_MASK | CARRY_MASK);
     set = 0;
@@ -692,7 +692,7 @@ static void do_rla(void)
 
 static void do_rra(void)
 {
-    uchar clear, set;
+    uint8_t clear, set;
 
     clear = ~(HALF_CARRY_MASK | SUBTRACT_MASK | CARRY_MASK);
     set = 0;
@@ -713,7 +713,7 @@ static void do_rra(void)
 
 static void do_rlca(void)
 {
-    uchar clear, set;
+    uint8_t clear, set;
 
     clear = ~(HALF_CARRY_MASK | SUBTRACT_MASK | CARRY_MASK);
     set = 0;
@@ -732,7 +732,7 @@ static void do_rlca(void)
 
 static void do_rrca(void)
 {
-    uchar clear, set;
+    uint8_t clear, set;
 
     clear = ~(HALF_CARRY_MASK | SUBTRACT_MASK | CARRY_MASK);
     set = 0;
@@ -751,7 +751,7 @@ static void do_rrca(void)
 
 static int sla_byte(int value)
 {
-    uchar clear, set;
+    uint8_t clear, set;
     int result;
 
     clear = ~(SIGN_MASK | ZERO_MASK | HALF_CARRY_MASK | PARITY_MASK |
@@ -776,7 +776,7 @@ static int sla_byte(int value)
 
 static int sra_byte(int value)
 {
-    uchar clear, set;
+    uint8_t clear, set;
     int result;
 
     clear = ~(SIGN_MASK | ZERO_MASK | HALF_CARRY_MASK | PARITY_MASK |
@@ -807,7 +807,7 @@ static int sra_byte(int value)
 
 static int srl_byte(int value)
 {
-    uchar clear, set;
+    uint8_t clear, set;
     int result;
 
     clear = ~(SIGN_MASK | ZERO_MASK | HALF_CARRY_MASK | PARITY_MASK |
@@ -892,7 +892,7 @@ static void do_lddr(void)
 
 static void do_ld_a_i(void)
 {
-    uchar clear, set;
+    uint8_t clear, set;
 
     clear = ~(SIGN_MASK | ZERO_MASK | HALF_CARRY_MASK | OVERFLOW_MASK |
 	      SUBTRACT_MASK);
@@ -913,7 +913,7 @@ static void do_ld_a_i(void)
 
 static void do_ld_a_r(void)
 {
-    uchar clear, set;
+    uint8_t clear, set;
 
     clear = ~(SIGN_MASK | ZERO_MASK | HALF_CARRY_MASK | OVERFLOW_MASK |
 	      SUBTRACT_MASK);
@@ -1055,7 +1055,7 @@ static void do_rld(void)
      * Rotate-left-decimal.
      */
     int old_value, new_value;
-    uchar clear, set;
+    uint8_t clear, set;
 
     clear = ~(SIGN_MASK | ZERO_MASK | HALF_CARRY_MASK | PARITY_MASK |
 	      SUBTRACT_MASK);
@@ -1086,7 +1086,7 @@ static void do_rrd(void)
      * Rotate-right-decimal.
      */
     int old_value, new_value;
-    uchar clear, set;
+    uint8_t clear, set;
 
     clear = ~(SIGN_MASK | ZERO_MASK | HALF_CARRY_MASK | PARITY_MASK |
 	      SUBTRACT_MASK);
@@ -1178,7 +1178,7 @@ static int in_with_flags(int port)
      */
 
     int value;
-    uchar clear, set;
+    uint8_t clear, set;
 
     clear = ~(SIGN_MASK | ZERO_MASK | HALF_CARRY_MASK |
 	      PARITY_MASK | SUBTRACT_MASK);
@@ -1329,7 +1329,7 @@ do_int(void)
 
 static void do_CB_instruction(void)
 {
-    uchar instruction;
+    uint8_t instruction;
     
     instruction = mem_read(REG_PC++);
     
@@ -2099,9 +2099,9 @@ static void do_CB_instruction(void)
 }
 
 
-static void do_indexed_instruction(ushort *ixp)
+static void do_indexed_instruction(uint16_t *ixp)
 {
-    uchar instruction;
+    uint8_t instruction;
     
     instruction = mem_read(REG_PC++);
     
@@ -2140,8 +2140,8 @@ static void do_indexed_instruction(ushort *ixp)
 
       case 0x35:	/* dec (ix + offset) */
         {
-	  ushort address;
-	  uchar value;
+	  uint16_t address;
+	  uint8_t value;
 	  address = *ixp + (char) mem_read(REG_PC++);
 	  value = mem_read(address) - 1;
 	  mem_write(address, value);
@@ -2155,7 +2155,7 @@ static void do_indexed_instruction(ushort *ixp)
 
       case 0xE3:	/* ex (sp), ix */
         {
-	  ushort temp;
+	  uint16_t temp;
 	  temp = mem_read_word(REG_SP);
 	  mem_write_word(REG_SP, *ixp);
 	  *ixp = temp;
@@ -2164,8 +2164,8 @@ static void do_indexed_instruction(ushort *ixp)
 
       case 0x34:	/* inc (ix + offset) */
         {
-	  ushort address;
-	  uchar value;
+	  uint16_t address;
+	  uint8_t value;
 	  address = *ixp + (char) mem_read(REG_PC++);
 	  value = mem_read(address) + 1;
 	  mem_write(address, value);
@@ -2278,7 +2278,7 @@ static void do_indexed_instruction(ushort *ixp)
       case 0xCB:
         {
 	  char offset;
-	  uchar sub_instruction;
+	  uint8_t sub_instruction;
 
 	  offset = (char) mem_read(REG_PC++);
 	  sub_instruction = mem_read(REG_PC++);
@@ -2403,7 +2403,7 @@ static void do_indexed_instruction(ushort *ixp)
 
 static void do_ED_instruction(void)
 {
-    uchar instruction;
+    uint8_t instruction;
     
     instruction = mem_read(REG_PC++);
     
@@ -2621,14 +2621,14 @@ static void do_ED_instruction(void)
 }
 
 /* Hack, hack, see if we can speed this up. */
-/*extern uchar *memory;*/
+/*extern uint8_t *memory;*/
 /*#define MEM_READ(a) ((a < 0x3000) ? memory[a] : mem_read(a));*/
 /* #define MEM_READ(a) (((((a) - 0x3000) & 0xffff) >= 0xc00) ? memory[a] : mem_read(a)) */
 
 int z80_run(int continuous)
 {
-    uchar instruction;
-    ushort address; /* generic temps */
+    uint8_t instruction;
+    uint16_t address; /* generic temps */
 
     /* loop to do a z80 instruction */
     do {
@@ -2967,7 +2967,7 @@ int z80_run(int continuous)
 	    
 	  case 0x35:	/* dec (hl) */
 	  {
-	      uchar value = mem_read(REG_HL) - 1;
+	      uint8_t value = mem_read(REG_HL) - 1;
 	      mem_write(REG_HL, value);
 	      do_flags_dec_byte(value);
 	  }
@@ -2994,7 +2994,7 @@ int z80_run(int continuous)
 	    /* Zaks says no flag changes. */
 	    if(--REG_B != 0)
 	    {
-		uchar byte_value;
+		uint8_t byte_value;
 		byte_value = mem_read(REG_PC++);
 		REG_PC += (char) byte_value;
 	    }
@@ -3010,7 +3010,7 @@ int z80_run(int continuous)
 	    
 	  case 0x08:	/* ex af, af' */
 	  {
-	      ushort temp;
+	      uint16_t temp;
 	      temp = REG_AF;
 	      REG_AF = REG_AF_PRIME;
 	      REG_AF_PRIME = temp;
@@ -3019,7 +3019,7 @@ int z80_run(int continuous)
 	    
 	  case 0xEB:	/* ex de, hl */
 	  {
-	      ushort temp;
+	      uint16_t temp;
 	      temp = REG_DE;
 	      REG_DE = REG_HL;
 	      REG_HL = temp;
@@ -3028,7 +3028,7 @@ int z80_run(int continuous)
 	    
 	  case 0xE3:	/* ex (sp), hl */
 	  {
-	      ushort temp;
+	      uint16_t temp;
 	      temp = mem_read_word(REG_SP);
 	      mem_write_word(REG_SP, REG_HL);
 	      REG_HL = temp;
@@ -3037,7 +3037,7 @@ int z80_run(int continuous)
 	    
 	  case 0xD9:	/* exx */
 	  {
-	      ushort tmp;
+	      uint16_t tmp;
 	      tmp = REG_BC_PRIME;
 	      REG_BC_PRIME = REG_BC;
 	      REG_BC = tmp;
@@ -3089,7 +3089,7 @@ int z80_run(int continuous)
 	    
 	  case 0x34:	/* inc (hl) */
 	  {
-	      uchar value = mem_read(REG_HL) + 1;
+	      uint8_t value = mem_read(REG_HL) + 1;
 	      mem_write(REG_HL, value);
 	      do_flags_inc_byte(value);
 	  }
@@ -3199,7 +3199,7 @@ int z80_run(int continuous)
 	    
 	  case 0x18:	/* jr offset */
 	  {
-	      uchar byte_value;
+	      uint8_t byte_value;
 	      byte_value = mem_read(REG_PC++);
 	      REG_PC += (char) byte_value;
 	  }
@@ -3208,7 +3208,7 @@ int z80_run(int continuous)
 	  case 0x20:	/* jr nz, offset */
 	    if(!ZERO_FLAG)
 	    {
-		uchar byte_value;
+		uint8_t byte_value;
 		byte_value = mem_read(REG_PC++);
 		REG_PC += (char) byte_value;
 	    }
@@ -3220,7 +3220,7 @@ int z80_run(int continuous)
 	  case 0x28:	/* jr z, offset */
 	    if(ZERO_FLAG)
 	    {
-		uchar byte_value;
+		uint8_t byte_value;
 		byte_value = mem_read(REG_PC++);
 		REG_PC += (char) byte_value;
 	    }
@@ -3232,7 +3232,7 @@ int z80_run(int continuous)
 	  case 0x30:	/* jr nc, offset */
 	    if(!CARRY_FLAG)
 	    {
-		uchar byte_value;
+		uint8_t byte_value;
 		byte_value = mem_read(REG_PC++);
 		REG_PC += (char) byte_value;
 	    }
@@ -3244,7 +3244,7 @@ int z80_run(int continuous)
 	  case 0x38:	/* jr c, offset */
 	    if(CARRY_FLAG)
 	    {
-		uchar byte_value;
+		uint8_t byte_value;
 		byte_value = mem_read(REG_PC++);
 		REG_PC += (char) byte_value;
 	    }

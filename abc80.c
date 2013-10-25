@@ -18,9 +18,9 @@ volatile int event_pending = 1;
  * and return its numeric value.
  */
 static char *hexstring =  "0123456789ABCDEF";
-static uchar gethex(char *p)
+static uint8_t gethex(char *p)
 {
-    return (uchar)(((strchr(hexstring, *p) - hexstring) << 4) 
+    return (uint8_t)(((strchr(hexstring, *p) - hexstring) << 4) 
           + (strchr(hexstring, *(p + 1)) - hexstring));
 }
 
@@ -32,7 +32,7 @@ static uchar gethex(char *p)
 static void
 load_sysfile(FILE *sysfile)
 {
-    uchar *memory;
+    uint8_t *memory;
     char  line[128];
     char *pos;
     int   len;
@@ -66,7 +66,7 @@ load_sysfile(FILE *sysfile)
  */
 static void load_rom(const struct rom *rom)
 {
-    uchar *memory = mem_rom_address();
+    uint8_t *memory = mem_rom_address();
 
     memcpy(memory + rom->offset, rom->data, rom->size);
 }

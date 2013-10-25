@@ -13,7 +13,7 @@
 #define VIDEO_LEN       (0x0400)
 #define RAM_START       (0x8000)
 
-static uchar memory[MEMORY_SIZE];
+static uint8_t memory[MEMORY_SIZE];
 
 /*
  * Macros to determine quickly if an address is writeable.
@@ -30,7 +30,7 @@ void mem_init(void)
 /*
  * hack to let us initialize the ROM memory
  */
-uchar *mem_rom_address(void)
+uint8_t *mem_rom_address(void)
 {
     return memory;
 }
@@ -39,13 +39,13 @@ uchar *mem_rom_address(void)
 /*
  * hack to get a pointer into the Z80 "memory"
  */
-uchar *mem_get_addr(ushort address)
+uint8_t *mem_get_addr(uint16_t address)
 {
     return &memory[address];
 }
 
 
-uchar mem_read(ushort address)
+uint8_t mem_read(uint16_t address)
 {
     if (DEBUG_READ(address)) {
 	printf("Accessed:\t0x%04x %5d : %02x\n",
@@ -55,7 +55,7 @@ uchar mem_read(ushort address)
 }
 
 
-void mem_write(ushort address, uchar value)
+void mem_write(uint16_t address, uint8_t value)
 {
   if ((address & VIDEO_MASK) == VIDEO_START) {
 	/*
@@ -78,12 +78,12 @@ void mem_write(ushort address, uchar value)
 /*
  * Words are stored with the low-order byte in the lower address.
  */
-ushort mem_read_word(ushort address)
+uint16_t mem_read_word(uint16_t address)
 {
-    uchar b0, b1;
+    uint8_t b0, b1;
 
     b0 = memory[address];
-    b1 = memory[(ushort)(address + 1)];
+    b1 = memory[(uint16_t)(address + 1)];
 
     if (DEBUG_READ(address)) {
 	printf("Accessed:\t0x%04x %5d : %02x%02x\n",
@@ -94,7 +94,7 @@ ushort mem_read_word(ushort address)
 }
 
 
-void mem_write_word(ushort address, ushort value)
+void mem_write_word(uint16_t address, uint16_t value)
 {
     mem_write(address, value);
     mem_write(address+1, value >> 8);
@@ -109,7 +109,7 @@ void mem_write_word(ushort address, ushort value)
  * Note that a count of zero => move 64K bytes.
  */
 void 
-mem_block_transfer(ushort dest, ushort source, int direction, ushort count)
+mem_block_transfer(uint16_t dest, uint16_t source, int direction, uint16_t count)
 {
     if(direction > 0)
     {
