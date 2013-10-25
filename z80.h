@@ -13,6 +13,8 @@
  * must retain this notice.
  */
 
+#include "config.h"
+
 #include <stdio.h>
 #include <ctype.h>
 #include <time.h>
