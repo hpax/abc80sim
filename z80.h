@@ -25,7 +25,7 @@ typedef unsigned char uchar;
 
 struct twobyte
 {
-#ifdef SMALL_ENDIAN
+#ifdef WORDS_LITTLEENDIAN
     uchar low, high;
 #else
     uchar high, low;

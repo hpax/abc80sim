@@ -1,7 +1,13 @@
 #ifndef _SCREEN_H
 #define _SCREEN_H
 
-#include "SDL.h"
+#include "config.h"
+
+#ifdef HAVE_SDL_H
+# include <SDL.h>
+#elif defined(HAVE_SDL_SDL_H)
+# include <SDL/SDL.h>
+#endif
 
 #ifndef MAIN
 #define EXTERN extern

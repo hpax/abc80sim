@@ -10,3 +10,8 @@ abcrom80.c
 ufddos.c
 printer.c
 abc80
+config.h
+config.h.in
+config.log
+config.status
+configure

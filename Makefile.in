@@ -2,27 +2,27 @@
 # Makefile for the ABC80 emulator
 #
 
-top_srcdir      = .
-srcdir          = .
+top_srcdir      = @top_srcdir@
+srcdir          = @srcdir@
+VPATH           = @srcdir@
+prefix          = @prefix@
+exec_prefix     = @exec_prefix@
+bindir          = @bindir@
+mandir          = @mandir@
+datarootdir     = @datarootdir@
 
-prefix          = /usr/local
-exec_prefix     = ${prefix}
-bindir          = ${exec_prefix}/bin
-mandir          = ${datarootdir}/man
-datarootdir     = ${prefix}/share
-
-CC		= gcc
-CFLAGS		= -g -O2 -W -Wall
-LDFLAGS		= 
-LIBS		= -lSDL -lpthread 
+CC		= @CC@
+CFLAGS		= @CFLAGS@
+LDFLAGS		= @LDFLAGS@
+LIBS		= @LIBS@
 
 MKDIR		= mkdir
 PERL		= perl
 RM_F		= rm -f
 
 # For Windows/MinGW use obj and .exe
-O		= o
-X		= 
+O		= @OBJEXT@
+X		= @EXEEXT@
 
 GENO = abcrom40.$(O) abcrom80.$(O) ufddos.$(O) printer.$(O)
 GENC = abcrom40.c abcrom80.c ufddos.c printer.c

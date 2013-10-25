@@ -4,7 +4,6 @@
 
 #include "z80.h"
 #include "screen.h"
-#include "SDL.h"
 
 /*
  * Trig a non maskable interrupt in the Z80 on the clock signal.

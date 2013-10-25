@@ -8,7 +8,6 @@
 #include <stdlib.h>
 #include <inttypes.h>
 #include <string.h>
-#include "SDL.h"
 #include "screen.h"
 #include "z80.h"
 
