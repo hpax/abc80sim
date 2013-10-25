@@ -1,6 +1,8 @@
 #ifndef ABCPRINTD_H
 #define ABCPRINTD_H
 
+#include "config.h"
+
 #include <ctype.h>
 #include <dirent.h>
 #include <errno.h>
