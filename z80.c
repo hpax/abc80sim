@@ -773,6 +773,32 @@ static int sla_byte(int value)
     return result;
 }
 
+/* SLL is an undocumented instruction which shifts left and sets the LSB */
+static int sll_byte(int value)
+{
+    uint8_t clear, set;
+    int result;
+
+    clear = ~(SIGN_MASK | ZERO_MASK | HALF_CARRY_MASK | PARITY_MASK |
+	      SUBTRACT_MASK | CARRY_MASK);
+    set = 0;
+
+    result = (value << 1) | 1;
+
+    if(result & 0x80)
+      set |= SIGN_MASK;
+    if(result == 0)
+      set |= ZERO_MASK;
+    if(parity(result))
+      set |= PARITY_MASK;
+    if(value & 0x80)
+      set |= CARRY_MASK;
+
+    REG_F = (REG_F & clear) | set;
+
+    return result;
+}
+
 static int sra_byte(int value)
 {
     uint8_t clear, set;
@@ -2053,6 +2079,31 @@ static void do_CB_instruction(wordregister *ix)
 	break;
       case 0x26:	/* sla (hl) */
 	mem_write(addr, sla_byte(mem_read(addr)));
+	break;
+
+      case 0x37:	/* sll a */
+	REG_A = sll_byte(REG_A);
+	break;
+      case 0x30:	/* sll b */
+	REG_B = sll_byte(REG_B);
+	break;
+      case 0x31:	/* sll c */
+	REG_C = sll_byte(REG_C);
+	break;
+      case 0x32:	/* sll d */
+	REG_D = sll_byte(REG_D);
+	break;
+      case 0x33:	/* sll e */
+	REG_E = sll_byte(REG_E);
+	break;
+      case 0x34:	/* sll h */
+	ix->byte.high = sll_byte(ix->byte.high);
+	break;
+      case 0x35:	/* sll l */
+	ix->byte.low = sll_byte(ix->byte.low);
+	break;
+      case 0x36:	/* sll (hl) */
+	mem_write(addr, sll_byte(mem_read(addr)));
 	break;
 
       case 0x2F:	/* sra a */
