@@ -34,7 +34,16 @@
 struct z80_state_struct z80_state;
 
 #define TRACE 0
+
+#if TRACE
 static void diffstate(void);
+static void tracemem(void);
+static void trace_mem_write(uint16_t, uint8_t);
+static void trace_mem_write_word(uint16_t, uint16_t);
+
+#define mem_write      trace_mem_write
+#define mem_write_word trace_mem_write_word
+#endif
 
 /*
  * Tables and routines for computing various flag values:
@@ -400,16 +409,6 @@ static void do_sbc_byte(int value)
     do_sub_flags(a, value, result);
 }
 
-static void do_add_word(int value)
-{
-    int a, result;
-
-    result = (a = REG_HL) + value;
-    REG_HL = result;
-
-    do_add_word_flags(a, value, result);
-}
-
 static void do_adc_word(int value)
 {
     int a, result;
@@ -438,12 +437,12 @@ static void do_sbc_word(int value)
     do_sbc_word_flags(a, value, result);
 }
 
-static void do_add_word_index(uint16_t *regp, int value)
+static void do_add_word(wordregister *ix, int value)
 {
     int a, result;
 
-    result = (a = *regp) + value;
-    *regp = result;
+    result = (a = ix->word) + value;
+    ix->word = result;
 
     do_add_word_flags(a, value, result);
 }
@@ -1323,16 +1322,30 @@ do_int(void)
 }
 
 
+static uint16_t get_hl_addr(wordregister *ix)
+{
+    if (ix == &z80_state.hl)
+      return ix->word;
+    else
+      return ix->word + (int8_t)mem_read(REG_PC++);
+}
+
 /*
- * Extended instructions which have 0xED as the first byte:
+ * Extended instructions which have 0xCB as the first byte:
  */
 
-static void do_CB_instruction(void)
+static void do_CB_instruction(wordregister *ix)
 {
     uint8_t instruction;
+    uint16_t addr = -1;
     
+    /*
+     * Note the ordering: with a DD/FD prefix, the offset byte comes
+     * *before* the next opcode byte.
+     */
+    addr = get_hl_addr(ix);
     instruction = mem_read(REG_PC++);
-    
+
     switch(instruction)
     {
       case 0x47:	/* bit 0, a */
@@ -1351,10 +1364,10 @@ static void do_CB_instruction(void)
 	do_test_bit(REG_E, 0);
 	break;
       case 0x44:	/* bit 0, h */
-	do_test_bit(REG_H, 0);
+	do_test_bit(ix->byte.high, 0);
 	break;
       case 0x45:	/* bit 0, l */
-	do_test_bit(REG_L, 0);
+	do_test_bit(ix->byte.low, 0);
 	break;
       case 0x4F:	/* bit 1, a */
 	do_test_bit(REG_A, 1);
@@ -1372,10 +1385,10 @@ static void do_CB_instruction(void)
 	do_test_bit(REG_E, 1);
 	break;
       case 0x4C:	/* bit 1, h */
-	do_test_bit(REG_H, 1);
+	do_test_bit(ix->byte.high, 1);
 	break;
       case 0x4D:	/* bit 1, l */
-	do_test_bit(REG_L, 1);
+	do_test_bit(ix->byte.low, 1);
 	break;
       case 0x57:	/* bit 2, a */
 	do_test_bit(REG_A, 2);
@@ -1393,10 +1406,10 @@ static void do_CB_instruction(void)
 	do_test_bit(REG_E, 2);
 	break;
       case 0x54:	/* bit 2, h */
-	do_test_bit(REG_H, 2);
+	do_test_bit(ix->byte.high, 2);
 	break;
       case 0x55:	/* bit 2, l */
-	do_test_bit(REG_L, 2);
+	do_test_bit(ix->byte.low, 2);
 	break;
       case 0x5F:	/* bit 3, a */
 	do_test_bit(REG_A, 3);
@@ -1414,10 +1427,10 @@ static void do_CB_instruction(void)
 	do_test_bit(REG_E, 3);
 	break;
       case 0x5C:	/* bit 3, h */
-	do_test_bit(REG_H, 3);
+	do_test_bit(ix->byte.high, 3);
 	break;
       case 0x5D:	/* bit 3, l */
-	do_test_bit(REG_L, 3);
+	do_test_bit(ix->byte.low, 3);
 	break;
       case 0x67:	/* bit 4, a */
 	do_test_bit(REG_A, 4);
@@ -1435,10 +1448,10 @@ static void do_CB_instruction(void)
 	do_test_bit(REG_E, 4);
 	break;
       case 0x64:	/* bit 4, h */
-	do_test_bit(REG_H, 4);
+	do_test_bit(ix->byte.high, 4);
 	break;
       case 0x65:	/* bit 4, l */
-	do_test_bit(REG_L, 4);
+	do_test_bit(ix->byte.low, 4);
 	break;
       case 0x6F:	/* bit 5, a */
 	do_test_bit(REG_A, 5);
@@ -1456,10 +1469,10 @@ static void do_CB_instruction(void)
 	do_test_bit(REG_E, 5);
 	break;
       case 0x6C:	/* bit 5, h */
-	do_test_bit(REG_H, 5);
+	do_test_bit(ix->byte.high, 5);
 	break;
       case 0x6D:	/* bit 5, l */
-	do_test_bit(REG_L, 5);
+	do_test_bit(ix->byte.low, 5);
 	break;
       case 0x77:	/* bit 6, a */
 	do_test_bit(REG_A, 6);
@@ -1477,10 +1490,10 @@ static void do_CB_instruction(void)
 	do_test_bit(REG_E, 6);
 	break;
       case 0x74:	/* bit 6, h */
-	do_test_bit(REG_H, 6);
+	do_test_bit(ix->byte.high, 6);
 	break;
       case 0x75:	/* bit 6, l */
-	do_test_bit(REG_L, 6);
+	do_test_bit(ix->byte.low, 6);
 	break;
       case 0x7F:	/* bit 7, a */
 	do_test_bit(REG_A, 7);
@@ -1498,35 +1511,35 @@ static void do_CB_instruction(void)
 	do_test_bit(REG_E, 7);
 	break;
       case 0x7C:	/* bit 7, h */
-	do_test_bit(REG_H, 7);
+	do_test_bit(ix->byte.high, 7);
 	break;
       case 0x7D:	/* bit 7, l */
-	do_test_bit(REG_L, 7);
+	do_test_bit(ix->byte.low, 7);
 	break;
 	
       case 0x46:	/* bit 0, (hl) */
-	do_test_bit(mem_read(REG_HL), 0);
+	do_test_bit(mem_read(addr), 0);
 	break;
       case 0x4E:	/* bit 1, (hl) */
-	do_test_bit(mem_read(REG_HL), 1);
+	do_test_bit(mem_read(addr), 1);
 	break;
       case 0x56:	/* bit 2, (hl) */
-	do_test_bit(mem_read(REG_HL), 2);
+	do_test_bit(mem_read(addr), 2);
 	break;
       case 0x5E:	/* bit 3, (hl) */
-	do_test_bit(mem_read(REG_HL), 3);
+	do_test_bit(mem_read(addr), 3);
 	break;
       case 0x66:	/* bit 4, (hl) */
-	do_test_bit(mem_read(REG_HL), 4);
+	do_test_bit(mem_read(addr), 4);
 	break;
       case 0x6E:	/* bit 5, (hl) */
-	do_test_bit(mem_read(REG_HL), 5);
+	do_test_bit(mem_read(addr), 5);
 	break;
       case 0x76:	/* bit 6, (hl) */
-	do_test_bit(mem_read(REG_HL), 6);
+	do_test_bit(mem_read(addr), 6);
 	break;
       case 0x7E:	/* bit 7, (hl) */
-	do_test_bit(mem_read(REG_HL), 7);
+	do_test_bit(mem_read(addr), 7);
 	break;
 
       case 0x87:	/* res 0, a */
@@ -1545,10 +1558,10 @@ static void do_CB_instruction(void)
 	REG_E &= ~(1 << 0);
 	break;
       case 0x84:	/* res 0, h */
-	REG_H &= ~(1 << 0);
+	ix->byte.high &= ~(1 << 0);
 	break;
       case 0x85:	/* res 0, l */
-	REG_L &= ~(1 << 0);
+	ix->byte.low &= ~(1 << 0);
 	break;
       case 0x8F:	/* res 1, a */
 	REG_A &= ~(1 << 1);
@@ -1566,10 +1579,10 @@ static void do_CB_instruction(void)
 	REG_E &= ~(1 << 1);
 	break;
       case 0x8C:	/* res 1, h */
-	REG_H &= ~(1 << 1);
+	ix->byte.high &= ~(1 << 1);
 	break;
       case 0x8D:	/* res 1, l */
-	REG_L &= ~(1 << 1);
+	ix->byte.low &= ~(1 << 1);
 	break;
       case 0x97:	/* res 2, a */
 	REG_A &= ~(1 << 2);
@@ -1587,10 +1600,10 @@ static void do_CB_instruction(void)
 	REG_E &= ~(1 << 2);
 	break;
       case 0x94:	/* res 2, h */
-	REG_H &= ~(1 << 2);
+	ix->byte.high &= ~(1 << 2);
 	break;
       case 0x95:	/* res 2, l */
-	REG_L &= ~(1 << 2);
+	ix->byte.low &= ~(1 << 2);
 	break;
       case 0x9F:	/* res 3, a */
 	REG_A &= ~(1 << 3);
@@ -1608,10 +1621,10 @@ static void do_CB_instruction(void)
 	REG_E &= ~(1 << 3);
 	break;
       case 0x9C:	/* res 3, h */
-	REG_H &= ~(1 << 3);
+	ix->byte.high &= ~(1 << 3);
 	break;
       case 0x9D:	/* res 3, l */
-	REG_L &= ~(1 << 3);
+	ix->byte.low &= ~(1 << 3);
 	break;
       case 0xA7:	/* res 4, a */
 	REG_A &= ~(1 << 4);
@@ -1629,10 +1642,10 @@ static void do_CB_instruction(void)
 	REG_E &= ~(1 << 4);
 	break;
       case 0xA4:	/* res 4, h */
-	REG_H &= ~(1 << 4);
+	ix->byte.high &= ~(1 << 4);
 	break;
       case 0xA5:	/* res 4, l */
-	REG_L &= ~(1 << 4);
+	ix->byte.low &= ~(1 << 4);
 	break;
       case 0xAF:	/* res 5, a */
 	REG_A &= ~(1 << 5);
@@ -1650,10 +1663,10 @@ static void do_CB_instruction(void)
 	REG_E &= ~(1 << 5);
 	break;
       case 0xAC:	/* res 5, h */
-	REG_H &= ~(1 << 5);
+	ix->byte.high &= ~(1 << 5);
 	break;
       case 0xAD:	/* res 5, l */
-	REG_L &= ~(1 << 5);
+	ix->byte.low &= ~(1 << 5);
 	break;
       case 0xB7:	/* res 6, a */
 	REG_A &= ~(1 << 6);
@@ -1671,10 +1684,10 @@ static void do_CB_instruction(void)
 	REG_E &= ~(1 << 6);
 	break;
       case 0xB4:	/* res 6, h */
-	REG_H &= ~(1 << 6);
+	ix->byte.high &= ~(1 << 6);
 	break;
       case 0xB5:	/* res 6, l */
-	REG_L &= ~(1 << 6);
+	ix->byte.low &= ~(1 << 6);
 	break;
       case 0xBF:	/* res 7, a */
 	REG_A &= ~(1 << 7);
@@ -1692,35 +1705,35 @@ static void do_CB_instruction(void)
 	REG_E &= ~(1 << 7);
 	break;
       case 0xBC:	/* res 7, h */
-	REG_H &= ~(1 << 7);
+	ix->byte.high &= ~(1 << 7);
 	break;
       case 0xBD:	/* res 7, l */
-	REG_L &= ~(1 << 7);
+	ix->byte.low &= ~(1 << 7);
 	break;
 
       case 0x86:	/* res 0, (hl) */
-	mem_write(REG_HL, mem_read(REG_HL) & ~(1 << 0));
+	mem_write(addr, mem_read(addr) & ~(1 << 0));
 	break;
       case 0x8E:	/* res 1, (hl) */
-	mem_write(REG_HL, mem_read(REG_HL) & ~(1 << 1));
+	mem_write(addr, mem_read(addr) & ~(1 << 1));
 	break;
       case 0x96:	/* res 2, (hl) */
-	mem_write(REG_HL, mem_read(REG_HL) & ~(1 << 2));
+      	mem_write(addr, mem_read(addr) & ~(1 << 2));
 	break;
       case 0x9E:	/* res 3, (hl) */
-	mem_write(REG_HL, mem_read(REG_HL) & ~(1 << 3));
+	mem_write(addr, mem_read(addr) & ~(1 << 3));
 	break;
       case 0xA6:	/* res 4, (hl) */
-	mem_write(REG_HL, mem_read(REG_HL) & ~(1 << 4));
+	mem_write(addr, mem_read(addr) & ~(1 << 4));
 	break;
       case 0xAE:	/* res 5, (hl) */
-	mem_write(REG_HL, mem_read(REG_HL) & ~(1 << 5));
+	mem_write(addr, mem_read(addr) & ~(1 << 5));
 	break;
       case 0xB6:	/* res 6, (hl) */
-	mem_write(REG_HL, mem_read(REG_HL) & ~(1 << 6));
+	mem_write(addr, mem_read(addr) & ~(1 << 6));
 	break;
       case 0xBE:	/* res 7, (hl) */
-	mem_write(REG_HL, mem_read(REG_HL) & ~(1 << 7));
+	mem_write(addr, mem_read(addr) & ~(1 << 7));
 	break;
 
       case 0x17:	/* rl a */
@@ -1739,13 +1752,13 @@ static void do_CB_instruction(void)
 	REG_E = rl_byte(REG_E);
 	break;
       case 0x14:	/* rl h */
-	REG_H = rl_byte(REG_H);
+	ix->byte.high = rl_byte(ix->byte.high);
 	break;
       case 0x15:	/* rl l */
-	REG_L = rl_byte(REG_L);
+	ix->byte.low = rl_byte(ix->byte.low);
 	break;
       case 0x16:	/* rl (hl) */
-	mem_write(REG_HL, rl_byte(mem_read(REG_HL)));
+	mem_write(addr, rl_byte(mem_read(addr)));
 	break;
 
       case 0x07:	/* rlc a */
@@ -1764,13 +1777,13 @@ static void do_CB_instruction(void)
 	REG_E = rlc_byte(REG_E);
 	break;
       case 0x04:	/* rlc h */
-	REG_H = rlc_byte(REG_H);
+	ix->byte.high = rlc_byte(ix->byte.high);
 	break;
       case 0x05:	/* rlc l */
-	REG_L = rlc_byte(REG_L);
+	ix->byte.low = rlc_byte(ix->byte.low);
 	break;
       case 0x06:	/* rlc (hl) */
-	mem_write(REG_HL, rlc_byte(mem_read(REG_HL)));
+	mem_write(addr, rlc_byte(mem_read(addr)));
 	break;
 
       case 0x1F:	/* rr a */
@@ -1789,13 +1802,13 @@ static void do_CB_instruction(void)
 	REG_E = rr_byte(REG_E);
 	break;
       case 0x1C:	/* rr h */
-	REG_H = rr_byte(REG_H);
+	ix->byte.high = rr_byte(ix->byte.high);
 	break;
       case 0x1D:	/* rr l */
-	REG_L = rr_byte(REG_L);
+	ix->byte.low = rr_byte(ix->byte.low);
 	break;
       case 0x1E:	/* rr (hl) */
-	mem_write(REG_HL, rr_byte(mem_read(REG_HL)));
+	mem_write(addr, rr_byte(mem_read(addr)));
 	break;
 
       case 0x0F:	/* rrc a */
@@ -1814,13 +1827,13 @@ static void do_CB_instruction(void)
 	REG_E = rrc_byte(REG_E);
 	break;
       case 0x0C:	/* rrc h */
-	REG_H = rrc_byte(REG_H);
+	ix->byte.high = rrc_byte(ix->byte.high);
 	break;
       case 0x0D:	/* rrc l */
-	REG_L = rrc_byte(REG_L);
+	ix->byte.low = rrc_byte(ix->byte.low);
 	break;
       case 0x0E:	/* rrc (hl) */
-	mem_write(REG_HL, rrc_byte(mem_read(REG_HL)));
+	mem_write(addr, rrc_byte(mem_read(addr)));
 	break;
 
       case 0xC7:	/* set 0, a */
@@ -1839,10 +1852,10 @@ static void do_CB_instruction(void)
 	REG_E |= (1 << 0);
 	break;
       case 0xC4:	/* set 0, h */
-	REG_H |= (1 << 0);
+	ix->byte.high |= (1 << 0);
 	break;
       case 0xC5:	/* set 0, l */
-	REG_L |= (1 << 0);
+	ix->byte.low |= (1 << 0);
 	break;
       case 0xCF:	/* set 1, a */
 	REG_A |= (1 << 1);
@@ -1860,10 +1873,10 @@ static void do_CB_instruction(void)
 	REG_E |= (1 << 1);
 	break;
       case 0xCC:	/* set 1, h */
-	REG_H |= (1 << 1);
+	ix->byte.high |= (1 << 1);
 	break;
       case 0xCD:	/* set 1, l */
-	REG_L |= (1 << 1);
+	ix->byte.low |= (1 << 1);
 	break;
       case 0xD7:	/* set 2, a */
 	REG_A |= (1 << 2);
@@ -1881,10 +1894,10 @@ static void do_CB_instruction(void)
 	REG_E |= (1 << 2);
 	break;
       case 0xD4:	/* set 2, h */
-	REG_H |= (1 << 2);
+	ix->byte.high |= (1 << 2);
 	break;
       case 0xD5:	/* set 2, l */
-	REG_L |= (1 << 2);
+	ix->byte.low |= (1 << 2);
 	break;
       case 0xDF:	/* set 3, a */
 	REG_A |= (1 << 3);
@@ -1902,10 +1915,10 @@ static void do_CB_instruction(void)
 	REG_E |= (1 << 3);
 	break;
       case 0xDC:	/* set 3, h */
-	REG_H |= (1 << 3);
+	ix->byte.high |= (1 << 3);
 	break;
       case 0xDD:	/* set 3, l */
-	REG_L |= (1 << 3);
+	ix->byte.low |= (1 << 3);
 	break;
       case 0xE7:	/* set 4, a */
 	REG_A |= (1 << 4);
@@ -1923,10 +1936,10 @@ static void do_CB_instruction(void)
 	REG_E |= (1 << 4);
 	break;
       case 0xE4:	/* set 4, h */
-	REG_H |= (1 << 4);
+	ix->byte.high |= (1 << 4);
 	break;
       case 0xE5:	/* set 4, l */
-	REG_L |= (1 << 4);
+	ix->byte.low |= (1 << 4);
 	break;
       case 0xEF:	/* set 5, a */
 	REG_A |= (1 << 5);
@@ -1944,10 +1957,10 @@ static void do_CB_instruction(void)
 	REG_E |= (1 << 5);
 	break;
       case 0xEC:	/* set 5, h */
-	REG_H |= (1 << 5);
+	ix->byte.high |= (1 << 5);
 	break;
       case 0xED:	/* set 5, l */
-	REG_L |= (1 << 5);
+	ix->byte.low |= (1 << 5);
 	break;
       case 0xF7:	/* set 6, a */
 	REG_A |= (1 << 6);
@@ -1965,10 +1978,10 @@ static void do_CB_instruction(void)
 	REG_E |= (1 << 6);
 	break;
       case 0xF4:	/* set 6, h */
-	REG_H |= (1 << 6);
+	ix->byte.high |= (1 << 6);
 	break;
       case 0xF5:	/* set 6, l */
-	REG_L |= (1 << 6);
+	ix->byte.low |= (1 << 6);
 	break;
       case 0xFF:	/* set 7, a */
 	REG_A |= (1 << 7);
@@ -1986,35 +1999,35 @@ static void do_CB_instruction(void)
 	REG_E |= (1 << 7);
 	break;
       case 0xFC:	/* set 7, h */
-	REG_H |= (1 << 7);
+	ix->byte.high |= (1 << 7);
 	break;
       case 0xFD:	/* set 7, l */
-	REG_L |= (1 << 7);
+	ix->byte.low |= (1 << 7);
 	break;
 
       case 0xC6:	/* set 0, (hl) */
-	mem_write(REG_HL, mem_read(REG_HL) | (1 << 0));
+	mem_write(addr, mem_read(addr) | (1 << 0));
 	break;
       case 0xCE:	/* set 1, (hl) */
-	mem_write(REG_HL, mem_read(REG_HL) | (1 << 1));
+	mem_write(addr, mem_read(addr) | (1 << 1));
 	break;
       case 0xD6:	/* set 2, (hl) */
-	mem_write(REG_HL, mem_read(REG_HL) | (1 << 2));
+	mem_write(addr, mem_read(addr) | (1 << 2));
 	break;
       case 0xDE:	/* set 3, (hl) */
-	mem_write(REG_HL, mem_read(REG_HL) | (1 << 3));
+	mem_write(addr, mem_read(addr) | (1 << 3));
 	break;
       case 0xE6:	/* set 4, (hl) */
-	mem_write(REG_HL, mem_read(REG_HL) | (1 << 4));
+	mem_write(addr, mem_read(addr) | (1 << 4));
 	break;
       case 0xEE:	/* set 5, (hl) */
-	mem_write(REG_HL, mem_read(REG_HL) | (1 << 5));
+	mem_write(addr, mem_read(addr) | (1 << 5));
 	break;
       case 0xF6:	/* set 6, (hl) */
-	mem_write(REG_HL, mem_read(REG_HL) | (1 << 6));
+	mem_write(addr, mem_read(addr) | (1 << 6));
 	break;
       case 0xFE:	/* set 7, (hl) */
-	mem_write(REG_HL, mem_read(REG_HL) | (1 << 7));
+	mem_write(addr, mem_read(addr) | (1 << 7));
 	break;
 
       case 0x27:	/* sla a */
@@ -2033,13 +2046,13 @@ static void do_CB_instruction(void)
 	REG_E = sla_byte(REG_E);
 	break;
       case 0x24:	/* sla h */
-	REG_H = sla_byte(REG_H);
+	ix->byte.high = sla_byte(ix->byte.high);
 	break;
       case 0x25:	/* sla l */
-	REG_L = sla_byte(REG_L);
+	ix->byte.low = sla_byte(ix->byte.low);
 	break;
       case 0x26:	/* sla (hl) */
-	mem_write(REG_HL, sla_byte(mem_read(REG_HL)));
+	mem_write(addr, sla_byte(mem_read(addr)));
 	break;
 
       case 0x2F:	/* sra a */
@@ -2058,13 +2071,13 @@ static void do_CB_instruction(void)
 	REG_E = sra_byte(REG_E);
 	break;
       case 0x2C:	/* sra h */
-	REG_H = sra_byte(REG_H);
+	ix->byte.high = sra_byte(ix->byte.high);
 	break;
       case 0x2D:	/* sra l */
-	REG_L = sra_byte(REG_L);
+	ix->byte.low = sra_byte(ix->byte.low);
 	break;
       case 0x2E:	/* sra (hl) */
-	mem_write(REG_HL, sra_byte(mem_read(REG_HL)));
+	mem_write(addr, sra_byte(mem_read(addr)));
 	break;
 
       case 0x3F:	/* srl a */
@@ -2083,13 +2096,13 @@ static void do_CB_instruction(void)
 	REG_E = srl_byte(REG_E);
 	break;
       case 0x3C:	/* srl h */
-	REG_H = srl_byte(REG_H);
+	ix->byte.high = srl_byte(ix->byte.high);
 	break;
       case 0x3D:	/* srl l */
-	REG_L = srl_byte(REG_L);
+	ix->byte.low = srl_byte(ix->byte.low);
 	break;
       case 0x3E:	/* srl (hl) */
-	mem_write(REG_HL, srl_byte(mem_read(REG_HL)));
+	mem_write(addr, srl_byte(mem_read(addr)));
 	break;
 
       default:
@@ -2098,310 +2111,8 @@ static void do_CB_instruction(void)
     }
 }
 
-
-static void do_indexed_instruction(uint16_t *ixp)
-{
-    uint8_t instruction;
-    
-    instruction = mem_read(REG_PC++);
-    
-    switch(instruction)
-    {
-	/* same for FD, except uses IY? */
-
-      case 0x8E:	/* adc a, (ix + offset) */
-	do_adc_byte(mem_read(*ixp + (char) mem_read(REG_PC++)));
-	break;
-
-      case 0x86:	/* add a, (ix + offset) */
-	do_add_byte(mem_read(*ixp + (char) mem_read(REG_PC++)));
-	break;
-
-      case 0x09:	/* add ix, bc */
-	do_add_word_index(ixp, REG_BC);
-	break;
-      case 0x19:	/* add ix, de */
-	do_add_word_index(ixp, REG_DE);
-	break;
-      case 0x29:	/* add ix, ix */
-	do_add_word_index(ixp, *ixp);
-	break;
-      case 0x39:	/* add ix, sp */
-	do_add_word_index(ixp, REG_SP);
-	break;
-
-      case 0xA6:	/* and (ix + offset) */
-	do_and_byte(mem_read(*ixp + (char) mem_read(REG_PC++)));
-	break;
-
-      case 0xBE:	/* cp (ix + offset) */
-	do_cp(mem_read(*ixp + (char) mem_read(REG_PC++)));
-	break;
-
-      case 0x35:	/* dec (ix + offset) */
-        {
-	  uint16_t address;
-	  uint8_t value;
-	  address = *ixp + (char) mem_read(REG_PC++);
-	  value = mem_read(address) - 1;
-	  mem_write(address, value);
-	  do_flags_dec_byte(value);
-        }
-	break;
-
-      case 0x2B:	/* dec ix */
-	(*ixp)--;
-	break;
-
-      case 0xE3:	/* ex (sp), ix */
-        {
-	  uint16_t temp;
-	  temp = mem_read_word(REG_SP);
-	  mem_write_word(REG_SP, *ixp);
-	  *ixp = temp;
-        }
-	break;
-
-      case 0x34:	/* inc (ix + offset) */
-        {
-	  uint16_t address;
-	  uint8_t value;
-	  address = *ixp + (char) mem_read(REG_PC++);
-	  value = mem_read(address) + 1;
-	  mem_write(address, value);
-	  do_flags_inc_byte(value);
-        }
-	break;
-
-      case 0x23:	/* inc ix */
-	(*ixp)++;       /* fixed /jonas-y */
-	break;
-
-      case 0xE9:	/* jp (ix) */
-	REG_PC = *ixp;
-	break;
-
-      case 0x7E:	/* ld a, (ix + offset) */
-	REG_A = mem_read(*ixp + (char) mem_read(REG_PC++));
-	break;
-      case 0x46:	/* ld b, (ix + offset) */
-	REG_B = mem_read(*ixp + (char) mem_read(REG_PC++));
-	break;
-      case 0x4E:	/* ld c, (ix + offset) */
-	REG_C = mem_read(*ixp + (char) mem_read(REG_PC++));
-	break;
-      case 0x56:	/* ld d, (ix + offset) */
-	REG_D = mem_read(*ixp + (char) mem_read(REG_PC++));
-	break;
-      case 0x5E:	/* ld e, (ix + offset) */
-	REG_E = mem_read(*ixp + (char) mem_read(REG_PC++));
-	break;
-      case 0x66:	/* ld h, (ix + offset) */
-	REG_H = mem_read(*ixp + (char) mem_read(REG_PC++));
-	break;
-      case 0x6E:	/* ld l, (ix + offset) */
-	REG_L = mem_read(*ixp + (char) mem_read(REG_PC++));
-	break;
-
-      case 0x36:	/* ld (ix + offset), value */
-	mem_write(*ixp + (char) mem_read(REG_PC), mem_read(REG_PC + 1));
-	REG_PC += 2;
-	break;
-
-      case 0x77:	/* ld (ix + offset), a */
-	mem_write(*ixp + (char) mem_read(REG_PC++), REG_A);
-	break;
-      case 0x70:	/* ld (ix + offset), b */
-	mem_write(*ixp + (char) mem_read(REG_PC++), REG_B);
-	break;
-      case 0x71:	/* ld (ix + offset), c */
-	mem_write(*ixp + (char) mem_read(REG_PC++), REG_C);
-	break;
-      case 0x72:	/* ld (ix + offset), d */
-	mem_write(*ixp + (char) mem_read(REG_PC++), REG_D);
-	break;
-      case 0x73:	/* ld (ix + offset), e */
-	mem_write(*ixp + (char) mem_read(REG_PC++), REG_E);
-	break;
-      case 0x74:	/* ld (ix + offset), h */
-	mem_write(*ixp + (char) mem_read(REG_PC++), REG_H);
-	break;
-      case 0x75:	/* ld (ix + offset), l */
-	mem_write(*ixp + (char) mem_read(REG_PC++), REG_L);
-	break;
-
-      case 0x22:	/* ld (address), ix */
-	mem_write_word(mem_read_word(REG_PC), *ixp);
-	REG_PC += 2;
-	break;
-
-      case 0xF9:	/* ld sp, ix */
-	REG_SP = *ixp;
-	break;
-
-      case 0x21:	/* ld ix, value */
-	*ixp = mem_read_word(REG_PC);
-        REG_PC += 2;
-	break;
-
-      case 0x2A:	/* ld ix, (address) */
-	*ixp = mem_read_word(mem_read_word(REG_PC));
-	REG_PC += 2;
-	break;
-
-      case 0xB6:	/* or (ix + offset) */
-	do_or_byte(mem_read(*ixp + (char) mem_read(REG_PC++)));
-	break;
-
-      case 0xE1:	/* pop ix */
-	*ixp = mem_read_word(REG_SP);
-	REG_SP += 2;
-	break;
-
-      case 0xE5:	/* push ix */
-	REG_SP -= 2;
-	mem_write_word(REG_SP, *ixp);
-	break;
-
-      case 0x9E:	/* sbc a, (ix + offset) */
-	do_sbc_byte(mem_read(*ixp + (char) mem_read(REG_PC++)));
-	break;
-
-      case 0x96:	/* sub a, (ix + offset) */
-	do_sub_byte(mem_read(*ixp + (char) mem_read(REG_PC++)));
-	break;
-
-      case 0xAE:	/* xor (ix + offset) */
-	do_xor_byte(mem_read(*ixp + (char) mem_read(REG_PC++)));
-	break;
-
-      case 0xCB:
-        {
-	  char offset;
-	  uint8_t sub_instruction;
-
-	  offset = (char) mem_read(REG_PC++);
-	  sub_instruction = mem_read(REG_PC++);
-
-	  switch(sub_instruction)
-	  {
-	    case 0x46:	/* bit 0, (ix + offset) */
-	      do_test_bit(mem_read(*ixp + offset), 0);
-	      break;
-	    case 0x4E:	/* bit 1, (ix + offset) */
-	      do_test_bit(mem_read(*ixp + offset), 1);
-	      break;
-	    case 0x56:	/* bit 2, (ix + offset) */
-	      do_test_bit(mem_read(*ixp + offset), 2);
-	      break;
-	    case 0x5E:	/* bit 3, (ix + offset) */
-	      do_test_bit(mem_read(*ixp + offset), 3);
-	      break;
-	    case 0x66:	/* bit 4, (ix + offset) */
-	      do_test_bit(mem_read(*ixp + offset), 4);
-	      break;
-	    case 0x6E:	/* bit 5, (ix + offset) */
-	      do_test_bit(mem_read(*ixp + offset), 5);
-	      break;
-	    case 0x76:	/* bit 6, (ix + offset) */
-	      do_test_bit(mem_read(*ixp + offset), 6);
-	      break;
-	    case 0x7E:	/* bit 7, (ix + offset) */
-	      do_test_bit(mem_read(*ixp + offset), 7);
-	      break;
-
-	    case 0x86:	/* res 0, (ix + offset) */
-	      mem_write(*ixp + offset, mem_read(*ixp + offset) & ~(1 << 0));
-	      break;
-	    case 0x8E:	/* res 1, (ix + offset) */
-	      mem_write(*ixp + offset, mem_read(*ixp + offset) & ~(1 << 1));
-	      break;
-	    case 0x96:	/* res 2, (ix + offset) */
-	      mem_write(*ixp + offset, mem_read(*ixp + offset) & ~(1 << 2));
-	      break;
-	    case 0x9E:	/* res 3, (ix + offset) */
-	      mem_write(*ixp + offset, mem_read(*ixp + offset) & ~(1 << 3));
-	      break;
-	    case 0xA6:	/* res 4, (ix + offset) */
-	      mem_write(*ixp + offset, mem_read(*ixp + offset) & ~(1 << 4));
-	      break;
-	    case 0xAE:	/* res 5, (ix + offset) */
-	      mem_write(*ixp + offset, mem_read(*ixp + offset) & ~(1 << 5));
-	      break;
-	    case 0xB6:	/* res 6, (ix + offset) */
-	      mem_write(*ixp + offset, mem_read(*ixp + offset) & ~(1 << 6));
-	      break;
-	    case 0xBE:	/* res 7, (ix + offset) */
-	      mem_write(*ixp + offset, mem_read(*ixp + offset) & ~(1 << 7));
-	      break;
-	      
-	    case 0x16:	/* rl (ix + offset) */
-	      mem_write(*ixp + offset, rl_byte(mem_read(*ixp + offset)));
-	      break;
-
-	    case 0x06:	/* rlc (ix + offset) */
-	      mem_write(*ixp + offset, rlc_byte(mem_read(*ixp + offset)));
-	      break;
-
-	    case 0x1E:	/* rr (ix + offset) */
-	      mem_write(*ixp + offset, rr_byte(mem_read(*ixp + offset)));
-	      break;
-
-	    case 0x0E:	/* rrc (ix + offset) */
-	      mem_write(*ixp + offset, rrc_byte(mem_read(*ixp + offset)));
-	      break;
-
-	    case 0xC6:	/* set 0, (ix + offset) */
-	      mem_write(*ixp + offset, mem_read(*ixp + offset) | (1 << 0));
-	      break;
-	    case 0xCE:	/* set 1, (ix + offset) */
-	      mem_write(*ixp + offset, mem_read(*ixp + offset) | (1 << 1));
-	      break;
-	    case 0xD6:	/* set 2, (ix + offset) */
-	      mem_write(*ixp + offset, mem_read(*ixp + offset) | (1 << 2));
-	      break;
-	    case 0xDE:	/* set 3, (ix + offset) */
-	      mem_write(*ixp + offset, mem_read(*ixp + offset) | (1 << 3));
-	      break;
-	    case 0xE6:	/* set 4, (ix + offset) */
-	      mem_write(*ixp + offset, mem_read(*ixp + offset) | (1 << 4));
-	      break;
-	    case 0xEE:	/* set 5, (ix + offset) */
-	      mem_write(*ixp + offset, mem_read(*ixp + offset) | (1 << 5));
-	      break;
-	    case 0xF6:	/* set 6, (ix + offset) */
-	      mem_write(*ixp + offset, mem_read(*ixp + offset) | (1 << 6));
-	      break;
-	    case 0xFE:	/* set 7, (ix + offset) */
-	      mem_write(*ixp + offset, mem_read(*ixp + offset) | (1 << 7));
-	      break;
-
-	    case 0x26:	/* sla (ix + offset) */
-	      mem_write(*ixp + offset, sla_byte(mem_read(*ixp + offset)));
-	      break;
-	    case 0x2E:	/* sra (ix + offset) */
-	      mem_write(*ixp + offset, sra_byte(mem_read(*ixp + offset)));
-	      break;
-	    case 0x3E:	/* srl (ix + offset) */
-	      mem_write(*ixp + offset, srl_byte(mem_read(*ixp + offset)));
-	      break;
-	      
-	    default:
-	      REG_PC -= 4;
-/*	      disassemble(REG_PC);*/
-/*	      error("unsupported instruction");*/
-	  }
-        }
-	break;
-      default:
-	REG_PC -= 2;
-/*	disassemble(REG_PC);*/
-/*	error("unsupported instruction");*/
-    }
-}
-
-
-static void do_ED_instruction(void)
+/* XXX: is DD ED or FD ED supported? */
+static void do_ED_instruction(wordregister *ix)
 {
     uint8_t instruction;
     
@@ -2628,26 +2339,30 @@ static void do_ED_instruction(void)
 int z80_run(int continuous)
 {
     uint8_t instruction;
+    uint16_t orig_pc;
     uint16_t address; /* generic temps */
+    wordregister *ix;
 
     /* loop to do a z80 instruction */
     do {
-        /*
-         * Special hack for ABC80
-         */
-        {
-	  if (TRACE) {
-	    diffstate();
-	    putchar('\n');
-	    printf("PC=%04X ", z80_state.pc.word);
-	    disassemble(z80_state.pc.word);
-	  }
+         /*
+          * Special hack for ABC80
+          */
 
 	  extern volatile int event_pending;
 	  void check_event(void);
+
+#if TRACE
+	  diffstate();
+	  tracemem();
+	  putchar('\n');
+	  printf("PC=%04X ", z80_state.pc.word);
+	  disassemble(z80_state.pc.word);
+#endif
+
 	  if ( event_pending )
 	    check_event();
-	}
+
         /*
          * End of special hack.
          */            
@@ -2666,24 +2381,31 @@ int z80_run(int continuous)
 	    z80_state.interrupt = FALSE;
         }
 
+	orig_pc = REG_PC;
+	ix = &z80_state.hl;	/* Not an index instruction */
+
+    indexed:
 	instruction = mem_read(REG_PC++);
-	/* instruction = MEM_READ(REG_PC);  REG_PC++; */
-	
+
 	switch(instruction)
 	{
 	  case 0xCB:	/* CB.. extended instruction */
-	    do_CB_instruction();
+	    do_CB_instruction(ix);
 	    break;
 	  case 0xDD:	/* DD.. extended instruction */
-	    do_indexed_instruction(&REG_IX);
-	    break;
+	    if (ix != &z80_state.hl)
+	      goto bad;
+	    ix = &z80_state.ix;
+	    goto indexed;
 	  case 0xED:	/* ED.. extended instruction */
-	    do_ED_instruction();
+	    do_ED_instruction(ix);
 	    break;
 	  case 0xFD:	/* FD.. extended instruction */
-	    do_indexed_instruction(&REG_IY);
-	    break;
-	    
+	    if (ix != &z80_state.hl)
+	      goto bad;
+	    ix = &z80_state.iy;
+	    goto indexed;
+
 	  case 0x8F:	/* adc a, a */
 	    do_adc_byte(REG_A);
 	    break;
@@ -2700,16 +2422,16 @@ int z80_run(int continuous)
 	    do_adc_byte(REG_E);
 	    break;
 	  case 0x8C:	/* adc a, h */
-	    do_adc_byte(REG_H);
+	    do_adc_byte(ix->byte.high);
 	    break;
 	  case 0x8D:	/* adc a, l */
-	    do_adc_byte(REG_L);
+	    do_adc_byte(ix->byte.low);
 	    break;
 	  case 0xCE:	/* adc a, value */
 	    do_adc_byte(mem_read(REG_PC++));
 	    break;
 	  case 0x8E:	/* adc a, (hl) */
-	    do_adc_byte(mem_read(REG_HL));
+	    do_adc_byte(mem_read(get_hl_addr(ix)));
 	    break;
 	    
 	  case 0x87:	/* add a, a */
@@ -2728,29 +2450,29 @@ int z80_run(int continuous)
 	    do_add_byte(REG_E);
 	    break;
 	  case 0x84:	/* add a, h */
-	    do_add_byte(REG_H);
+	    do_add_byte(ix->byte.high);
 	    break;
 	  case 0x85:	/* add a, l */
-	    do_add_byte(REG_L);
+	    do_add_byte(ix->byte.low);
 	    break;
 	  case 0xC6:	/* add a, value */
 	    do_add_byte(mem_read(REG_PC++));
 	    break;
 	  case 0x86:	/* add a, (hl) */
-	    do_add_byte(mem_read(REG_HL));
+	    do_add_byte(mem_read(get_hl_addr(ix)));
 	    break;
 	    
 	  case 0x09:	/* add hl, bc */
-	    do_add_word(REG_BC);
+	    do_add_word(ix, REG_BC);
 	    break;
 	  case 0x19:	/* add hl, de */
-	    do_add_word(REG_DE);
+	    do_add_word(ix, REG_DE);
 	    break;
 	  case 0x29:	/* add hl, hl */
-	    do_add_word(REG_HL);
+	    do_add_word(ix, ix->word);
 	    break;
 	  case 0x39:	/* add hl, sp */
-	    do_add_word(REG_SP);
+	    do_add_word(ix, REG_SP);
 	    break;
 	    
 	  case 0xA7:	/* and a */
@@ -2769,16 +2491,16 @@ int z80_run(int continuous)
 	    do_and_byte(REG_E);
 	    break;
 	  case 0xA4:	/* and h */
-	    do_and_byte(REG_H);
+	    do_and_byte(ix->byte.high);
 	    break;
 	  case 0xA5:	/* and l */
-	    do_and_byte(REG_L);
+	    do_and_byte(ix->byte.low);
 	    break;
 	  case 0xE6:	/* and value */
 	    do_and_byte(mem_read(REG_PC++));
 	    break;
 	  case 0xA6:	/* and (hl) */
-	    do_and_byte(mem_read(REG_HL));
+	    do_and_byte(mem_read(get_hl_addr(ix)));
 	    break;
 	    
 	  case 0xCD:	/* call address */
@@ -2922,16 +2644,16 @@ int z80_run(int continuous)
 	    do_cp(REG_E);
 	    break;
 	  case 0xBC:	/* cp h */
-	    do_cp(REG_H);
+	    do_cp(ix->byte.high);
 	    break;
 	  case 0xBD:	/* cp l */
-	    do_cp(REG_L);
+	    do_cp(ix->byte.low);
 	    break;
 	  case 0xFE:	/* cp value */
 	    do_cp(mem_read(REG_PC++));
 	    break;
 	  case 0xBE:	/* cp (hl) */
-	    do_cp(mem_read(REG_HL));
+	    do_cp(mem_read(get_hl_addr(ix)));
 	    break;
 	    
 	  case 0x2F:	/* cpl */
@@ -2959,16 +2681,17 @@ int z80_run(int continuous)
 	    do_flags_dec_byte(--REG_E);
 	    break;
 	  case 0x25:	/* dec h */
-	    do_flags_dec_byte(--REG_H);
+	    do_flags_dec_byte(--ix->byte.high);
 	    break;
 	  case 0x2D:	/* dec l */
-	    do_flags_dec_byte(--REG_L);
+	    do_flags_dec_byte(--ix->byte.low);
 	    break;
 	    
 	  case 0x35:	/* dec (hl) */
 	  {
-	      uint8_t value = mem_read(REG_HL) - 1;
-	      mem_write(REG_HL, value);
+	      uint16_t addr = get_hl_addr(ix);
+	      uint8_t value = mem_read(addr) - 1;
+	      mem_write(addr, value);
 	      do_flags_dec_byte(value);
 	  }
 	    break;
@@ -2980,7 +2703,7 @@ int z80_run(int continuous)
 	    REG_DE--;
 	    break;
 	  case 0x2B:	/* dec hl */
-	    REG_HL--;
+	    ix->word--;
 	    break;
 	  case 0x3B:	/* dec sp */
 	    REG_SP--;
@@ -3021,8 +2744,8 @@ int z80_run(int continuous)
 	  {
 	      uint16_t temp;
 	      temp = REG_DE;
-	      REG_DE = REG_HL;
-	      REG_HL = temp;
+	      REG_DE = ix->word;
+	      ix->word = temp;
 	  }
 	    break;
 	    
@@ -3030,8 +2753,8 @@ int z80_run(int continuous)
 	  {
 	      uint16_t temp;
 	      temp = mem_read_word(REG_SP);
-	      mem_write_word(REG_SP, REG_HL);
-	      REG_HL = temp;
+	      mem_write_word(REG_SP, ix->word);
+	      ix->word = temp;
 	  }
 	    break;
 	    
@@ -3079,18 +2802,19 @@ int z80_run(int continuous)
 	    do_flags_inc_byte(REG_E);
 	    break;
 	  case 0x24:	/* inc h */
-	    REG_H++;
-	    do_flags_inc_byte(REG_H);
+	    ix->byte.high++;
+	    do_flags_inc_byte(ix->byte.high);
 	    break;
 	  case 0x2C:	/* inc l */
-	    REG_L++;
-	    do_flags_inc_byte(REG_L);
+	    ix->byte.low++;
+	    do_flags_inc_byte(ix->byte.low);
 	    break;
 	    
 	  case 0x34:	/* inc (hl) */
 	  {
-	      uint8_t value = mem_read(REG_HL) + 1;
-	      mem_write(REG_HL, value);
+	      uint16_t addr = get_hl_addr(ix);
+	      uint8_t value = mem_read(addr) + 1;
+	      mem_write(addr, value);
 	      do_flags_inc_byte(value);
 	  }
 	    break;
@@ -3102,7 +2826,7 @@ int z80_run(int continuous)
 	    REG_DE++;
 	    break;
 	  case 0x23:	/* inc hl */
-	    REG_HL++;
+	    ix->word++;
 	    break;
 	  case 0x33:	/* inc sp */
 	    REG_SP++;
@@ -3113,7 +2837,7 @@ int z80_run(int continuous)
 	    break;
 	    
 	  case 0xE9:	/* jp (hl) */
-	    REG_PC = REG_HL;
+	    REG_PC = ix->word;
 	    break;
 	    
 	  case 0xC2:	/* jp nz, address */
@@ -3270,10 +2994,10 @@ int z80_run(int continuous)
 	    REG_A = REG_E;
 	    break;
 	  case 0x7C:	/* ld a, h */
-	    REG_A = REG_H;
+	    REG_A = ix->byte.high;
 	    break;
 	  case 0x7D:	/* ld a, l */
-	    REG_A = REG_L;
+	    REG_A = ix->byte.low;
 	    break;
 	  case 0x47:	/* ld b, a */
 	    REG_B = REG_A;
@@ -3291,10 +3015,10 @@ int z80_run(int continuous)
 	    REG_B = REG_E;
 	    break;
 	  case 0x44:	/* ld b, h */
-	    REG_B = REG_H;
+	    REG_B = ix->byte.high;
 	    break;
 	  case 0x45:	/* ld b, l */
-	    REG_B = REG_L;
+	    REG_B = ix->byte.low;
 	    break;
 	  case 0x4F:	/* ld c, a */
 	    REG_C = REG_A;
@@ -3312,10 +3036,10 @@ int z80_run(int continuous)
 	    REG_C = REG_E;
 	    break;
 	  case 0x4C:	/* ld c, h */
-	    REG_C = REG_H;
+	    REG_C = ix->byte.high;
 	    break;
 	  case 0x4D:	/* ld c, l */
-	    REG_C = REG_L;
+	    REG_C = ix->byte.low;
 	    break;
 	  case 0x57:	/* ld d, a */
 	    REG_D = REG_A;
@@ -3333,10 +3057,10 @@ int z80_run(int continuous)
 	    REG_D = REG_E;
 	    break;
 	  case 0x54:	/* ld d, h */
-	    REG_D = REG_H;
+	    REG_D = ix->byte.high;
 	    break;
 	  case 0x55:	/* ld d, l */
-	    REG_D = REG_L;
+	    REG_D = ix->byte.low;
 	    break;
 	  case 0x5F:	/* ld e, a */
 	    REG_E = REG_A;
@@ -3354,52 +3078,52 @@ int z80_run(int continuous)
 	    REG_E = REG_E;
 	    break;
 	  case 0x5C:	/* ld e, h */
-	    REG_E = REG_H;
+	    REG_E = ix->byte.high;
 	    break;
 	  case 0x5D:	/* ld e, l */
-	    REG_E = REG_L;
+	    REG_E = ix->byte.low;
 	    break;
 	  case 0x67:	/* ld h, a */
-	    REG_H = REG_A;
+	    ix->byte.high = REG_A;
 	    break;
 	  case 0x60:	/* ld h, b */
-	    REG_H = REG_B;
+	    ix->byte.high = REG_B;
 	    break;
 	  case 0x61:	/* ld h, c */
-	    REG_H = REG_C;
+	    ix->byte.high = REG_C;
 	    break;
 	  case 0x62:	/* ld h, d */
-	    REG_H = REG_D;
+	    ix->byte.high = REG_D;
 	    break;
 	  case 0x63:	/* ld h, e */
-	    REG_H = REG_E;
+	    ix->byte.high = REG_E;
 	    break;
 	  case 0x64:	/* ld h, h */
-	    REG_H = REG_H;
+	    ix->byte.high = ix->byte.high;
 	    break;
 	  case 0x65:	/* ld h, l */
-	    REG_H = REG_L;
+	    ix->byte.high = ix->byte.low;
 	    break;
 	  case 0x6F:	/* ld l, a */
-	    REG_L = REG_A;
+	    ix->byte.low = REG_A;
 	    break;
 	  case 0x68:	/* ld l, b */
-	    REG_L = REG_B;
+	    ix->byte.low = REG_B;
 	    break;
 	  case 0x69:	/* ld l, c */
-	    REG_L = REG_C;
+	    ix->byte.low = REG_C;
 	    break;
 	  case 0x6A:	/* ld l, d */
-	    REG_L = REG_D;
+	    ix->byte.low = REG_D;
 	    break;
 	  case 0x6B:	/* ld l, e */
-	    REG_L = REG_E;
+	    ix->byte.low = REG_E;
 	    break;
 	  case 0x6C:	/* ld l, h */
-	    REG_L = REG_H;
+	    ix->byte.low = ix->byte.high;
 	    break;
 	  case 0x6D:	/* ld l, l */
-	    REG_L = REG_L;
+	    ix->byte.low = ix->byte.low;
 	    break;
 	    
 	  case 0x02:	/* ld (bc), a */
@@ -3409,47 +3133,47 @@ int z80_run(int continuous)
 	    mem_write(REG_DE, REG_A);
 	    break;
 	  case 0x77:	/* ld (hl), a */
-	    mem_write(REG_HL, REG_A);
+	    mem_write(get_hl_addr(ix), REG_A);
 	    break;
 	  case 0x70:	/* ld (hl), b */
-	    mem_write(REG_HL, REG_B);
+	    mem_write(get_hl_addr(ix), REG_B);
 	    break;
 	  case 0x71:	/* ld (hl), c */
-	    mem_write(REG_HL, REG_C);
+	    mem_write(get_hl_addr(ix), REG_C);
 	    break;
 	  case 0x72:	/* ld (hl), d */
-	    mem_write(REG_HL, REG_D);
+	    mem_write(get_hl_addr(ix), REG_D);
 	    break;
 	  case 0x73:	/* ld (hl), e */
-	    mem_write(REG_HL, REG_E);
+	    mem_write(get_hl_addr(ix), REG_E);
 	    break;
 	  case 0x74:	/* ld (hl), h */
-	    mem_write(REG_HL, REG_H);
+	    mem_write(get_hl_addr(ix), REG_H);
 	    break;
 	  case 0x75:	/* ld (hl), l */
-	    mem_write(REG_HL, REG_L);
+	    mem_write(get_hl_addr(ix), REG_L);
 	    break;
 	    
 	  case 0x7E:	/* ld a, (hl) */
-	    REG_A = mem_read(REG_HL);
+	    REG_A = mem_read(get_hl_addr(ix));
 	    break;
 	  case 0x46:	/* ld b, (hl) */
-	    REG_B = mem_read(REG_HL);
+	    REG_B = mem_read(get_hl_addr(ix));
 	    break;
 	  case 0x4E:	/* ld c, (hl) */
-	    REG_C = mem_read(REG_HL);
+	    REG_C = mem_read(get_hl_addr(ix));
 	    break;
 	  case 0x56:	/* ld d, (hl) */
-	    REG_D = mem_read(REG_HL);
+	    REG_D = mem_read(get_hl_addr(ix));
 	    break;
 	  case 0x5E:	/* ld e, (hl) */
-	    REG_E = mem_read(REG_HL);
+	    REG_E = mem_read(get_hl_addr(ix));
 	    break;
 	  case 0x66:	/* ld h, (hl) */
-	    REG_H = mem_read(REG_HL);
+	    REG_H = mem_read(get_hl_addr(ix));
 	    break;
 	  case 0x6E:	/* ld l, (hl) */
-	    REG_L = mem_read(REG_HL);
+	    REG_L = mem_read(get_hl_addr(ix));
 	    break;
 	    
 	  case 0x3E:	/* ld a, value */
@@ -3468,10 +3192,10 @@ int z80_run(int continuous)
 	    REG_E = mem_read(REG_PC++);
 	    break;
 	  case 0x26:	/* ld h, value */
-	    REG_H = mem_read(REG_PC++);
+	    ix->byte.high = mem_read(REG_PC++);
 	    break;
 	  case 0x2E:	/* ld l, value */
-	    REG_L = mem_read(REG_PC++);
+	    ix->byte.low = mem_read(REG_PC++);
 	    break;
 	    
 	  case 0x01:	/* ld bc, value */
@@ -3483,7 +3207,7 @@ int z80_run(int continuous)
 	    REG_PC += 2;
 	    break;
 	  case 0x21:	/* ld hl, value */
-	    REG_HL = mem_read_word(REG_PC);
+	    ix->word = mem_read_word(REG_PC);
 	    REG_PC += 2;
 	    break;
 	  case 0x31:	/* ld sp, value */
@@ -3511,21 +3235,24 @@ int z80_run(int continuous)
 	    break;
 	    
 	  case 0x22:	/* ld (address), hl */
-	    mem_write_word(mem_read_word(REG_PC), REG_HL);
+	    mem_write_word(mem_read_word(REG_PC), ix->word);
 	    REG_PC += 2;
 	    break;
 	    
 	  case 0x36:	/* ld (hl), value */
-	    mem_write(REG_HL, mem_read(REG_PC++));
-	    break;
-	    
+	  {
+	      uint16_t addr = get_hl_addr(ix);
+	      mem_write(addr, mem_read(REG_PC++));
+	      break;
+	  }
+
 	  case 0x2A:	/* ld hl, (address) */
-	    REG_HL = mem_read_word(mem_read_word(REG_PC));
+	    ix->word = mem_read_word(mem_read_word(REG_PC));
 	    REG_PC += 2;
 	    break;
 	    
 	  case 0xF9:	/* ld sp, hl */
-	    REG_SP = REG_HL;
+	    REG_SP = ix->word;
 	    break;
 	    
 	  case 0x00:	/* nop */
@@ -3551,14 +3278,14 @@ int z80_run(int continuous)
 	    do_or_byte(REG_E);
 	    break;
 	  case 0xB4:	/* or h */
-	    do_or_byte(REG_H);
+	    do_or_byte(ix->byte.high);
 	    break;
 	  case 0xB5:	/* or l */
-	    do_or_byte(REG_L);
+	    do_or_byte(ix->byte.low);
 	    break;
 	    
 	  case 0xB6:	/* or (hl) */
-	    do_or_byte(mem_read(REG_HL));
+	    do_or_byte(mem_read(get_hl_addr(ix)));
 	    break;
 	    
 	  case 0xD3:	/* out (port), a */
@@ -3574,7 +3301,7 @@ int z80_run(int continuous)
 	    REG_SP += 2;
 	    break;
 	  case 0xE1:	/* pop hl */
-	    REG_HL = mem_read_word(REG_SP);
+	    ix->word = mem_read_word(REG_SP);
 	    REG_SP += 2;
 	    break;
 	  case 0xF1:	/* pop af */
@@ -3592,7 +3319,7 @@ int z80_run(int continuous)
 	    break;
 	  case 0xE5:	/* push hl */
 	    REG_SP -= 2;
-	    mem_write_word(REG_SP, REG_HL);
+	    mem_write_word(REG_SP, ix->word);
 	    break;
 	  case 0xF5:	/* push af */
 	    REG_SP -= 2;
@@ -3738,16 +3465,16 @@ int z80_run(int continuous)
 	    do_sbc_byte(REG_E);
 	    break;
 	  case 0x9C:	/* sbc a, h */
-	    do_sbc_byte(REG_H);
+	    do_sbc_byte(ix->byte.high);
 	    break;
 	  case 0x9D:	/* sbc a, l */
-	    do_sbc_byte(REG_L);
+	    do_sbc_byte(ix->byte.low);
 	    break;
 	  case 0xDE:	/* sbc a, value */
 	    do_sbc_byte(mem_read(REG_PC++));
 	    break;
 	  case 0x9E:	/* sbc a, (hl) */
-	    do_sbc_byte(mem_read(REG_HL));
+	    do_sbc_byte(mem_read(get_hl_addr(ix)));
 	    break;
 	    
 	  case 0x97:	/* sub a, a */
@@ -3766,16 +3493,16 @@ int z80_run(int continuous)
 	    do_sub_byte(REG_E);
 	    break;
 	  case 0x94:	/* sub a, h */
-	    do_sub_byte(REG_H);
+	    do_sub_byte(ix->byte.high);
 	    break;
 	  case 0x95:	/* sub a, l */
-	    do_sub_byte(REG_L);
+	    do_sub_byte(ix->byte.low);
 	    break;
 	  case 0xD6:	/* sub a, value */
 	    do_sub_byte(mem_read(REG_PC++));
 	    break;
 	  case 0x96:	/* sub a, (hl) */
-	    do_sub_byte(mem_read(REG_HL));
+	    do_sub_byte(mem_read(get_hl_addr(ix)));
 	    break;
 	    
 	  case 0xEE:	/* xor value */
@@ -3798,19 +3525,21 @@ int z80_run(int continuous)
 	    do_xor_byte(REG_E);
 	    break;
 	  case 0xAC:	/* xor h */
-	    do_xor_byte(REG_H);
+	    do_xor_byte(ix->byte.high);
 	    break;
 	  case 0xAD:	/* xor l */
-	    do_xor_byte(REG_L);
+	    do_xor_byte(ix->byte.low);
 	    break;
 	  case 0xAE:	/* xor (hl) */
-	    do_xor_byte(mem_read(REG_HL));
+	    do_xor_byte(mem_read(get_hl_addr(ix)));
 	    break;
 	    
 	  default:
-	    REG_PC -= 1;
+	  bad:
+	    REG_PC = orig_pc;
 /*	    disassemble(REG_PC);*/
 /*	    error("unsupported instruction");*/
+	    break;
 	}
     } while (continuous);
     return 0;
@@ -3831,6 +3560,8 @@ z80_reset(void)
     /* z80_state.r = 0; */
     srand(time(NULL));  /* Seed the RNG, for reading the refresh register */
 }
+
+#if TRACE
 
 #define WREG(U,L) \
     if (z80_state.L.word != old_state.L.word) {	\
@@ -3861,3 +3592,50 @@ static void diffstate(void)
     WREG(DEx,de_prime);
     WREG(HLx,hl_prime);
 }
+
+struct mem_trace {
+    uint16_t size, addr, data;
+};
+
+#define MAX_TRACES 16
+static struct mem_trace mem_traces[MAX_TRACES];
+static struct mem_trace *mem_trace_head = mem_traces;
+
+static void tracemem(void)
+{
+    const struct mem_trace *mtp;
+    
+    for (mtp = mem_traces; mtp < mem_trace_head; mtp++) {
+	/* printf(" (%04X)=%0*X", mtp->addr, mtp->size*2, mtp->data); */
+    }
+    
+    mem_trace_head = mem_traces;
+}
+
+#undef mem_write
+static void trace_mem_write(uint16_t addr, uint8_t data)
+{
+    if (mem_trace_head < &mem_traces[MAX_TRACES]) {
+	mem_trace_head->addr = addr;
+	mem_trace_head->data = data;
+	mem_trace_head->size = 1;
+	mem_trace_head++;
+    }
+
+    mem_write(addr, data);
+}
+
+#undef mem_write_word
+static void trace_mem_write_word(uint16_t addr, uint16_t data)
+{
+    if (mem_trace_head < &mem_traces[MAX_TRACES]) {
+	mem_trace_head->addr = addr;
+	mem_trace_head->data = data;
+	mem_trace_head->size = 2;
+	mem_trace_head++;
+    }
+
+    mem_write_word(addr, data);
+}
+
+#endif /* TRACE */

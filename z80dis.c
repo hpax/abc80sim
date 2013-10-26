@@ -131,7 +131,7 @@ static char *MnemonicsXX[256] =
   "LD I%H,B","LD I%H,C","LD I%H,D","LD I%H,E","LD I%H,I%H","LD I%H,I%L","LD H,(I%+h)","LD I%H,A",
   "LD I%L,B","LD I%L,C","LD I%L,D","LD I%L,E","LD I%L,I%H","LD I%L,I%L","LD L,(I%+h)","LD I%L,A",
   "LD (I%+h),B","LD (I%+h),C","LD (I%+h),D","LD (I%+h),E","LD (I%+h),H","LD (I%+h),L","HALT","LD (I%+h),A",
-  "LD A,B","LD A,C","LD A,D","LD A,E","LD A,I%H","LD A,L","LD A,(I%+h)","LD A,A",
+  "LD A,B","LD A,C","LD A,D","LD A,E","LD A,I%H","LD A,I%L","LD A,(I%+h)","LD A,A",
   "ADD B","ADD C","ADD D","ADD E","ADD I%H","ADD I%L","ADD (I%+h)","ADD A",
   "ADC B","ADC C","ADC D","ADC E","ADC I%H","ADC I%L","ADC (I%+h)","ADC,A",
   "SUB B","SUB C","SUB D","SUB E","SUB I%H","SUB I%L","SUB (I%+h)","SUB A",
