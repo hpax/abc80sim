@@ -28,6 +28,8 @@
 #include "z80.h"
 #include "screen.h"
 
+#include <setjmp.h>
+
 /*
  * The state of our Z-80 registers is kept in this structure:
  */
@@ -45,11 +47,13 @@ static void trace_mem_write_word(uint16_t, uint16_t);
 #define mem_write_word trace_mem_write_word
 #endif
 
+static jmp_buf bad_insn;
+
 /*
  * Tables and routines for computing various flag values:
  */
 
-static uint8_t sign_carry_overflow_table[] =
+static const uint8_t sign_carry_overflow_table[] =
 {
     0,
     OVERFLOW_MASK | SIGN_MASK,
@@ -61,7 +65,7 @@ static uint8_t sign_carry_overflow_table[] =
     CARRY_MASK | SIGN_MASK,
 };
 
-static uint8_t half_carry_table[] =
+static const uint8_t half_carry_table[] =
 {
     0,
     0,
@@ -73,7 +77,7 @@ static uint8_t half_carry_table[] =
     HALF_CARRY_MASK,
 };
 
-static uint8_t subtract_sign_carry_overflow_table[] =
+static const uint8_t subtract_sign_carry_overflow_table[] =
 {
     0,
     CARRY_MASK | SIGN_MASK,
@@ -85,7 +89,7 @@ static uint8_t subtract_sign_carry_overflow_table[] =
     CARRY_MASK | SIGN_MASK,
 };
 
-static uint8_t subtract_half_carry_table[] =
+static const uint8_t subtract_half_carry_table[] =
 {
     0,
     HALF_CARRY_MASK,
@@ -100,7 +104,7 @@ static uint8_t subtract_half_carry_table[] =
 static int parity(unsigned value)
 {
     /* for parity flag, 1 = even parity, 0 = odd parity. */
-    static char parity_table[256] =
+    static const char parity_table[256] =
     {
 	1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1, 
 	0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0, 
@@ -2157,8 +2161,8 @@ static void do_CB_instruction(wordregister *ix)
 	break;
 
       default:
-	REG_PC -= 2;
-	/* disassemble(REG_PC); */
+	longjmp(bad_insn, 1);
+	break;
     }
 }
 
@@ -2376,9 +2380,8 @@ static void do_ED_instruction(wordregister *ix)
 	break;
 
       default:
-	REG_PC -= 2;
-/*	disassemble(REG_PC);*/
-/*	error("unsupported instruction");*/
+	longjmp(bad_insn, 1);
+	break;
     }
 }
 
@@ -2390,9 +2393,19 @@ static void do_ED_instruction(wordregister *ix)
 int z80_run(int continuous)
 {
     uint8_t instruction;
-    uint16_t orig_pc;
+    volatile uint16_t orig_pc = REG_PC;
     uint16_t address; /* generic temps */
     wordregister *ix;
+
+    if (setjmp(bad_insn)) {
+      printf("Unknown Z80 instruction: %04X ", orig_pc);
+      for (address = orig_pc; address < REG_PC; address++) {
+	printf("%02X ", mem_read(address));
+      }
+      disassemble(orig_pc);
+      putchar('\n');
+      exit(1);
+    }
 
     /* loop to do a z80 instruction */
     do {
@@ -3587,9 +3600,7 @@ int z80_run(int continuous)
 	    
 	  default:
 	  bad:
-	    REG_PC = orig_pc;
-/*	    disassemble(REG_PC);*/
-/*	    error("unsupported instruction");*/
+	    longjmp(bad_insn, 1);
 	    break;
 	}
     } while (continuous);
