@@ -324,51 +324,64 @@ void check_event(void)
     switch ( event.type ) {
     case SDL_KEYDOWN:
       {
-	int mysym;
-	
-	//fprintf(stderr, "Keydown unicode = %x\n", event.key.keysym.unicode);
+	int mysym = -1;
 
-	if ( (event.key.keysym.mod & (KMOD_RALT|KMOD_LALT)) &&
-	     event.key.keysym.sym == SDLK_END )
-	  exit(0);		/* End */
+	switch (event.key.keysym.sym) {
+	case SDLK_END:
+	  if (event.key.keysym.mod & (KMOD_RALT|KMOD_LALT))
+	    exit(0);		/* Alt+End = quit */
+	  break;
 
-	switch ( event.key.keysym.unicode ) {
-	case 0x00 ... 0x7F:
-	  mysym = event.key.keysym.unicode;
+	case SDLK_LEFT:
+	  mysym = 8;
 	  break;
-	case L'É':
-	  mysym = '@';
+
+	case SDLK_RIGHT:
+	  mysym = 9;
 	  break;
-	case L'Å':
-	  mysym = ']';
-	  break;
-	case L'Ä':
-	  mysym = '[';
-	  break;
-	case L'Ö':
-	  mysym = '\\';
-	  break;
-	case L'Ü':
-	  mysym = '^';
-	  break;
-	case L'é':
-	  mysym = '`';
-	  break;
-	case L'å':
-	  mysym = '}';
-	  break;
-	case L'ä':
-	  mysym = '{';
-	  break;
-	case L'ö':
-	  mysym = '|';
-	  break;
-	case L'ü':
-	  mysym = '~';
-	  break;
+
 	default:
-	  mysym = -1;
-	  break;
+	  if (event.key.keysym.unicode <= 0x7f) {
+	    mysym = event.key.keysym.unicode;
+	  } else {
+	    switch ( event.key.keysym.unicode ) {
+	    case L'¤':
+	      mysym = '$';
+	      break;
+	    case L'É':
+	      mysym = '@';
+	      break;
+	    case L'Å':
+	      mysym = ']';
+	      break;
+	    case L'Ä':
+	      mysym = '[';
+	      break;
+	    case L'Ö':
+	      mysym = '\\';
+	      break;
+	    case L'Ü':
+	      mysym = '^';
+	      break;
+	    case L'é':
+	      mysym = '`';
+	      break;
+	    case L'å':
+	      mysym = '}';
+	      break;
+	    case L'ä':
+	      mysym = '{';
+	      break;
+	    case L'ö':
+	      mysym = '|';
+	      break;
+	    case L'ü':
+	      mysym = '~';
+	      break;
+	    default:
+	      break;
+	    }
+	  }
 	}
 
 	if ( mysym >= 0 ) {
