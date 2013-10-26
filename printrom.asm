@@ -108,8 +108,11 @@ done_err:
 	pop af
 	and a
 	ret p
+	cp 128+21			; ERR 21 = file not found
+	jr z,eof
 	cp 128+34			; ERR 34 = end of file
 	jr nz,not_eof
+eof:
 	xor a				; ... end of file is signalled by A=0
 not_eof:
 	scf
@@ -159,6 +162,7 @@ prb_prepare:
 	ld (ix+14),1
 	ld c,0xA3
 prx_open:
+	push de
 	push bc
 	ex de,hl			; HL <- filename
 	ld (ix+6),0
@@ -176,6 +180,7 @@ prx_open:
 	call recv_reply
 	and a
 	pop bc
+	pop de
 	jr nz,done_err2
 	bit 0,c				; PRB:?
 	jr z,done_err2
