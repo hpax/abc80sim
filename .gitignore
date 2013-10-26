@@ -3,6 +3,7 @@
 *.o
 *.obj
 *.exe
+*.lst
 abcdisk
 abcdir
 abcrom40.c

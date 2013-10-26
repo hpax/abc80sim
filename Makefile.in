@@ -58,6 +58,9 @@ abcrom80.c: abcrom80.bin bin2c.pl
 printer.c: printer.bin bin2c.pl
 ufddos.c: ufddos.bin bin2c.pl
 
+printer.bin: printer.asm
+	z80asm/z80asm -l printer.lst -o printer.bin printer.asm
+
 abc80.$(O):        clock.h screen.h z80.h patchlevel.h
 clock.$(O):        clock.h z80.h
 sdlscrn.$(O):       screen.h z80.h
@@ -65,5 +68,5 @@ z80.$(O):          z80.h
 
 
 clean:
-	$(RM_F) abc80$(X) *.$(O) *~ core
+	$(RM_F) abc80$(X) *.$(O) *~ core *.lst
 	$(RM_F) $(GENC)
