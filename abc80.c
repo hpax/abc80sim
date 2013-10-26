@@ -137,7 +137,7 @@ int main(int argc, char **argv)
      */
     if (!no_device) {
 	load_rom(&ufddos);
-	load_rom(&printer);
+	load_rom(&printrom);
     }
 
     /*

@@ -1,8 +1,7 @@
 #!/usr/bin/perl
-## $Id$
 ## -----------------------------------------------------------------------
 ##   
-##   Copyright 1998-2004 H. Peter Anvin - All Rights Reserved
+##   Copyright 1998-2013 H. Peter Anvin - All Rights Reserved
 ##
 ##   This program is free software; you can redistribute it and/or modify
 ##   it under the terms of the GNU General Public License as published by
@@ -32,7 +31,7 @@ $table_name =~ s/\.[^\.]*$//;	# Drop extension
 unless (defined ($offset)) {
     $offset = 0x404b if ($table_name eq 'abcdev');
     $offset = 0x6000 if ($table_name =~ /dos$/);
-    $offset = 0x7800 if ($table_name eq 'printer');
+    $offset = 0x7800 if ($table_name eq 'printrom');
 }
 
 open(IN, '<', $input_file)

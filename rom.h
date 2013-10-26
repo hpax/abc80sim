@@ -9,6 +9,6 @@ struct rom {
     unsigned int size;
 };
 
-extern const struct rom abcrom40, abcrom80, printer, ufddos;
+extern const struct rom abcrom40, abcrom80, printrom, ufddos;
 
 #endif /* ROM_H */
