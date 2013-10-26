@@ -426,8 +426,10 @@ static void do_input(uint16_t ix)
 	}
       }
       if (de) {
-	dlen += sprintf(data1+2+dlen, ",%lu\r\n",
-			((unsigned long)st.st_size + 252)/253);
+	unsigned long blocks = (st.st_size + 252)/253;
+	unsigned long pad = 253*blocks - st.st_size;
+	/* pad = unused bytes in the last block */
+	dlen += sprintf(data1+2+dlen, ",%lu,%lu\r\n", blocks, pad);
 	err = 0;
       } else {
 	err = 128+34;
