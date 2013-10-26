@@ -380,13 +380,11 @@ send_cmd:
 	inc a
 	ld (ram_serial),a
 	call send_byte
-	push bc
-	push ix
-	pop bc
-	ld a,c
+	defb 0ddh
+	ld a,l			; LD A,IXL
 	call send_byte
-	ld a,b
-	pop bc
+	defb 0ddh
+	ld a,h			; LD A,IXH
 	jr send_byte
 
 	; Send a buffer HL->data BC=count
