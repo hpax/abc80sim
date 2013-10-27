@@ -1317,6 +1317,7 @@ static void do_nmi(void)
     z80_state.iff2 = z80_state.iff1;
     z80_state.iff1 = 0;
     REG_PC = 0x66;
+    inc_r();
 }
 
 
@@ -1345,6 +1346,8 @@ do_int(void)
       default: /* oops, unkown interrupt mode... */
         break;
     }
+
+    inc_r();
 }
 
 
