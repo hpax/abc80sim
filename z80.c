@@ -1375,6 +1375,11 @@ static void do_CB_instruction(wordregister *ix)
     addr = get_hl_addr(ix);
     instruction = mem_read(REG_PC++);
 
+    /*
+     * XXX: THIS IS WRONG FOR DD/FD.  With DD/FD, the operation is
+     * always on (Ix+d), and the data is written back into the
+     * specified register as well as memory (except for BIT)
+     */
     switch(instruction)
     {
       case 0x47:	/* bit 0, a */
@@ -2165,13 +2170,30 @@ static void do_CB_instruction(wordregister *ix)
     }
 }
 
-/* XXX: is DD ED or FD ED supported? */
 static void do_ED_instruction(wordregister *ix)
 {
     uint8_t instruction;
 
-    (void)ix;
+    (void)ix;			/* DD/FD has no effect */
     
+    /*
+     * Undocumented instruction notes:
+     * ED 00-3F = NOP
+     * ED 80-BF = NOP unless documented
+     * ED C0-FF = NOP
+     * ED 40-7F duplicate:
+     *   NEG       at ED4C, ED54, ED5C, ED64, ED6C, ED74, ED7C
+     *   NOP       at ED77, ED7F
+     *   RETN      at ED55, ED65, ED75
+     *   RETI      at ED5D, ED6D, ED7D
+     *   IM ?      at ED4E, ED6E
+     *   IM 0      at ED66
+     *   IM 1      at ED76
+     *   IM 2      at ED7E
+     *   IN F,(C)  at ED70
+     *   OUT (C),0 at ED71  -- OUT (C),0FFh for CMOS Z80
+     */
+
     instruction = mem_read(REG_PC++);
     
     switch(instruction)
@@ -2204,12 +2226,15 @@ static void do_ED_instruction(wordregister *ix)
 	break;
 
       case 0x46:	/* im 0 */
+      case 0x66:
 	do_im0();
 	break;
       case 0x56:	/* im 1 */
+      case 0x76:
 	do_im1();
 	break;
       case 0x5E:	/* im 2 */
+      case 0x7E:
 	do_im2();
 	break;
 
@@ -2308,6 +2333,13 @@ static void do_ED_instruction(wordregister *ix)
 	break;
 
       case 0x44:	/* neg */
+      case 0x4C:
+      case 0x54:
+      case 0x5C:
+      case 0x64:
+      case 0x6C:
+      case 0x74:
+      case 0x7C:
 	do_negate();
 	break;
 
@@ -2332,6 +2364,9 @@ static void do_ED_instruction(wordregister *ix)
       case 0x69:	/* out (c), l */
 	z80_out(REG_C, REG_L);
 	break;
+      case 0x71:	/* out (c), 0 */
+	z80_out(REG_C, 0);
+	break;
 
       case 0xAB:	/* outd */
 	do_outd();
@@ -2347,12 +2382,18 @@ static void do_ED_instruction(wordregister *ix)
 	break;
 
       case 0x4D:	/* reti */
+      case 0x5D:
+      case 0x6D:
+      case 0x7D:
 	/* no support for alerting peripherals, just like ret */
 	REG_PC = mem_read_word(REG_SP);
 	REG_SP += 2;
 	break;
 
       case 0x45:	/* retn */
+      case 0x55:
+      case 0x65:
+      case 0x75:
 	REG_PC = mem_read_word(REG_SP);
 	REG_SP += 2;
 	z80_state.iff1 = z80_state.iff2;  /* restore the iff state */
@@ -2381,7 +2422,7 @@ static void do_ED_instruction(wordregister *ix)
 	break;
 
       default:
-	longjmp(bad_insn, 1);
+	/* Assume all others are NOP */
 	break;
     }
 }
