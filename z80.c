@@ -47,8 +47,6 @@ static void trace_mem_write_word(uint16_t, uint16_t);
 #define mem_write_word trace_mem_write_word
 #endif
 
-static jmp_buf bad_insn;
-
 /*
  * Tables and routines for computing various flag values:
  */
@@ -2514,19 +2512,8 @@ static void do_ED_instruction(wordregister *ix)
 int z80_run(int continuous)
 {
     uint8_t instruction;
-    volatile uint16_t orig_pc = REG_PC;
     uint16_t address; /* generic temps */
     wordregister *ix;
-
-    if (setjmp(bad_insn)) {
-      printf("Unknown Z80 instruction: %04X ", orig_pc);
-      for (address = orig_pc; address < REG_PC; address++) {
-	printf("%02X ", mem_read(address));
-      }
-      disassemble(orig_pc);
-      putchar('\n');
-      exit(1);
-    }
 
     /* loop to do a z80 instruction */
     do {
@@ -2566,7 +2553,6 @@ int z80_run(int continuous)
 	    z80_state.interrupt = FALSE;
         }
 
-	orig_pc = REG_PC;
 	ix = &z80_state.hl;	/* Not an index instruction */
 
     indexed:
@@ -3713,11 +3699,6 @@ int z80_run(int continuous)
 	    break;
 	  case 0xAE:	/* xor (hl) */
 	    do_xor_byte(mem_read(get_hl_addr(ix)));
-	    break;
-	    
-	  default:
-	  bad:
-	    longjmp(bad_insn, 1);
 	    break;
 	}
     } while (continuous);
