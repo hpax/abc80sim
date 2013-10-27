@@ -2470,10 +2470,7 @@ static void do_ED_instruction(wordregister *ix)
       case 0x5D:
       case 0x6D:
       case 0x7D:
-	/* no support for alerting peripherals, just like ret */
-	REG_PC = mem_read_word(REG_SP);
-	REG_SP += 2;
-	break;
+	/* no support for alerting peripherals, just like retn, fall through */
 
       case 0x45:	/* retn */
       case 0x55:
