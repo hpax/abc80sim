@@ -2171,7 +2171,7 @@ static void do_CB_instruction(wordregister *ix)
 
       addr = ix->word + (int8_t)mem_read(REG_PC++);
       instruction = mem_read(REG_PC++);
-      inc_r();
+      /* No R increment here, for some reason */
 
       data = mem_read(addr);
 
