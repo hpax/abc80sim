@@ -127,8 +127,7 @@ static int parity(unsigned value)
 
 static void add_r(uint8_t jump)
 {
-    /* Only the low 7 bits are incremented */
-    REG_R = ((REG_R + jump) & 0x7f) | (REG_R & 0x80);
+    z80_state.rc += jump;
 }
 
 static void inc_r(void)
@@ -904,7 +903,7 @@ static void do_ldir(void)
     mem_block_transfer(REG_DE, REG_HL, 1, REG_BC);
 
     /* set registers to final values */
-    inc_r((REG_BC-1) << 1);
+    add_r((REG_BC-1) << 1);
     REG_DE += REG_BC;
     REG_HL += REG_BC;
     REG_BC = 0;
@@ -920,7 +919,7 @@ static void do_lddr(void)
     mem_block_transfer(REG_DE, REG_HL, -1, REG_BC);
 
     /* set registers to final values */
-    inc_r((REG_BC-1) << 1);
+    add_r((REG_BC-1) << 1);
     REG_DE -= REG_BC;
     REG_HL -= REG_BC;
     REG_BC = 0;
@@ -2366,7 +2365,7 @@ static void do_ED_instruction(wordregister *ix)
 	do_ld_a_ir(REG_R);
 	break;
       case 0x4F:	/* ld r, a */
-	REG_R = REG_A;
+	z80_state.rf = z80_state.rc = REG_A;
 	break;
 
       case 0x4B:	/* ld bc, (address) */
@@ -2562,7 +2561,7 @@ int z80_run(int continuous)
 
     indexed:
 	instruction = mem_read(REG_PC++);
-	REG_R++;
+	inc_r();
 
 	switch(instruction)
 	{
