@@ -1366,807 +1366,884 @@ static uint16_t get_hl_addr(wordregister *ix)
 static void do_CB_instruction(wordregister *ix)
 {
     uint8_t instruction;
-    uint16_t addr = -1;
-    
-    /*
-     * Note the ordering: with a DD/FD prefix, the offset byte comes
-     * *before* the next opcode byte.
-     */
-    addr = get_hl_addr(ix);
-    instruction = mem_read(REG_PC++);
+    uint16_t addr;
+    uint8_t data;
 
-    /*
-     * XXX: THIS IS WRONG FOR DD/FD.  With DD/FD, the operation is
-     * always on (Ix+d), and the data is written back into the
-     * specified register as well as memory (except for BIT)
-     */
-    switch(instruction)
-    {
-      case 0x47:	/* bit 0, a */
-	do_test_bit(REG_A, 0);
-	break;
-      case 0x40:	/* bit 0, b */
-	do_test_bit(REG_B, 0);
-	break;
-      case 0x41:	/* bit 0, c */
-	do_test_bit(REG_C, 0);
-	break;
-      case 0x42:	/* bit 0, d */
-	do_test_bit(REG_D, 0);
-	break;
-      case 0x43:	/* bit 0, e */
-	do_test_bit(REG_E, 0);
-	break;
-      case 0x44:	/* bit 0, h */
-	do_test_bit(ix->byte.high, 0);
-	break;
-      case 0x45:	/* bit 0, l */
-	do_test_bit(ix->byte.low, 0);
-	break;
-      case 0x4F:	/* bit 1, a */
-	do_test_bit(REG_A, 1);
-	break;
-      case 0x48:	/* bit 1, b */
-	do_test_bit(REG_B, 1);
-	break;
-      case 0x49:	/* bit 1, c */
-	do_test_bit(REG_C, 1);
-	break;
-      case 0x4A:	/* bit 1, d */
-	do_test_bit(REG_D, 1);
-	break;
-      case 0x4B:	/* bit 1, e */
-	do_test_bit(REG_E, 1);
-	break;
-      case 0x4C:	/* bit 1, h */
-	do_test_bit(ix->byte.high, 1);
-	break;
-      case 0x4D:	/* bit 1, l */
-	do_test_bit(ix->byte.low, 1);
-	break;
-      case 0x57:	/* bit 2, a */
-	do_test_bit(REG_A, 2);
-	break;
-      case 0x50:	/* bit 2, b */
-	do_test_bit(REG_B, 2);
-	break;
-      case 0x51:	/* bit 2, c */
-	do_test_bit(REG_C, 2);
-	break;
-      case 0x52:	/* bit 2, d */
-	do_test_bit(REG_D, 2);
-	break;
-      case 0x53:	/* bit 2, e */
-	do_test_bit(REG_E, 2);
-	break;
-      case 0x54:	/* bit 2, h */
-	do_test_bit(ix->byte.high, 2);
-	break;
-      case 0x55:	/* bit 2, l */
-	do_test_bit(ix->byte.low, 2);
-	break;
-      case 0x5F:	/* bit 3, a */
-	do_test_bit(REG_A, 3);
-	break;
-      case 0x58:	/* bit 3, b */
-	do_test_bit(REG_B, 3);
-	break;
-      case 0x59:	/* bit 3, c */
-	do_test_bit(REG_C, 3);
-	break;
-      case 0x5A:	/* bit 3, d */
-	do_test_bit(REG_D, 3);
-	break;
-      case 0x5B:	/* bit 3, e */
-	do_test_bit(REG_E, 3);
-	break;
-      case 0x5C:	/* bit 3, h */
-	do_test_bit(ix->byte.high, 3);
-	break;
-      case 0x5D:	/* bit 3, l */
-	do_test_bit(ix->byte.low, 3);
-	break;
-      case 0x67:	/* bit 4, a */
-	do_test_bit(REG_A, 4);
-	break;
-      case 0x60:	/* bit 4, b */
-	do_test_bit(REG_B, 4);
-	break;
-      case 0x61:	/* bit 4, c */
-	do_test_bit(REG_C, 4);
-	break;
-      case 0x62:	/* bit 4, d */
-	do_test_bit(REG_D, 4);
-	break;
-      case 0x63:	/* bit 4, e */
-	do_test_bit(REG_E, 4);
-	break;
-      case 0x64:	/* bit 4, h */
-	do_test_bit(ix->byte.high, 4);
-	break;
-      case 0x65:	/* bit 4, l */
-	do_test_bit(ix->byte.low, 4);
-	break;
-      case 0x6F:	/* bit 5, a */
-	do_test_bit(REG_A, 5);
-	break;
-      case 0x68:	/* bit 5, b */
-	do_test_bit(REG_B, 5);
-	break;
-      case 0x69:	/* bit 5, c */
-	do_test_bit(REG_C, 5);
-	break;
-      case 0x6A:	/* bit 5, d */
-	do_test_bit(REG_D, 5);
-	break;
-      case 0x6B:	/* bit 5, e */
-	do_test_bit(REG_E, 5);
-	break;
-      case 0x6C:	/* bit 5, h */
-	do_test_bit(ix->byte.high, 5);
-	break;
-      case 0x6D:	/* bit 5, l */
-	do_test_bit(ix->byte.low, 5);
-	break;
-      case 0x77:	/* bit 6, a */
-	do_test_bit(REG_A, 6);
-	break;
-      case 0x70:	/* bit 6, b */
-	do_test_bit(REG_B, 6);
-	break;
-      case 0x71:	/* bit 6, c */
-	do_test_bit(REG_C, 6);
-	break;
-      case 0x72:	/* bit 6, d */
-	do_test_bit(REG_D, 6);
-	break;
-      case 0x73:	/* bit 6, e */
-	do_test_bit(REG_E, 6);
-	break;
-      case 0x74:	/* bit 6, h */
-	do_test_bit(ix->byte.high, 6);
-	break;
-      case 0x75:	/* bit 6, l */
-	do_test_bit(ix->byte.low, 6);
-	break;
-      case 0x7F:	/* bit 7, a */
-	do_test_bit(REG_A, 7);
-	break;
-      case 0x78:	/* bit 7, b */
-	do_test_bit(REG_B, 7);
-	break;
-      case 0x79:	/* bit 7, c */
-	do_test_bit(REG_C, 7);
-	break;
-      case 0x7A:	/* bit 7, d */
-	do_test_bit(REG_D, 7);
-	break;
-      case 0x7B:	/* bit 7, e */
-	do_test_bit(REG_E, 7);
-	break;
-      case 0x7C:	/* bit 7, h */
-	do_test_bit(ix->byte.high, 7);
-	break;
-      case 0x7D:	/* bit 7, l */
-	do_test_bit(ix->byte.low, 7);
-	break;
+    if (ix == &z80_state.hl) {
+      /*
+       * Normal operation sans DD/FD prefix
+       */
+      
+      instruction = mem_read(REG_PC++);
+
+      switch(instruction)
+	{
+	case 0x47:	/* bit 0, a */
+	  do_test_bit(REG_A, 0);
+	  break;
+	case 0x40:	/* bit 0, b */
+	  do_test_bit(REG_B, 0);
+	  break;
+	case 0x41:	/* bit 0, c */
+	  do_test_bit(REG_C, 0);
+	  break;
+	case 0x42:	/* bit 0, d */
+	  do_test_bit(REG_D, 0);
+	  break;
+	case 0x43:	/* bit 0, e */
+	  do_test_bit(REG_E, 0);
+	  break;
+	case 0x44:	/* bit 0, h */
+	  do_test_bit(REG_H, 0);
+	  break;
+	case 0x45:	/* bit 0, l */
+	  do_test_bit(REG_L, 0);
+	  break;
+	case 0x4F:	/* bit 1, a */
+	  do_test_bit(REG_A, 1);
+	  break;
+	case 0x48:	/* bit 1, b */
+	  do_test_bit(REG_B, 1);
+	  break;
+	case 0x49:	/* bit 1, c */
+	  do_test_bit(REG_C, 1);
+	  break;
+	case 0x4A:	/* bit 1, d */
+	  do_test_bit(REG_D, 1);
+	  break;
+	case 0x4B:	/* bit 1, e */
+	  do_test_bit(REG_E, 1);
+	  break;
+	case 0x4C:	/* bit 1, h */
+	  do_test_bit(REG_H, 1);
+	  break;
+	case 0x4D:	/* bit 1, l */
+	  do_test_bit(REG_L, 1);
+	  break;
+	case 0x57:	/* bit 2, a */
+	  do_test_bit(REG_A, 2);
+	  break;
+	case 0x50:	/* bit 2, b */
+	  do_test_bit(REG_B, 2);
+	  break;
+	case 0x51:	/* bit 2, c */
+	  do_test_bit(REG_C, 2);
+	  break;
+	case 0x52:	/* bit 2, d */
+	  do_test_bit(REG_D, 2);
+	  break;
+	case 0x53:	/* bit 2, e */
+	  do_test_bit(REG_E, 2);
+	  break;
+	case 0x54:	/* bit 2, h */
+	  do_test_bit(REG_H, 2);
+	  break;
+	case 0x55:	/* bit 2, l */
+	  do_test_bit(REG_L, 2);
+	  break;
+	case 0x5F:	/* bit 3, a */
+	  do_test_bit(REG_A, 3);
+	  break;
+	case 0x58:	/* bit 3, b */
+	  do_test_bit(REG_B, 3);
+	  break;
+	case 0x59:	/* bit 3, c */
+	  do_test_bit(REG_C, 3);
+	  break;
+	case 0x5A:	/* bit 3, d */
+	  do_test_bit(REG_D, 3);
+	  break;
+	case 0x5B:	/* bit 3, e */
+	  do_test_bit(REG_E, 3);
+	  break;
+	case 0x5C:	/* bit 3, h */
+	  do_test_bit(REG_H, 3);
+	  break;
+	case 0x5D:	/* bit 3, l */
+	  do_test_bit(REG_L, 3);
+	  break;
+	case 0x67:	/* bit 4, a */
+	  do_test_bit(REG_A, 4);
+	  break;
+	case 0x60:	/* bit 4, b */
+	  do_test_bit(REG_B, 4);
+	  break;
+	case 0x61:	/* bit 4, c */
+	  do_test_bit(REG_C, 4);
+	  break;
+	case 0x62:	/* bit 4, d */
+	  do_test_bit(REG_D, 4);
+	  break;
+	case 0x63:	/* bit 4, e */
+	  do_test_bit(REG_E, 4);
+	  break;
+	case 0x64:	/* bit 4, h */
+	  do_test_bit(REG_H, 4);
+	  break;
+	case 0x65:	/* bit 4, l */
+	  do_test_bit(REG_L, 4);
+	  break;
+	case 0x6F:	/* bit 5, a */
+	  do_test_bit(REG_A, 5);
+	  break;
+	case 0x68:	/* bit 5, b */
+	  do_test_bit(REG_B, 5);
+	  break;
+	case 0x69:	/* bit 5, c */
+	  do_test_bit(REG_C, 5);
+	  break;
+	case 0x6A:	/* bit 5, d */
+	  do_test_bit(REG_D, 5);
+	  break;
+	case 0x6B:	/* bit 5, e */
+	  do_test_bit(REG_E, 5);
+	  break;
+	case 0x6C:	/* bit 5, h */
+	  do_test_bit(REG_H, 5);
+	  break;
+	case 0x6D:	/* bit 5, l */
+	  do_test_bit(REG_L, 5);
+	  break;
+	case 0x77:	/* bit 6, a */
+	  do_test_bit(REG_A, 6);
+	  break;
+	case 0x70:	/* bit 6, b */
+	  do_test_bit(REG_B, 6);
+	  break;
+	case 0x71:	/* bit 6, c */
+	  do_test_bit(REG_C, 6);
+	  break;
+	case 0x72:	/* bit 6, d */
+	  do_test_bit(REG_D, 6);
+	  break;
+	case 0x73:	/* bit 6, e */
+	  do_test_bit(REG_E, 6);
+	  break;
+	case 0x74:	/* bit 6, h */
+	  do_test_bit(REG_H, 6);
+	  break;
+	case 0x75:	/* bit 6, l */
+	  do_test_bit(REG_L, 6);
+	  break;
+	case 0x7F:	/* bit 7, a */
+	  do_test_bit(REG_A, 7);
+	  break;
+	case 0x78:	/* bit 7, b */
+	  do_test_bit(REG_B, 7);
+	  break;
+	case 0x79:	/* bit 7, c */
+	  do_test_bit(REG_C, 7);
+	  break;
+	case 0x7A:	/* bit 7, d */
+	  do_test_bit(REG_D, 7);
+	  break;
+	case 0x7B:	/* bit 7, e */
+	  do_test_bit(REG_E, 7);
+	  break;
+	case 0x7C:	/* bit 7, h */
+	  do_test_bit(REG_H, 7);
+	  break;
+	case 0x7D:	/* bit 7, l */
+	  do_test_bit(REG_L, 7);
+	  break;
 	
-      case 0x46:	/* bit 0, (hl) */
-	do_test_bit(mem_read(addr), 0);
-	break;
-      case 0x4E:	/* bit 1, (hl) */
-	do_test_bit(mem_read(addr), 1);
-	break;
-      case 0x56:	/* bit 2, (hl) */
-	do_test_bit(mem_read(addr), 2);
-	break;
-      case 0x5E:	/* bit 3, (hl) */
-	do_test_bit(mem_read(addr), 3);
-	break;
-      case 0x66:	/* bit 4, (hl) */
-	do_test_bit(mem_read(addr), 4);
-	break;
-      case 0x6E:	/* bit 5, (hl) */
-	do_test_bit(mem_read(addr), 5);
-	break;
-      case 0x76:	/* bit 6, (hl) */
-	do_test_bit(mem_read(addr), 6);
-	break;
-      case 0x7E:	/* bit 7, (hl) */
-	do_test_bit(mem_read(addr), 7);
+	case 0x46:	/* bit 0, (hl) */
+	  do_test_bit(mem_read(REG_HL), 0);
+	  break;
+	case 0x4E:	/* bit 1, (hl) */
+	  do_test_bit(mem_read(REG_HL), 1);
+	  break;
+	case 0x56:	/* bit 2, (hl) */
+	  do_test_bit(mem_read(REG_HL), 2);
+	  break;
+	case 0x5E:	/* bit 3, (hl) */
+	  do_test_bit(mem_read(REG_HL), 3);
+	  break;
+	case 0x66:	/* bit 4, (hl) */
+	  do_test_bit(mem_read(REG_HL), 4);
+	  break;
+	case 0x6E:	/* bit 5, (hl) */
+	  do_test_bit(mem_read(REG_HL), 5);
+	  break;
+	case 0x76:	/* bit 6, (hl) */
+	  do_test_bit(mem_read(REG_HL), 6);
+	  break;
+	case 0x7E:	/* bit 7, (hl) */
+	  do_test_bit(mem_read(REG_HL), 7);
+	  break;
+
+	case 0x87:	/* res 0, a */
+	  REG_A &= ~(1 << 0);
+	  break;
+	case 0x80:	/* res 0, b */
+	  REG_B &= ~(1 << 0);
+	  break;
+	case 0x81:	/* res 0, c */
+	  REG_C &= ~(1 << 0);
+	  break;
+	case 0x82:	/* res 0, d */
+	  REG_D &= ~(1 << 0);
+	  break;
+	case 0x83:	/* res 0, e */
+	  REG_E &= ~(1 << 0);
+	  break;
+	case 0x84:	/* res 0, h */
+	  REG_H &= ~(1 << 0);
+	  break;
+	case 0x85:	/* res 0, l */
+	  REG_L &= ~(1 << 0);
+	  break;
+	case 0x8F:	/* res 1, a */
+	  REG_A &= ~(1 << 1);
+	  break;
+	case 0x88:	/* res 1, b */
+	  REG_B &= ~(1 << 1);
+	  break;
+	case 0x89:	/* res 1, c */
+	  REG_C &= ~(1 << 1);
+	  break;
+	case 0x8A:	/* res 1, d */
+	  REG_D &= ~(1 << 1);
+	  break;
+	case 0x8B:	/* res 1, e */
+	  REG_E &= ~(1 << 1);
+	  break;
+	case 0x8C:	/* res 1, h */
+	  REG_H &= ~(1 << 1);
+	  break;
+	case 0x8D:	/* res 1, l */
+	  REG_L &= ~(1 << 1);
+	  break;
+	case 0x97:	/* res 2, a */
+	  REG_A &= ~(1 << 2);
+	  break;
+	case 0x90:	/* res 2, b */
+	  REG_B &= ~(1 << 2);
+	  break;
+	case 0x91:	/* res 2, c */
+	  REG_C &= ~(1 << 2);
+	  break;
+	case 0x92:	/* res 2, d */
+	  REG_D &= ~(1 << 2);
+	  break;
+	case 0x93:	/* res 2, e */
+	  REG_E &= ~(1 << 2);
+	  break;
+	case 0x94:	/* res 2, h */
+	  REG_H &= ~(1 << 2);
+	  break;
+	case 0x95:	/* res 2, l */
+	  REG_L &= ~(1 << 2);
+	  break;
+	case 0x9F:	/* res 3, a */
+	  REG_A &= ~(1 << 3);
+	  break;
+	case 0x98:	/* res 3, b */
+	  REG_B &= ~(1 << 3);
+	  break;
+	case 0x99:	/* res 3, c */
+	  REG_C &= ~(1 << 3);
+	  break;
+	case 0x9A:	/* res 3, d */
+	  REG_D &= ~(1 << 3);
+	  break;
+	case 0x9B:	/* res 3, e */
+	  REG_E &= ~(1 << 3);
+	  break;
+	case 0x9C:	/* res 3, h */
+	  REG_H &= ~(1 << 3);
+	  break;
+	case 0x9D:	/* res 3, l */
+	  REG_L &= ~(1 << 3);
+	  break;
+	case 0xA7:	/* res 4, a */
+	  REG_A &= ~(1 << 4);
+	  break;
+	case 0xA0:	/* res 4, b */
+	  REG_B &= ~(1 << 4);
+	  break;
+	case 0xA1:	/* res 4, c */
+	  REG_C &= ~(1 << 4);
+	  break;
+	case 0xA2:	/* res 4, d */
+	  REG_D &= ~(1 << 4);
+	  break;
+	case 0xA3:	/* res 4, e */
+	  REG_E &= ~(1 << 4);
+	  break;
+	case 0xA4:	/* res 4, h */
+	  REG_H &= ~(1 << 4);
+	  break;
+	case 0xA5:	/* res 4, l */
+	  REG_L &= ~(1 << 4);
+	  break;
+	case 0xAF:	/* res 5, a */
+	  REG_A &= ~(1 << 5);
+	  break;
+	case 0xA8:	/* res 5, b */
+	  REG_B &= ~(1 << 5);
+	  break;
+	case 0xA9:	/* res 5, c */
+	  REG_C &= ~(1 << 5);
+	  break;
+	case 0xAA:	/* res 5, d */
+	  REG_D &= ~(1 << 5);
+	  break;
+	case 0xAB:	/* res 5, e */
+	  REG_E &= ~(1 << 5);
+	  break;
+	case 0xAC:	/* res 5, h */
+	  REG_H &= ~(1 << 5);
+	  break;
+	case 0xAD:	/* res 5, l */
+	  REG_L &= ~(1 << 5);
+	  break;
+	case 0xB7:	/* res 6, a */
+	  REG_A &= ~(1 << 6);
+	  break;
+	case 0xB0:	/* res 6, b */
+	  REG_B &= ~(1 << 6);
+	  break;
+	case 0xB1:	/* res 6, c */
+	  REG_C &= ~(1 << 6);
+	  break;
+	case 0xB2:	/* res 6, d */
+	  REG_D &= ~(1 << 6);
+	  break;
+	case 0xB3:	/* res 6, e */
+	  REG_E &= ~(1 << 6);
+	  break;
+	case 0xB4:	/* res 6, h */
+	  REG_H &= ~(1 << 6);
+	  break;
+	case 0xB5:	/* res 6, l */
+	  REG_L &= ~(1 << 6);
+	  break;
+	case 0xBF:	/* res 7, a */
+	  REG_A &= ~(1 << 7);
+	  break;
+	case 0xB8:	/* res 7, b */
+	  REG_B &= ~(1 << 7);
+	  break;
+	case 0xB9:	/* res 7, c */
+	  REG_C &= ~(1 << 7);
+	  break;
+	case 0xBA:	/* res 7, d */
+	  REG_D &= ~(1 << 7);
+	  break;
+	case 0xBB:	/* res 7, e */
+	  REG_E &= ~(1 << 7);
+	  break;
+	case 0xBC:	/* res 7, h */
+	  REG_H &= ~(1 << 7);
+	  break;
+	case 0xBD:	/* res 7, l */
+	  REG_L &= ~(1 << 7);
+	  break;
+
+	case 0x86:	/* res 0, (hl) */
+	  mem_write(REG_HL, mem_read(REG_HL) & ~(1 << 0));
+	  break;
+	case 0x8E:	/* res 1, (hl) */
+	  mem_write(REG_HL, mem_read(REG_HL) & ~(1 << 1));
+	  break;
+	case 0x96:	/* res 2, (hl) */
+	  mem_write(REG_HL, mem_read(REG_HL) & ~(1 << 2));
+	  break;
+	case 0x9E:	/* res 3, (hl) */
+	  mem_write(REG_HL, mem_read(REG_HL) & ~(1 << 3));
+	  break;
+	case 0xA6:	/* res 4, (hl) */
+	  mem_write(REG_HL, mem_read(REG_HL) & ~(1 << 4));
+	  break;
+	case 0xAE:	/* res 5, (hl) */
+	  mem_write(REG_HL, mem_read(REG_HL) & ~(1 << 5));
+	  break;
+	case 0xB6:	/* res 6, (hl) */
+	  mem_write(REG_HL, mem_read(REG_HL) & ~(1 << 6));
+	  break;
+	case 0xBE:	/* res 7, (hl) */
+	  mem_write(REG_HL, mem_read(REG_HL) & ~(1 << 7));
+	  break;
+
+	case 0x17:	/* rl a */
+	  REG_A = rl_byte(REG_A);
+	  break;
+	case 0x10:	/* rl b */
+	  REG_B = rl_byte(REG_B);
+	  break;
+	case 0x11:	/* rl c */
+	  REG_C = rl_byte(REG_C);
+	  break;
+	case 0x12:	/* rl d */
+	  REG_D = rl_byte(REG_D);
+	  break;
+	case 0x13:	/* rl e */
+	  REG_E = rl_byte(REG_E);
+	  break;
+	case 0x14:	/* rl h */
+	  REG_H = rl_byte(REG_H);
+	  break;
+	case 0x15:	/* rl l */
+	  REG_L = rl_byte(REG_L);
+	  break;
+	case 0x16:	/* rl (hl) */
+	  mem_write(REG_HL, rl_byte(mem_read(REG_HL)));
+	  break;
+
+	case 0x07:	/* rlc a */
+	  REG_A = rlc_byte(REG_A);
+	  break;
+	case 0x00:	/* rlc b */
+	  REG_B = rlc_byte(REG_B);
+	  break;
+	case 0x01:	/* rlc c */
+	  REG_C = rlc_byte(REG_C);
+	  break;
+	case 0x02:	/* rlc d */
+	  REG_D = rlc_byte(REG_D);
+	  break;
+	case 0x03:	/* rlc e */
+	  REG_E = rlc_byte(REG_E);
+	  break;
+	case 0x04:	/* rlc h */
+	  REG_H = rlc_byte(REG_H);
+	  break;
+	case 0x05:	/* rlc l */
+	  REG_L = rlc_byte(REG_L);
+	  break;
+	case 0x06:	/* rlc (hl) */
+	  mem_write(REG_HL, rlc_byte(mem_read(REG_HL)));
+	  break;
+
+	case 0x1F:	/* rr a */
+	  REG_A = rr_byte(REG_A);
+	  break;
+	case 0x18:	/* rr b */
+	  REG_B = rr_byte(REG_B);
+	  break;
+	case 0x19:	/* rr c */
+	  REG_C = rr_byte(REG_C);
+	  break;
+	case 0x1A:	/* rr d */
+	  REG_D = rr_byte(REG_D);
+	  break;
+	case 0x1B:	/* rr e */
+	  REG_E = rr_byte(REG_E);
+	  break;
+	case 0x1C:	/* rr h */
+	  REG_H = rr_byte(REG_H);
+	  break;
+	case 0x1D:	/* rr l */
+	  REG_L = rr_byte(REG_L);
+	  break;
+	case 0x1E:	/* rr (hl) */
+	  mem_write(REG_HL, rr_byte(mem_read(REG_HL)));
+	  break;
+
+	case 0x0F:	/* rrc a */
+	  REG_A = rrc_byte(REG_A);
+	  break;
+	case 0x08:	/* rrc b */
+	  REG_B = rrc_byte(REG_B);
+	  break;
+	case 0x09:	/* rrc c */
+	  REG_C = rrc_byte(REG_C);
+	  break;
+	case 0x0A:	/* rrc d */
+	  REG_D = rrc_byte(REG_D);
+	  break;
+	case 0x0B:	/* rrc e */
+	  REG_E = rrc_byte(REG_E);
+	  break;
+	case 0x0C:	/* rrc h */
+	  REG_H = rrc_byte(REG_H);
+	  break;
+	case 0x0D:	/* rrc l */
+	  REG_L = rrc_byte(REG_L);
+	  break;
+	case 0x0E:	/* rrc (hl) */
+	  mem_write(REG_HL, rrc_byte(mem_read(REG_HL)));
+	  break;
+
+	case 0xC7:	/* set 0, a */
+	  REG_A |= (1 << 0);
+	  break;
+	case 0xC0:	/* set 0, b */
+	  REG_B |= (1 << 0);
+	  break;
+	case 0xC1:	/* set 0, c */
+	  REG_C |= (1 << 0);
+	  break;
+	case 0xC2:	/* set 0, d */
+	  REG_D |= (1 << 0);
+	  break;
+	case 0xC3:	/* set 0, e */
+	  REG_E |= (1 << 0);
+	  break;
+	case 0xC4:	/* set 0, h */
+	  REG_H |= (1 << 0);
+	  break;
+	case 0xC5:	/* set 0, l */
+	  REG_L |= (1 << 0);
+	  break;
+	case 0xCF:	/* set 1, a */
+	  REG_A |= (1 << 1);
+	  break;
+	case 0xC8:	/* set 1, b */
+	  REG_B |= (1 << 1);
+	  break;
+	case 0xC9:	/* set 1, c */
+	  REG_C |= (1 << 1);
+	  break;
+	case 0xCA:	/* set 1, d */
+	  REG_D |= (1 << 1);
+	  break;
+	case 0xCB:	/* set 1, e */
+	  REG_E |= (1 << 1);
+	  break;
+	case 0xCC:	/* set 1, h */
+	  REG_H |= (1 << 1);
+	  break;
+	case 0xCD:	/* set 1, l */
+	  REG_L |= (1 << 1);
+	  break;
+	case 0xD7:	/* set 2, a */
+	  REG_A |= (1 << 2);
+	  break;
+	case 0xD0:	/* set 2, b */
+	  REG_B |= (1 << 2);
+	  break;
+	case 0xD1:	/* set 2, c */
+	  REG_C |= (1 << 2);
+	  break;
+	case 0xD2:	/* set 2, d */
+	  REG_D |= (1 << 2);
+	  break;
+	case 0xD3:	/* set 2, e */
+	  REG_E |= (1 << 2);
+	  break;
+	case 0xD4:	/* set 2, h */
+	  REG_H |= (1 << 2);
+	  break;
+	case 0xD5:	/* set 2, l */
+	  REG_L |= (1 << 2);
+	  break;
+	case 0xDF:	/* set 3, a */
+	  REG_A |= (1 << 3);
+	  break;
+	case 0xD8:	/* set 3, b */
+	  REG_B |= (1 << 3);
+	  break;
+	case 0xD9:	/* set 3, c */
+	  REG_C |= (1 << 3);
+	  break;
+	case 0xDA:	/* set 3, d */
+	  REG_D |= (1 << 3);
+	  break;
+	case 0xDB:	/* set 3, e */
+	  REG_E |= (1 << 3);
+	  break;
+	case 0xDC:	/* set 3, h */
+	  REG_H |= (1 << 3);
+	  break;
+	case 0xDD:	/* set 3, l */
+	  REG_L |= (1 << 3);
+	  break;
+	case 0xE7:	/* set 4, a */
+	  REG_A |= (1 << 4);
+	  break;
+	case 0xE0:	/* set 4, b */
+	  REG_B |= (1 << 4);
+	  break;
+	case 0xE1:	/* set 4, c */
+	  REG_C |= (1 << 4);
+	  break;
+	case 0xE2:	/* set 4, d */
+	  REG_D |= (1 << 4);
+	  break;
+	case 0xE3:	/* set 4, e */
+	  REG_E |= (1 << 4);
+	  break;
+	case 0xE4:	/* set 4, h */
+	  REG_H |= (1 << 4);
+	  break;
+	case 0xE5:	/* set 4, l */
+	  REG_L |= (1 << 4);
+	  break;
+	case 0xEF:	/* set 5, a */
+	  REG_A |= (1 << 5);
+	  break;
+	case 0xE8:	/* set 5, b */
+	  REG_B |= (1 << 5);
+	  break;
+	case 0xE9:	/* set 5, c */
+	  REG_C |= (1 << 5);
+	  break;
+	case 0xEA:	/* set 5, d */
+	  REG_D |= (1 << 5);
+	  break;
+	case 0xEB:	/* set 5, e */
+	  REG_E |= (1 << 5);
+	  break;
+	case 0xEC:	/* set 5, h */
+	  REG_H |= (1 << 5);
+	  break;
+	case 0xED:	/* set 5, l */
+	  REG_L |= (1 << 5);
+	  break;
+	case 0xF7:	/* set 6, a */
+	  REG_A |= (1 << 6);
+	  break;
+	case 0xF0:	/* set 6, b */
+	  REG_B |= (1 << 6);
+	  break;
+	case 0xF1:	/* set 6, c */
+	  REG_C |= (1 << 6);
+	  break;
+	case 0xF2:	/* set 6, d */
+	  REG_D |= (1 << 6);
+	  break;
+	case 0xF3:	/* set 6, e */
+	  REG_E |= (1 << 6);
+	  break;
+	case 0xF4:	/* set 6, h */
+	  REG_H |= (1 << 6);
+	  break;
+	case 0xF5:	/* set 6, l */
+	  REG_L |= (1 << 6);
+	  break;
+	case 0xFF:	/* set 7, a */
+	  REG_A |= (1 << 7);
+	  break;
+	case 0xF8:	/* set 7, b */
+	  REG_B |= (1 << 7);
+	  break;
+	case 0xF9:	/* set 7, c */
+	  REG_C |= (1 << 7);
+	  break;
+	case 0xFA:	/* set 7, d */
+	  REG_D |= (1 << 7);
+	  break;
+	case 0xFB:	/* set 7, e */
+	  REG_E |= (1 << 7);
+	  break;
+	case 0xFC:	/* set 7, h */
+	  REG_H |= (1 << 7);
+	  break;
+	case 0xFD:	/* set 7, l */
+	  REG_L |= (1 << 7);
+	  break;
+
+	case 0xC6:	/* set 0, (hl) */
+	  mem_write(REG_HL, mem_read(REG_HL) | (1 << 0));
+	  break;
+	case 0xCE:	/* set 1, (hl) */
+	  mem_write(REG_HL, mem_read(REG_HL) | (1 << 1));
+	  break;
+	case 0xD6:	/* set 2, (hl) */
+	  mem_write(REG_HL, mem_read(REG_HL) | (1 << 2));
+	  break;
+	case 0xDE:	/* set 3, (hl) */
+	  mem_write(REG_HL, mem_read(REG_HL) | (1 << 3));
+	  break;
+	case 0xE6:	/* set 4, (hl) */
+	  mem_write(REG_HL, mem_read(REG_HL) | (1 << 4));
+	  break;
+	case 0xEE:	/* set 5, (hl) */
+	  mem_write(REG_HL, mem_read(REG_HL) | (1 << 5));
+	  break;
+	case 0xF6:	/* set 6, (hl) */
+	  mem_write(REG_HL, mem_read(REG_HL) | (1 << 6));
+	  break;
+	case 0xFE:	/* set 7, (hl) */
+	  mem_write(REG_HL, mem_read(REG_HL) | (1 << 7));
+	  break;
+
+	case 0x27:	/* sla a */
+	  REG_A = sla_byte(REG_A);
+	  break;
+	case 0x20:	/* sla b */
+	  REG_B = sla_byte(REG_B);
+	  break;
+	case 0x21:	/* sla c */
+	  REG_C = sla_byte(REG_C);
+	  break;
+	case 0x22:	/* sla d */
+	  REG_D = sla_byte(REG_D);
+	  break;
+	case 0x23:	/* sla e */
+	  REG_E = sla_byte(REG_E);
+	  break;
+	case 0x24:	/* sla h */
+	  REG_H = sla_byte(REG_H);
+	  break;
+	case 0x25:	/* sla l */
+	  REG_L = sla_byte(REG_L);
+	  break;
+	case 0x26:	/* sla (hl) */
+	  mem_write(REG_HL, sla_byte(mem_read(REG_HL)));
+	  break;
+
+	case 0x37:	/* sll a */
+	  REG_A = sll_byte(REG_A);
+	  break;
+	case 0x30:	/* sll b */
+	  REG_B = sll_byte(REG_B);
+	  break;
+	case 0x31:	/* sll c */
+	  REG_C = sll_byte(REG_C);
+	  break;
+	case 0x32:	/* sll d */
+	  REG_D = sll_byte(REG_D);
+	  break;
+	case 0x33:	/* sll e */
+	  REG_E = sll_byte(REG_E);
+	  break;
+	case 0x34:	/* sll h */
+	  REG_H = sll_byte(REG_H);
+	  break;
+	case 0x35:	/* sll l */
+	  REG_L = sll_byte(REG_L);
+	  break;
+	case 0x36:	/* sll (hl) */
+	  mem_write(REG_HL, sll_byte(mem_read(REG_HL)));
+	  break;
+
+	case 0x2F:	/* sra a */
+	  REG_A = sra_byte(REG_A);
+	  break;
+	case 0x28:	/* sra b */
+	  REG_B = sra_byte(REG_B);
+	  break;
+	case 0x29:	/* sra c */
+	  REG_C = sra_byte(REG_C);
+	  break;
+	case 0x2A:	/* sra d */
+	  REG_D = sra_byte(REG_D);
+	  break;
+	case 0x2B:	/* sra e */
+	  REG_E = sra_byte(REG_E);
+	  break;
+	case 0x2C:	/* sra h */
+	  REG_H = sra_byte(REG_H);
+	  break;
+	case 0x2D:	/* sra l */
+	  REG_L = sra_byte(REG_L);
+	  break;
+	case 0x2E:	/* sra (hl) */
+	  mem_write(REG_HL, sra_byte(mem_read(REG_HL)));
+	  break;
+
+	case 0x3F:	/* srl a */
+	  REG_A = srl_byte(REG_A);
+	  break;
+	case 0x38:	/* srl b */
+	  REG_B = srl_byte(REG_B);
+	  break;
+	case 0x39:	/* srl c */
+	  REG_C = srl_byte(REG_C);
+	  break;
+	case 0x3A:	/* srl d */
+	  REG_D = srl_byte(REG_D);
+	  break;
+	case 0x3B:	/* srl e */
+	  REG_E = srl_byte(REG_E);
+	  break;
+	case 0x3C:	/* srl h */
+	  REG_H = srl_byte(REG_H);
+	  break;
+	case 0x3D:	/* srl l */
+	  REG_L = srl_byte(REG_L);
+	  break;
+	case 0x3E:	/* srl (hl) */
+	  mem_write(REG_HL, srl_byte(mem_read(REG_HL)));
+	  break;
+	}
+    } else {
+      /*
+       * Indexed instructions are weird.  They ALWAYS take the source from
+       * (Ix+d) and ALWAYS write the result back, but ALSO write the result
+       * to a GPR unless the register specifier is 6.  BIT never writes
+       * anything back to either memory or GPR.
+       */
+
+      addr = ix->word + (int8_t)mem_read(REG_PC++);
+      instruction = mem_read(REG_PC++);
+
+      data = mem_read(addr);
+
+      switch (instruction & 0xc0) {
+      case 0x00:
+	switch (instruction & ~7) {
+	case 0x00:		/* RLC */
+	  data = rlc_byte(data);
+	  break;
+	case 0x08:		/* RRC */
+	  data = rrc_byte(data);
+	  break;
+	case 0x10:		/* RL */
+	  data = rl_byte(data);
+	  break;
+	case 0x18:		/* RR */
+	  data = rr_byte(data);
+	  break;
+	case 0x20:		/* SLA */
+	  data = sla_byte(data);
+	  break;
+	case 0x28:		/* SRA */
+	  data = sra_byte(data);
+	  break;
+	case 0x30:		/* SLL */
+	  data = sll_byte(data);
+	  break;
+	case 0x38:		/* SRL */
+	  data = srl_byte(data);
+	  break;
+	}
 	break;
 
-      case 0x87:	/* res 0, a */
-	REG_A &= ~(1 << 0);
-	break;
-      case 0x80:	/* res 0, b */
-	REG_B &= ~(1 << 0);
-	break;
-      case 0x81:	/* res 0, c */
-	REG_C &= ~(1 << 0);
-	break;
-      case 0x82:	/* res 0, d */
-	REG_D &= ~(1 << 0);
-	break;
-      case 0x83:	/* res 0, e */
-	REG_E &= ~(1 << 0);
-	break;
-      case 0x84:	/* res 0, h */
-	ix->byte.high &= ~(1 << 0);
-	break;
-      case 0x85:	/* res 0, l */
-	ix->byte.low &= ~(1 << 0);
-	break;
-      case 0x8F:	/* res 1, a */
-	REG_A &= ~(1 << 1);
-	break;
-      case 0x88:	/* res 1, b */
-	REG_B &= ~(1 << 1);
-	break;
-      case 0x89:	/* res 1, c */
-	REG_C &= ~(1 << 1);
-	break;
-      case 0x8A:	/* res 1, d */
-	REG_D &= ~(1 << 1);
-	break;
-      case 0x8B:	/* res 1, e */
-	REG_E &= ~(1 << 1);
-	break;
-      case 0x8C:	/* res 1, h */
-	ix->byte.high &= ~(1 << 1);
-	break;
-      case 0x8D:	/* res 1, l */
-	ix->byte.low &= ~(1 << 1);
-	break;
-      case 0x97:	/* res 2, a */
-	REG_A &= ~(1 << 2);
-	break;
-      case 0x90:	/* res 2, b */
-	REG_B &= ~(1 << 2);
-	break;
-      case 0x91:	/* res 2, c */
-	REG_C &= ~(1 << 2);
-	break;
-      case 0x92:	/* res 2, d */
-	REG_D &= ~(1 << 2);
-	break;
-      case 0x93:	/* res 2, e */
-	REG_E &= ~(1 << 2);
-	break;
-      case 0x94:	/* res 2, h */
-	ix->byte.high &= ~(1 << 2);
-	break;
-      case 0x95:	/* res 2, l */
-	ix->byte.low &= ~(1 << 2);
-	break;
-      case 0x9F:	/* res 3, a */
-	REG_A &= ~(1 << 3);
-	break;
-      case 0x98:	/* res 3, b */
-	REG_B &= ~(1 << 3);
-	break;
-      case 0x99:	/* res 3, c */
-	REG_C &= ~(1 << 3);
-	break;
-      case 0x9A:	/* res 3, d */
-	REG_D &= ~(1 << 3);
-	break;
-      case 0x9B:	/* res 3, e */
-	REG_E &= ~(1 << 3);
-	break;
-      case 0x9C:	/* res 3, h */
-	ix->byte.high &= ~(1 << 3);
-	break;
-      case 0x9D:	/* res 3, l */
-	ix->byte.low &= ~(1 << 3);
-	break;
-      case 0xA7:	/* res 4, a */
-	REG_A &= ~(1 << 4);
-	break;
-      case 0xA0:	/* res 4, b */
-	REG_B &= ~(1 << 4);
-	break;
-      case 0xA1:	/* res 4, c */
-	REG_C &= ~(1 << 4);
-	break;
-      case 0xA2:	/* res 4, d */
-	REG_D &= ~(1 << 4);
-	break;
-      case 0xA3:	/* res 4, e */
-	REG_E &= ~(1 << 4);
-	break;
-      case 0xA4:	/* res 4, h */
-	ix->byte.high &= ~(1 << 4);
-	break;
-      case 0xA5:	/* res 4, l */
-	ix->byte.low &= ~(1 << 4);
-	break;
-      case 0xAF:	/* res 5, a */
-	REG_A &= ~(1 << 5);
-	break;
-      case 0xA8:	/* res 5, b */
-	REG_B &= ~(1 << 5);
-	break;
-      case 0xA9:	/* res 5, c */
-	REG_C &= ~(1 << 5);
-	break;
-      case 0xAA:	/* res 5, d */
-	REG_D &= ~(1 << 5);
-	break;
-      case 0xAB:	/* res 5, e */
-	REG_E &= ~(1 << 5);
-	break;
-      case 0xAC:	/* res 5, h */
-	ix->byte.high &= ~(1 << 5);
-	break;
-      case 0xAD:	/* res 5, l */
-	ix->byte.low &= ~(1 << 5);
-	break;
-      case 0xB7:	/* res 6, a */
-	REG_A &= ~(1 << 6);
-	break;
-      case 0xB0:	/* res 6, b */
-	REG_B &= ~(1 << 6);
-	break;
-      case 0xB1:	/* res 6, c */
-	REG_C &= ~(1 << 6);
-	break;
-      case 0xB2:	/* res 6, d */
-	REG_D &= ~(1 << 6);
-	break;
-      case 0xB3:	/* res 6, e */
-	REG_E &= ~(1 << 6);
-	break;
-      case 0xB4:	/* res 6, h */
-	ix->byte.high &= ~(1 << 6);
-	break;
-      case 0xB5:	/* res 6, l */
-	ix->byte.low &= ~(1 << 6);
-	break;
-      case 0xBF:	/* res 7, a */
-	REG_A &= ~(1 << 7);
-	break;
-      case 0xB8:	/* res 7, b */
-	REG_B &= ~(1 << 7);
-	break;
-      case 0xB9:	/* res 7, c */
-	REG_C &= ~(1 << 7);
-	break;
-      case 0xBA:	/* res 7, d */
-	REG_D &= ~(1 << 7);
-	break;
-      case 0xBB:	/* res 7, e */
-	REG_E &= ~(1 << 7);
-	break;
-      case 0xBC:	/* res 7, h */
-	ix->byte.high &= ~(1 << 7);
-	break;
-      case 0xBD:	/* res 7, l */
-	ix->byte.low &= ~(1 << 7);
+      case 0x40:		/* BIT */
+	do_test_bit(data, (instruction >> 3) & 7);
+	return;			/* No writeback! */
+
+      case 0x80:		/* RES */
+	data &= ~(1 << ((instruction >> 3) & 7));
 	break;
 
-      case 0x86:	/* res 0, (hl) */
-	mem_write(addr, mem_read(addr) & ~(1 << 0));
+      case 0xc0:		/* SET */
+	data |= (1 << ((instruction >> 3) & 7));
 	break;
-      case 0x8E:	/* res 1, (hl) */
-	mem_write(addr, mem_read(addr) & ~(1 << 1));
-	break;
-      case 0x96:	/* res 2, (hl) */
-      	mem_write(addr, mem_read(addr) & ~(1 << 2));
-	break;
-      case 0x9E:	/* res 3, (hl) */
-	mem_write(addr, mem_read(addr) & ~(1 << 3));
-	break;
-      case 0xA6:	/* res 4, (hl) */
-	mem_write(addr, mem_read(addr) & ~(1 << 4));
-	break;
-      case 0xAE:	/* res 5, (hl) */
-	mem_write(addr, mem_read(addr) & ~(1 << 5));
-	break;
-      case 0xB6:	/* res 6, (hl) */
-	mem_write(addr, mem_read(addr) & ~(1 << 6));
-	break;
-      case 0xBE:	/* res 7, (hl) */
-	mem_write(addr, mem_read(addr) & ~(1 << 7));
-	break;
+      }
 
-      case 0x17:	/* rl a */
-	REG_A = rl_byte(REG_A);
+      switch (instruction & 7) {
+      case 0:
+	REG_B = data;
 	break;
-      case 0x10:	/* rl b */
-	REG_B = rl_byte(REG_B);
+      case 1:
+	REG_C = data;
 	break;
-      case 0x11:	/* rl c */
-	REG_C = rl_byte(REG_C);
+      case 2:
+	REG_D = data;
 	break;
-      case 0x12:	/* rl d */
-	REG_D = rl_byte(REG_D);
+      case 3:
+	REG_E = data;
 	break;
-      case 0x13:	/* rl e */
-	REG_E = rl_byte(REG_E);
+      case 4:
+	REG_H = data;
 	break;
-      case 0x14:	/* rl h */
-	ix->byte.high = rl_byte(ix->byte.high);
+      case 5:
+	REG_L = data;
 	break;
-      case 0x15:	/* rl l */
-	ix->byte.low = rl_byte(ix->byte.low);
+      case 6:
+	/* Only memory */
 	break;
-      case 0x16:	/* rl (hl) */
-	mem_write(addr, rl_byte(mem_read(addr)));
+      case 7:
+	REG_A = data;
 	break;
+      }
 
-      case 0x07:	/* rlc a */
-	REG_A = rlc_byte(REG_A);
-	break;
-      case 0x00:	/* rlc b */
-	REG_B = rlc_byte(REG_B);
-	break;
-      case 0x01:	/* rlc c */
-	REG_C = rlc_byte(REG_C);
-	break;
-      case 0x02:	/* rlc d */
-	REG_D = rlc_byte(REG_D);
-	break;
-      case 0x03:	/* rlc e */
-	REG_E = rlc_byte(REG_E);
-	break;
-      case 0x04:	/* rlc h */
-	ix->byte.high = rlc_byte(ix->byte.high);
-	break;
-      case 0x05:	/* rlc l */
-	ix->byte.low = rlc_byte(ix->byte.low);
-	break;
-      case 0x06:	/* rlc (hl) */
-	mem_write(addr, rlc_byte(mem_read(addr)));
-	break;
-
-      case 0x1F:	/* rr a */
-	REG_A = rr_byte(REG_A);
-	break;
-      case 0x18:	/* rr b */
-	REG_B = rr_byte(REG_B);
-	break;
-      case 0x19:	/* rr c */
-	REG_C = rr_byte(REG_C);
-	break;
-      case 0x1A:	/* rr d */
-	REG_D = rr_byte(REG_D);
-	break;
-      case 0x1B:	/* rr e */
-	REG_E = rr_byte(REG_E);
-	break;
-      case 0x1C:	/* rr h */
-	ix->byte.high = rr_byte(ix->byte.high);
-	break;
-      case 0x1D:	/* rr l */
-	ix->byte.low = rr_byte(ix->byte.low);
-	break;
-      case 0x1E:	/* rr (hl) */
-	mem_write(addr, rr_byte(mem_read(addr)));
-	break;
-
-      case 0x0F:	/* rrc a */
-	REG_A = rrc_byte(REG_A);
-	break;
-      case 0x08:	/* rrc b */
-	REG_B = rrc_byte(REG_B);
-	break;
-      case 0x09:	/* rrc c */
-	REG_C = rrc_byte(REG_C);
-	break;
-      case 0x0A:	/* rrc d */
-	REG_D = rrc_byte(REG_D);
-	break;
-      case 0x0B:	/* rrc e */
-	REG_E = rrc_byte(REG_E);
-	break;
-      case 0x0C:	/* rrc h */
-	ix->byte.high = rrc_byte(ix->byte.high);
-	break;
-      case 0x0D:	/* rrc l */
-	ix->byte.low = rrc_byte(ix->byte.low);
-	break;
-      case 0x0E:	/* rrc (hl) */
-	mem_write(addr, rrc_byte(mem_read(addr)));
-	break;
-
-      case 0xC7:	/* set 0, a */
-	REG_A |= (1 << 0);
-	break;
-      case 0xC0:	/* set 0, b */
-	REG_B |= (1 << 0);
-	break;
-      case 0xC1:	/* set 0, c */
-	REG_C |= (1 << 0);
-	break;
-      case 0xC2:	/* set 0, d */
-	REG_D |= (1 << 0);
-	break;
-      case 0xC3:	/* set 0, e */
-	REG_E |= (1 << 0);
-	break;
-      case 0xC4:	/* set 0, h */
-	ix->byte.high |= (1 << 0);
-	break;
-      case 0xC5:	/* set 0, l */
-	ix->byte.low |= (1 << 0);
-	break;
-      case 0xCF:	/* set 1, a */
-	REG_A |= (1 << 1);
-	break;
-      case 0xC8:	/* set 1, b */
-	REG_B |= (1 << 1);
-	break;
-      case 0xC9:	/* set 1, c */
-	REG_C |= (1 << 1);
-	break;
-      case 0xCA:	/* set 1, d */
-	REG_D |= (1 << 1);
-	break;
-      case 0xCB:	/* set 1, e */
-	REG_E |= (1 << 1);
-	break;
-      case 0xCC:	/* set 1, h */
-	ix->byte.high |= (1 << 1);
-	break;
-      case 0xCD:	/* set 1, l */
-	ix->byte.low |= (1 << 1);
-	break;
-      case 0xD7:	/* set 2, a */
-	REG_A |= (1 << 2);
-	break;
-      case 0xD0:	/* set 2, b */
-	REG_B |= (1 << 2);
-	break;
-      case 0xD1:	/* set 2, c */
-	REG_C |= (1 << 2);
-	break;
-      case 0xD2:	/* set 2, d */
-	REG_D |= (1 << 2);
-	break;
-      case 0xD3:	/* set 2, e */
-	REG_E |= (1 << 2);
-	break;
-      case 0xD4:	/* set 2, h */
-	ix->byte.high |= (1 << 2);
-	break;
-      case 0xD5:	/* set 2, l */
-	ix->byte.low |= (1 << 2);
-	break;
-      case 0xDF:	/* set 3, a */
-	REG_A |= (1 << 3);
-	break;
-      case 0xD8:	/* set 3, b */
-	REG_B |= (1 << 3);
-	break;
-      case 0xD9:	/* set 3, c */
-	REG_C |= (1 << 3);
-	break;
-      case 0xDA:	/* set 3, d */
-	REG_D |= (1 << 3);
-	break;
-      case 0xDB:	/* set 3, e */
-	REG_E |= (1 << 3);
-	break;
-      case 0xDC:	/* set 3, h */
-	ix->byte.high |= (1 << 3);
-	break;
-      case 0xDD:	/* set 3, l */
-	ix->byte.low |= (1 << 3);
-	break;
-      case 0xE7:	/* set 4, a */
-	REG_A |= (1 << 4);
-	break;
-      case 0xE0:	/* set 4, b */
-	REG_B |= (1 << 4);
-	break;
-      case 0xE1:	/* set 4, c */
-	REG_C |= (1 << 4);
-	break;
-      case 0xE2:	/* set 4, d */
-	REG_D |= (1 << 4);
-	break;
-      case 0xE3:	/* set 4, e */
-	REG_E |= (1 << 4);
-	break;
-      case 0xE4:	/* set 4, h */
-	ix->byte.high |= (1 << 4);
-	break;
-      case 0xE5:	/* set 4, l */
-	ix->byte.low |= (1 << 4);
-	break;
-      case 0xEF:	/* set 5, a */
-	REG_A |= (1 << 5);
-	break;
-      case 0xE8:	/* set 5, b */
-	REG_B |= (1 << 5);
-	break;
-      case 0xE9:	/* set 5, c */
-	REG_C |= (1 << 5);
-	break;
-      case 0xEA:	/* set 5, d */
-	REG_D |= (1 << 5);
-	break;
-      case 0xEB:	/* set 5, e */
-	REG_E |= (1 << 5);
-	break;
-      case 0xEC:	/* set 5, h */
-	ix->byte.high |= (1 << 5);
-	break;
-      case 0xED:	/* set 5, l */
-	ix->byte.low |= (1 << 5);
-	break;
-      case 0xF7:	/* set 6, a */
-	REG_A |= (1 << 6);
-	break;
-      case 0xF0:	/* set 6, b */
-	REG_B |= (1 << 6);
-	break;
-      case 0xF1:	/* set 6, c */
-	REG_C |= (1 << 6);
-	break;
-      case 0xF2:	/* set 6, d */
-	REG_D |= (1 << 6);
-	break;
-      case 0xF3:	/* set 6, e */
-	REG_E |= (1 << 6);
-	break;
-      case 0xF4:	/* set 6, h */
-	ix->byte.high |= (1 << 6);
-	break;
-      case 0xF5:	/* set 6, l */
-	ix->byte.low |= (1 << 6);
-	break;
-      case 0xFF:	/* set 7, a */
-	REG_A |= (1 << 7);
-	break;
-      case 0xF8:	/* set 7, b */
-	REG_B |= (1 << 7);
-	break;
-      case 0xF9:	/* set 7, c */
-	REG_C |= (1 << 7);
-	break;
-      case 0xFA:	/* set 7, d */
-	REG_D |= (1 << 7);
-	break;
-      case 0xFB:	/* set 7, e */
-	REG_E |= (1 << 7);
-	break;
-      case 0xFC:	/* set 7, h */
-	ix->byte.high |= (1 << 7);
-	break;
-      case 0xFD:	/* set 7, l */
-	ix->byte.low |= (1 << 7);
-	break;
-
-      case 0xC6:	/* set 0, (hl) */
-	mem_write(addr, mem_read(addr) | (1 << 0));
-	break;
-      case 0xCE:	/* set 1, (hl) */
-	mem_write(addr, mem_read(addr) | (1 << 1));
-	break;
-      case 0xD6:	/* set 2, (hl) */
-	mem_write(addr, mem_read(addr) | (1 << 2));
-	break;
-      case 0xDE:	/* set 3, (hl) */
-	mem_write(addr, mem_read(addr) | (1 << 3));
-	break;
-      case 0xE6:	/* set 4, (hl) */
-	mem_write(addr, mem_read(addr) | (1 << 4));
-	break;
-      case 0xEE:	/* set 5, (hl) */
-	mem_write(addr, mem_read(addr) | (1 << 5));
-	break;
-      case 0xF6:	/* set 6, (hl) */
-	mem_write(addr, mem_read(addr) | (1 << 6));
-	break;
-      case 0xFE:	/* set 7, (hl) */
-	mem_write(addr, mem_read(addr) | (1 << 7));
-	break;
-
-      case 0x27:	/* sla a */
-	REG_A = sla_byte(REG_A);
-	break;
-      case 0x20:	/* sla b */
-	REG_B = sla_byte(REG_B);
-	break;
-      case 0x21:	/* sla c */
-	REG_C = sla_byte(REG_C);
-	break;
-      case 0x22:	/* sla d */
-	REG_D = sla_byte(REG_D);
-	break;
-      case 0x23:	/* sla e */
-	REG_E = sla_byte(REG_E);
-	break;
-      case 0x24:	/* sla h */
-	ix->byte.high = sla_byte(ix->byte.high);
-	break;
-      case 0x25:	/* sla l */
-	ix->byte.low = sla_byte(ix->byte.low);
-	break;
-      case 0x26:	/* sla (hl) */
-	mem_write(addr, sla_byte(mem_read(addr)));
-	break;
-
-      case 0x37:	/* sll a */
-	REG_A = sll_byte(REG_A);
-	break;
-      case 0x30:	/* sll b */
-	REG_B = sll_byte(REG_B);
-	break;
-      case 0x31:	/* sll c */
-	REG_C = sll_byte(REG_C);
-	break;
-      case 0x32:	/* sll d */
-	REG_D = sll_byte(REG_D);
-	break;
-      case 0x33:	/* sll e */
-	REG_E = sll_byte(REG_E);
-	break;
-      case 0x34:	/* sll h */
-	ix->byte.high = sll_byte(ix->byte.high);
-	break;
-      case 0x35:	/* sll l */
-	ix->byte.low = sll_byte(ix->byte.low);
-	break;
-      case 0x36:	/* sll (hl) */
-	mem_write(addr, sll_byte(mem_read(addr)));
-	break;
-
-      case 0x2F:	/* sra a */
-	REG_A = sra_byte(REG_A);
-	break;
-      case 0x28:	/* sra b */
-	REG_B = sra_byte(REG_B);
-	break;
-      case 0x29:	/* sra c */
-	REG_C = sra_byte(REG_C);
-	break;
-      case 0x2A:	/* sra d */
-	REG_D = sra_byte(REG_D);
-	break;
-      case 0x2B:	/* sra e */
-	REG_E = sra_byte(REG_E);
-	break;
-      case 0x2C:	/* sra h */
-	ix->byte.high = sra_byte(ix->byte.high);
-	break;
-      case 0x2D:	/* sra l */
-	ix->byte.low = sra_byte(ix->byte.low);
-	break;
-      case 0x2E:	/* sra (hl) */
-	mem_write(addr, sra_byte(mem_read(addr)));
-	break;
-
-      case 0x3F:	/* srl a */
-	REG_A = srl_byte(REG_A);
-	break;
-      case 0x38:	/* srl b */
-	REG_B = srl_byte(REG_B);
-	break;
-      case 0x39:	/* srl c */
-	REG_C = srl_byte(REG_C);
-	break;
-      case 0x3A:	/* srl d */
-	REG_D = srl_byte(REG_D);
-	break;
-      case 0x3B:	/* srl e */
-	REG_E = srl_byte(REG_E);
-	break;
-      case 0x3C:	/* srl h */
-	ix->byte.high = srl_byte(ix->byte.high);
-	break;
-      case 0x3D:	/* srl l */
-	ix->byte.low = srl_byte(ix->byte.low);
-	break;
-      case 0x3E:	/* srl (hl) */
-	mem_write(addr, srl_byte(mem_read(addr)));
-	break;
-
-      default:
-	longjmp(bad_insn, 1);
-	break;
+      mem_write(addr, data);
     }
 }
 
