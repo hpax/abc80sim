@@ -2576,16 +2576,12 @@ int z80_run(int continuous)
 	    do_CB_instruction(ix);
 	    break;
 	  case 0xDD:	/* DD.. extended instruction */
-	    if (ix != &z80_state.hl)
-	      goto bad;
 	    ix = &z80_state.ix;
 	    goto indexed;
 	  case 0xED:	/* ED.. extended instruction */
 	    do_ED_instruction(ix);
 	    break;
 	  case 0xFD:	/* FD.. extended instruction */
-	    if (ix != &z80_state.hl)
-	      goto bad;
 	    ix = &z80_state.iy;
 	    goto indexed;
 
