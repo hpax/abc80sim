@@ -2304,6 +2304,8 @@ static void do_ED_instruction(wordregister *ix)
 
       case 0x46:	/* im 0 */
       case 0x66:
+      case 0x4E:
+      case 0x6E:
 	do_im0();
 	break;
       case 0x56:	/* im 1 */
