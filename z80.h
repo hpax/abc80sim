@@ -57,7 +57,7 @@ struct z80_state_struct
     wordregister hl_prime;
 
     uint8_t i;	/* interrupt-page address register */
-    /* uint8_t r; */  /* no memory-refresh register, just fetch random values */
+    uint8_t r;  /* memory-refresh register */
 
     uint8_t iff1, iff2;
     uint8_t interrupt_mode;
@@ -106,6 +106,7 @@ struct z80_state_struct
 #define REG_IY	(z80_state.iy.word)
 
 #define REG_I	(z80_state.i)
+#define REG_R	(z80_state.r)
 
 /*
  * Flag accessors:

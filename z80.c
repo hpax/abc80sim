@@ -916,7 +916,7 @@ static void do_lddr(void)
     REG_F &= ~(HALF_CARRY_MASK | OVERFLOW_MASK | SUBTRACT_MASK);
 }
 
-static void do_ld_a_i(void)
+static void do_ld_a_ir(uint8_t val)
 {
     uint8_t clear, set;
 
@@ -924,29 +924,7 @@ static void do_ld_a_i(void)
 	      SUBTRACT_MASK;
     set = 0;
 
-    REG_A = REG_I;
-
-    if(REG_A & 0x80)
-      set |= SIGN_MASK;
-    if(REG_A == 0)
-      set |= ZERO_MASK;
-
-    if(z80_state.iff2)
-      set |= OVERFLOW_MASK;
-
-    REG_F = (REG_F & ~clear) | set;
-}
-
-static void do_ld_a_r(void)
-{
-    uint8_t clear, set;
-
-    clear = SIGN_MASK | ZERO_MASK | HALF_CARRY_MASK | OVERFLOW_MASK |
-	      SUBTRACT_MASK;
-    set = 0;
-
-    /* Fetch a random value. */
-    REG_A = (rand() >> 8) & 0xFF;
+    REG_A = val;
 
     if(REG_A & 0x80)
       set |= SIGN_MASK;
@@ -1373,6 +1351,7 @@ static void do_CB_instruction(wordregister *ix)
        */
       
       instruction = mem_read(REG_PC++);
+      REG_R++;
 
       switch(instruction)
 	{
@@ -2168,6 +2147,7 @@ static void do_CB_instruction(wordregister *ix)
 
       addr = ix->word + (int8_t)mem_read(REG_PC++);
       instruction = mem_read(REG_PC++);
+      REG_R++;
 
       data = mem_read(addr);
 
@@ -2270,6 +2250,7 @@ static void do_ED_instruction(wordregister *ix)
      */
 
     instruction = mem_read(REG_PC++);
+    REG_R++;
     
     switch(instruction)
     {
@@ -2351,14 +2332,17 @@ static void do_ED_instruction(wordregister *ix)
 	break;
 
       case 0x57:	/* ld a, i */
-	do_ld_a_i();
+	do_ld_a_ir(REG_I);
 	break;
       case 0x47:	/* ld i, a */
 	REG_I = REG_A;
 	break;
 
       case 0x5F:	/* ld a, r */
-	do_ld_a_r();
+	do_ld_a_ir(REG_R & 0x7f); /* The real R register is only 7 bits */
+	break;
+      case 0x4F:	/* ld r, a */
+	REG_R = REG_A;
 	break;
 
       case 0x4B:	/* ld bc, (address) */
@@ -2557,6 +2541,7 @@ int z80_run(int continuous)
 
     indexed:
 	instruction = mem_read(REG_PC++);
+	REG_R++;
 
 	switch(instruction)
 	{
