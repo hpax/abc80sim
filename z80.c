@@ -125,6 +125,12 @@ static int parity(unsigned value)
     return(parity_table[value]);
 }
 
+static void inc_r(void)
+{
+    /* Only the low 7 bits are incremented */
+    REG_R = ((REG_R + 1) & 0x7f) | (REG_R & 0x80);
+}
+
 static void do_add_flags(int a, int b, int result)
 {
     /*
@@ -1351,7 +1357,7 @@ static void do_CB_instruction(wordregister *ix)
        */
       
       instruction = mem_read(REG_PC++);
-      REG_R++;
+      inc_r();
 
       switch(instruction)
 	{
@@ -2147,7 +2153,7 @@ static void do_CB_instruction(wordregister *ix)
 
       addr = ix->word + (int8_t)mem_read(REG_PC++);
       instruction = mem_read(REG_PC++);
-      REG_R++;
+      inc_r();
 
       data = mem_read(addr);
 
@@ -2250,7 +2256,7 @@ static void do_ED_instruction(wordregister *ix)
      */
 
     instruction = mem_read(REG_PC++);
-    REG_R++;
+    inc_r();
     
     switch(instruction)
     {
@@ -2339,7 +2345,7 @@ static void do_ED_instruction(wordregister *ix)
 	break;
 
       case 0x5F:	/* ld a, r */
-	do_ld_a_ir(REG_R & 0x7f); /* The real R register is only 7 bits */
+	do_ld_a_ir(REG_R);
 	break;
       case 0x4F:	/* ld r, a */
 	REG_R = REG_A;
