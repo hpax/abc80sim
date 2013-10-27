@@ -125,10 +125,15 @@ static int parity(unsigned value)
     return(parity_table[value]);
 }
 
-static void inc_r(void)
+static void add_r(uint8_t jump)
 {
     /* Only the low 7 bits are incremented */
-    REG_R = ((REG_R + 1) & 0x7f) | (REG_R & 0x80);
+    REG_R = ((REG_R + jump) & 0x7f) | (REG_R & 0x80);
+}
+
+static void inc_r(void)
+{
+    add_r(1);
 }
 
 static void do_add_flags(int a, int b, int result)
@@ -899,6 +904,7 @@ static void do_ldir(void)
     mem_block_transfer(REG_DE, REG_HL, 1, REG_BC);
 
     /* set registers to final values */
+    inc_r((REG_BC-1) << 1);
     REG_DE += REG_BC;
     REG_HL += REG_BC;
     REG_BC = 0;
@@ -914,6 +920,7 @@ static void do_lddr(void)
     mem_block_transfer(REG_DE, REG_HL, -1, REG_BC);
 
     /* set registers to final values */
+    inc_r((REG_BC-1) << 1);
     REG_DE -= REG_BC;
     REG_HL -= REG_BC;
     REG_BC = 0;
@@ -1142,6 +1149,8 @@ static void do_ind(void)
 
 static void do_indr(void)
 {
+    add_r((REG_B-1) << 1);
+
     do
     {
 	mem_write(REG_HL, z80_in(REG_C));
@@ -1169,6 +1178,8 @@ static void do_ini(void)
 
 static void do_inir(void)
 {
+    add_r((REG_B-1) << 1);
+
     do
     {
 	mem_write(REG_HL, z80_in(REG_C));
@@ -1226,6 +1237,8 @@ static void do_outd(void)
 
 static void do_outdr(void)
 {
+    add_r((REG_B-1) << 1);
+
     do
     {
 	z80_out(REG_C, mem_read(REG_HL));
@@ -1253,6 +1266,8 @@ static void do_outi(void)
 
 static void do_outir(void)
 {
+    add_r((REG_B-1) << 1);
+
     do
     {
 	z80_out(REG_C, mem_read(REG_HL));
