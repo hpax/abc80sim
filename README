@@ -1,3 +1,27 @@
+This version has been substantially modified by H. Peter Anvin
+<hpa@zytor.com> from the original version.  The original README is
+included but may not apply anymore.
+
+Version 2.1 includes support for undocumented Z80 instructions, and
+uses SDL for output.  It supports ABC80 display in 40- or 80-character
+modes.
+
+It also includes the PR:/PRA:/PRB: "special" printer device from the
+ABC80-in-an-FPGA project from www.abc80.org instead of the magic
+UNX:/LIB: device.  This allows abc80sim to be used as a development
+platform.
+
+I would like to move both display and printing to Qt rather than SDL
+and lpr, but I have no idea when I will have time for that.
+
+Files to be accessed with PRA: (text) or PRB: (binary) should live in
+the "abcdir" subdirectory; the "abcdisk" subdirectory can contain disk
+images in UFD-DOS format.
+
+
+	---------------------
+
+
 This directory contains the source for an ABC80 emulator under X-windows. The
 program is built around a Z80 emulator by David Gingold <gingold@think.com>
 and Alec Wolman <wolman@crl.dec.com> who wrote it to use in an emulator for
