@@ -59,7 +59,7 @@ static struct ctl_state mf_state =
 static struct ctl_state sf_state =
   {
     .secperclust = 4,
-    .sectors     = 77*2*26,
+    .sectors     = (77*2-1)*26,	/* Spår 0, sida 0 används ej */
     .name        = "sf"
   };
 static struct ctl_state hd_state =
@@ -90,11 +90,7 @@ static inline int cur_sector(struct ctl_state *state)
 
 static inline int file_pos_valid(struct ctl_state *state)
 {
-  if (state->new)
-    return cur_sector(state) < state->sectors;
-  else
-    return cur_sector(state) < state->sectors &&
-      (state->k[3] & 31) < state->secperclust;
+  return cur_sector(state) < state->sectors;
 }
 
 static inline int file_pos(struct ctl_state *state)
