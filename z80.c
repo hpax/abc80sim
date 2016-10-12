@@ -2,12 +2,12 @@
  * Copyright (C) 1992 Clarendon Hill Software.
  *
  * Permission is granted to any individual or institution to use, copy,
- * or redistribute this software, provided this copyright notice is retained. 
+ * or redistribute this software, provided this copyright notice is retained.
  *
  * This software is provided "as is" without any expressed or implied
  * warranty.  If this software brings on any sort of damage -- physical,
  * monetary, emotional, or brain -- too bad.  You've got no one to blame
- * but yourself. 
+ * but yourself.
  *
  * The software may be modified for your own purposes, but modified versions
  * must retain this notice.
@@ -35,7 +35,9 @@
  */
 struct z80_state_struct z80_state;
 
-#define TRACE 0
+#ifndef TRACE
+# define TRACE 0
+#endif
 
 #if TRACE
 static void diffstate(void);
@@ -104,21 +106,21 @@ static int parity(unsigned value)
     /* for parity flag, 1 = even parity, 0 = odd parity. */
     static const char parity_table[256] =
     {
-	1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1, 
-	0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0, 
-	0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0, 
-	1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1, 
-	0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0, 
-	1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1, 
-	1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1, 
-	0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0, 
-	0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0, 
-	1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1, 
-	1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1, 
-	0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0, 
-	1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1, 
-	0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0, 
-	0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0, 
+	1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1,
+	0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0,
+	0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0,
+	1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1,
+	0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0,
+	1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1,
+	1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1,
+	0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0,
+	0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0,
+	1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1,
+	1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1,
+	0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0,
+	1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1,
+	0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0,
+	0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0,
 	1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1
     };
 
@@ -497,7 +499,7 @@ static void do_cpdr(void)
 	do_cp(mem_read(REG_HL));
 	REG_HL--;
 	REG_BC--;
-	
+
 	if(REG_BC == 0)
 	  CLEAR_OVERFLOW();
 	else
@@ -512,7 +514,7 @@ static void do_cpir(void)
 	do_cp(mem_read(REG_HL));
 	REG_HL++;
 	REG_BC--;
-	
+
 	if(REG_BC == 0)
 	  CLEAR_OVERFLOW();
 	else
@@ -1320,7 +1322,7 @@ static void do_nmi(void)
 }
 
 
-static void 
+static void
 do_int(void)
 {
     switch (z80_state.interrupt_mode) {
@@ -1372,7 +1374,7 @@ static void do_CB_instruction(wordregister *ix)
       /*
        * Normal operation sans DD/FD prefix
        */
-      
+
       instruction = mem_read(REG_PC++);
       inc_r();
 
@@ -1546,7 +1548,7 @@ static void do_CB_instruction(wordregister *ix)
 	case 0x7D:	/* bit 7, l */
 	  do_test_bit(REG_L, 7);
 	  break;
-	
+
 	case 0x46:	/* bit 0, (hl) */
 	  do_test_bit(mem_read(REG_HL), 0);
 	  break;
@@ -2253,7 +2255,7 @@ static void do_ED_instruction(wordregister *ix)
     uint8_t instruction;
 
     (void)ix;			/* DD/FD has no effect */
-    
+
     /*
      * Undocumented instruction notes:
      * ED 00-3F = NOP
@@ -2274,7 +2276,7 @@ static void do_ED_instruction(wordregister *ix)
 
     instruction = mem_read(REG_PC++);
     inc_r();
-    
+
     switch(instruction)
     {
       case 0x4A:	/* adc hl, bc */
@@ -2478,7 +2480,7 @@ static void do_ED_instruction(wordregister *ix)
 	REG_PC = mem_read_word(REG_SP);
 	REG_SP += 2;
 	z80_state.iff1 = z80_state.iff2;  /* restore the iff state */
- 	z80_state.nmi_in_progress = 0;
+	z80_state.nmi_in_progress = 0;
 	break;
 
       case 0x6F:	/* rld */
@@ -2513,7 +2515,7 @@ static void do_ED_instruction(wordregister *ix)
 /*#define MEM_READ(a) ((a < 0x3000) ? memory[a] : mem_read(a));*/
 /* #define MEM_READ(a) (((((a) - 0x3000) & 0xffff) >= 0xc00) ? memory[a] : mem_read(a)) */
 
-int z80_run(int continuous)
+int z80_run(int continuous, int halted)
 {
     uint8_t instruction;
     uint16_t address; /* generic temps */
@@ -2528,6 +2530,29 @@ int z80_run(int continuous)
 	  extern volatile int event_pending;
 	  void check_event(void);
 
+	  do {
+	    if ( event_pending )
+	      check_event();
+
+	    /*
+	     * End of special hack.
+	     */
+
+	    /* Check for an interrupt */
+	    if (z80_state.nminterrupt) {
+	      if(z80_state.nmi_in_progress == 0) {
+		halted = 0;
+		z80_state.nmi_in_progress = 1;
+		do_nmi();
+		z80_state.nminterrupt = FALSE;
+	      }
+	    } else if (z80_state.iff1 && z80_state.interrupt) {
+	      halted = 0;
+	      do_int();
+	      z80_state.interrupt = FALSE;
+	    }
+	  } while (halted);
+
 #if TRACE
 	  diffstate();
 	  tracemem();
@@ -2536,28 +2561,7 @@ int z80_run(int continuous)
 	  disassemble(z80_state.pc.word);
 #endif
 
-	  if ( event_pending )
-	    check_event();
-
-        /*
-         * End of special hack.
-         */            
-
-	/* Check for an interrupt */
-	if(z80_state.nminterrupt)
-	{
- 	    if(z80_state.nmi_in_progress == 0) {
-                z80_state.nmi_in_progress = 1;
-                do_nmi();
-                z80_state.nminterrupt = FALSE;
- 	    }
-
-	} else if(z80_state.iff1 && z80_state.interrupt) {
-            do_int();
-	    z80_state.interrupt = FALSE;
-        }
-
-	ix = &z80_state.hl;	/* Not an index instruction */
+	  ix = &z80_state.hl;	/* Not an index instruction */
 
     indexed:
 	instruction = mem_read(REG_PC++);
@@ -2605,7 +2609,7 @@ int z80_run(int continuous)
 	  case 0x8E:	/* adc a, (hl) */
 	    do_adc_byte(mem_read(get_hl_addr(ix)));
 	    break;
-	    
+
 	  case 0x87:	/* add a, a */
 	    do_add_byte(REG_A);
 	    break;
@@ -2633,7 +2637,7 @@ int z80_run(int continuous)
 	  case 0x86:	/* add a, (hl) */
 	    do_add_byte(mem_read(get_hl_addr(ix)));
 	    break;
-	    
+
 	  case 0x09:	/* add hl, bc */
 	    do_add_word(ix, REG_BC);
 	    break;
@@ -2646,7 +2650,7 @@ int z80_run(int continuous)
 	  case 0x39:	/* add hl, sp */
 	    do_add_word(ix, REG_SP);
 	    break;
-	    
+
 	  case 0xA7:	/* and a */
 	    do_and_byte(REG_A);
 	    break;
@@ -2674,14 +2678,14 @@ int z80_run(int continuous)
 	  case 0xA6:	/* and (hl) */
 	    do_and_byte(mem_read(get_hl_addr(ix)));
 	    break;
-	    
+
 	  case 0xCD:	/* call address */
 	    address = mem_read_word(REG_PC);
 	    REG_SP -= 2;
 	    mem_write_word(REG_SP, REG_PC + 2);
 	    REG_PC = address;
 	    break;
-	    
+
 	  case 0xC4:	/* call nz, address */
 	    if(!ZERO_FLAG)
 	    {
@@ -2794,12 +2798,12 @@ int z80_run(int continuous)
 		REG_PC += 2;
 	    }
 	    break;
-	    
-	    
+
+
 	  case 0x3F:	/* ccf */
 	    REG_F = (REG_F ^ CARRY_MASK) & ~SUBTRACT_MASK;
 	    break;
-	    
+
 	  case 0xBF:	/* cp a */
 	    do_cp(REG_A);
 	    break;
@@ -2827,7 +2831,7 @@ int z80_run(int continuous)
 	  case 0xBE:	/* cp (hl) */
 	    do_cp(mem_read(get_hl_addr(ix)));
 	    break;
-	    
+
 	  case 0x2F:	/* cpl */
 	    REG_A = ~REG_A;
 	    REG_F |= (HALF_CARRY_MASK | SUBTRACT_MASK);
@@ -2858,7 +2862,7 @@ int z80_run(int continuous)
 	  case 0x2D:	/* dec l */
 	    do_flags_dec_byte(--ix->byte.low);
 	    break;
-	    
+
 	  case 0x35:	/* dec (hl) */
 	  {
 	      uint16_t addr = get_hl_addr(ix);
@@ -2867,7 +2871,7 @@ int z80_run(int continuous)
 	      do_flags_dec_byte(value);
 	  }
 	    break;
-	    
+
 	  case 0x0B:	/* dec bc */
 	    REG_BC--;
 	    break;
@@ -2880,11 +2884,11 @@ int z80_run(int continuous)
 	  case 0x3B:	/* dec sp */
 	    REG_SP--;
 	    break;
-	    
+
 	  case 0xF3:	/* di */
 	    do_di();
 	    break;
-	    
+
 	  case 0x10:	/* djnz offset */
 	    /* Zaks says no flag changes. */
 	    if(--REG_B != 0)
@@ -2898,11 +2902,11 @@ int z80_run(int continuous)
 		REG_PC++;
 	    }
 	    break;
-	    
+
 	  case 0xFB:	/* ei */
 	    do_ei();
 	    break;
-	    
+
 	  case 0x08:	/* ex af, af' */
 	  {
 	      uint16_t temp;
@@ -2911,7 +2915,7 @@ int z80_run(int continuous)
 	      REG_AF_PRIME = temp;
 	  }
 	    break;
-	    
+
 	  case 0xEB:	/* ex de, hl */
 	  {
 	      uint16_t temp;
@@ -2920,7 +2924,7 @@ int z80_run(int continuous)
 	      ix->word = temp;
 	  }
 	    break;
-	    
+
 	  case 0xE3:	/* ex (sp), hl */
 	  {
 	      uint16_t temp;
@@ -2929,7 +2933,7 @@ int z80_run(int continuous)
 	      ix->word = temp;
 	  }
 	    break;
-	    
+
 	  case 0xD9:	/* exx */
 	  {
 	      uint16_t tmp;
@@ -2944,15 +2948,15 @@ int z80_run(int continuous)
 	      REG_HL = tmp;
 	  }
 	    break;
-	    
+
 	  case 0x76:	/* halt */
-	    REG_PC--;	/* don't increment PC past this instruction */
-	    return 1;
+	    halted = 1;
+	    break;
 
 	  case 0xDB:	/* in a, (port) */
 	    REG_A = z80_in(mem_read(REG_PC++));
 	    break;
-	    
+
 	  case 0x3C:	/* inc a */
 	    REG_A++;
 	    do_flags_inc_byte(REG_A);
@@ -2981,7 +2985,7 @@ int z80_run(int continuous)
 	    ix->byte.low++;
 	    do_flags_inc_byte(ix->byte.low);
 	    break;
-	    
+
 	  case 0x34:	/* inc (hl) */
 	  {
 	      uint16_t addr = get_hl_addr(ix);
@@ -2990,7 +2994,7 @@ int z80_run(int continuous)
 	      do_flags_inc_byte(value);
 	  }
 	    break;
-	    
+
 	  case 0x03:	/* inc bc */
 	    REG_BC++;
 	    break;
@@ -3003,15 +3007,15 @@ int z80_run(int continuous)
 	  case 0x33:	/* inc sp */
 	    REG_SP++;
 	    break;
-	    
+
 	  case 0xC3:	/* jp address */
 	    REG_PC = mem_read_word(REG_PC);
 	    break;
-	    
+
 	  case 0xE9:	/* jp (hl) */
 	    REG_PC = ix->word;
 	    break;
-	    
+
 	  case 0xC2:	/* jp nz, address */
 	    if(!ZERO_FLAG)
 	    {
@@ -3092,7 +3096,7 @@ int z80_run(int continuous)
 		REG_PC += 2;
 	    }
 	    break;
-	    
+
 	  case 0x18:	/* jr offset */
 	  {
 	      uint8_t byte_value;
@@ -3100,7 +3104,7 @@ int z80_run(int continuous)
 	      REG_PC += (char) byte_value;
 	  }
 	    break;
-	    
+
 	  case 0x20:	/* jr nz, offset */
 	    if(!ZERO_FLAG)
 	    {
@@ -3149,7 +3153,7 @@ int z80_run(int continuous)
 		REG_PC++;
 	    }
 	    break;
-	    
+
 	  case 0x7F:	/* ld a, a */
 	    REG_A = REG_A;
 	    break;
@@ -3297,7 +3301,7 @@ int z80_run(int continuous)
 	  case 0x6D:	/* ld l, l */
 	    ix->byte.low = ix->byte.low;
 	    break;
-	    
+
 	  case 0x02:	/* ld (bc), a */
 	    mem_write(REG_BC, REG_A);
 	    break;
@@ -3325,7 +3329,7 @@ int z80_run(int continuous)
 	  case 0x75:	/* ld (hl), l */
 	    mem_write(get_hl_addr(ix), REG_L);
 	    break;
-	    
+
 	  case 0x7E:	/* ld a, (hl) */
 	    REG_A = mem_read(get_hl_addr(ix));
 	    break;
@@ -3347,7 +3351,7 @@ int z80_run(int continuous)
 	  case 0x6E:	/* ld l, (hl) */
 	    REG_L = mem_read(get_hl_addr(ix));
 	    break;
-	    
+
 	  case 0x3E:	/* ld a, value */
 	    REG_A = mem_read(REG_PC++);
 	    break;
@@ -3369,7 +3373,7 @@ int z80_run(int continuous)
 	  case 0x2E:	/* ld l, value */
 	    ix->byte.low = mem_read(REG_PC++);
 	    break;
-	    
+
 	  case 0x01:	/* ld bc, value */
 	    REG_BC = mem_read_word(REG_PC);
 	    REG_PC += 2;
@@ -3386,31 +3390,31 @@ int z80_run(int continuous)
 	    REG_SP = mem_read_word(REG_PC);
 	    REG_PC += 2;
 	    break;
-	    
-	    
+
+
 	  case 0x3A:	/* ld a, (address) */
 	    /* this one is missing from Zaks */
 	    REG_A = mem_read(mem_read_word(REG_PC));
 	    REG_PC += 2;
 	    break;
-	    
+
 	  case 0x0A:	/* ld a, (bc) */
 	    REG_A = mem_read(REG_BC);
 	    break;
 	  case 0x1A:	/* ld a, (de) */
 	    REG_A = mem_read(REG_DE);
 	    break;
-	    
+
 	  case 0x32:	/* ld (address), a */
 	    mem_write(mem_read_word(REG_PC), REG_A);
 	    REG_PC += 2;
 	    break;
-	    
+
 	  case 0x22:	/* ld (address), hl */
 	    mem_write_word(mem_read_word(REG_PC), ix->word);
 	    REG_PC += 2;
 	    break;
-	    
+
 	  case 0x36:	/* ld (hl), value */
 	  {
 	      uint16_t addr = get_hl_addr(ix);
@@ -3422,18 +3426,18 @@ int z80_run(int continuous)
 	    ix->word = mem_read_word(mem_read_word(REG_PC));
 	    REG_PC += 2;
 	    break;
-	    
+
 	  case 0xF9:	/* ld sp, hl */
 	    REG_SP = ix->word;
 	    break;
-	    
+
 	  case 0x00:	/* nop */
 	    break;
-	    
+
 	  case 0xF6:	/* or value */
 	    do_or_byte(mem_read(REG_PC++));
 	    break;
-	    
+
 	  case 0xB7:	/* or a */
 	    do_or_byte(REG_A);
 	    break;
@@ -3455,15 +3459,15 @@ int z80_run(int continuous)
 	  case 0xB5:	/* or l */
 	    do_or_byte(ix->byte.low);
 	    break;
-	    
+
 	  case 0xB6:	/* or (hl) */
 	    do_or_byte(mem_read(get_hl_addr(ix)));
 	    break;
-	    
+
 	  case 0xD3:	/* out (port), a */
 	    z80_out(mem_read(REG_PC++), REG_A);
 	    break;
-	    
+
 	  case 0xC1:	/* pop bc */
 	    REG_BC = mem_read_word(REG_SP);
 	    REG_SP += 2;
@@ -3480,7 +3484,7 @@ int z80_run(int continuous)
 	    REG_AF = mem_read_word(REG_SP);
 	    REG_SP += 2;
 	    break;
-	    
+
 	  case 0xC5:	/* push bc */
 	    REG_SP -= 2;
 	    mem_write_word(REG_SP, REG_BC);
@@ -3497,12 +3501,12 @@ int z80_run(int continuous)
 	    REG_SP -= 2;
 	    mem_write_word(REG_SP, REG_AF);
 	    break;
-	    
+
 	  case 0xC9:	/* ret */
 	    REG_PC = mem_read_word(REG_SP);
 	    REG_SP += 2;
 	    break;
-	    
+
 	  case 0xC0:	/* ret nz */
 	    if(!ZERO_FLAG)
 	    {
@@ -3559,23 +3563,23 @@ int z80_run(int continuous)
 		REG_SP += 2;
 	    }
 	    break;
-	    
+
 	  case 0x17:	/* rla */
 	    do_rla();
 	    break;
-	    
+
 	  case 0x07:	/* rlca */
 	    do_rlca();
 	    break;
-	    
+
 	  case 0x1F:	/* rra */
 	    do_rra();
 	    break;
-	    
+
 	  case 0x0F:	/* rrca */
 	    do_rrca();
 	    break;
-	    
+
 	  case 0xC7:	/* rst 00h */
 	    REG_SP -= 2;
 	    mem_write_word(REG_SP, REG_PC);
@@ -3616,11 +3620,11 @@ int z80_run(int continuous)
 	    mem_write_word(REG_SP, REG_PC);
 	    REG_PC = 0x38;
 	    break;
-	    
+
 	  case 0x37:	/* scf */
 	    REG_F = (REG_F | CARRY_MASK) & ~(SUBTRACT_MASK | HALF_CARRY_MASK);
 	    break;
-	    
+
 	  case 0x9F:	/* sbc a, a */
 	    do_sbc_byte(REG_A);
 	    break;
@@ -3648,7 +3652,7 @@ int z80_run(int continuous)
 	  case 0x9E:	/* sbc a, (hl) */
 	    do_sbc_byte(mem_read(get_hl_addr(ix)));
 	    break;
-	    
+
 	  case 0x97:	/* sub a, a */
 	    do_sub_byte(REG_A);
 	    break;
@@ -3676,11 +3680,11 @@ int z80_run(int continuous)
 	  case 0x96:	/* sub a, (hl) */
 	    do_sub_byte(mem_read(get_hl_addr(ix)));
 	    break;
-	    
+
 	  case 0xEE:	/* xor value */
 	    do_xor_byte(mem_read(REG_PC++));
 	    break;
-	    
+
 	  case 0xAF:	/* xor a */
 	    do_xor_byte(REG_A);
 	    break;
@@ -3707,11 +3711,11 @@ int z80_run(int continuous)
 	    break;
 	}
     } while (continuous);
-    return 0;
+    return halted;
 }
 
 
-void 
+void
 z80_reset(void)
 {
     REG_PC = 0;
@@ -3742,7 +3746,7 @@ z80_reset(void)
 static void diffstate(void)
 {
     static struct z80_state_struct old_state;
-    
+
     BREG(A,af.byte.high);
     WREG(BC,bc);
     WREG(DE,de);
@@ -3769,11 +3773,11 @@ static struct mem_trace *mem_trace_head = mem_traces;
 static void tracemem(void)
 {
     const struct mem_trace *mtp;
-    
+
     for (mtp = mem_traces; mtp < mem_trace_head; mtp++) {
 	/* printf(" (%04X)=%0*X", mtp->addr, mtp->size*2, mtp->data); */
     }
-    
+
     mem_trace_head = mem_traces;
 }
 

@@ -162,7 +162,7 @@ struct z80_state_struct
 extern struct z80_state_struct z80_state;
 
 extern void z80_reset(void);
-extern int z80_run(int);
+extern int z80_run(int,int);
 extern void mem_init(void);
 extern uint8_t mem_read(uint16_t);
 extern void mem_write(uint16_t, uint8_t);

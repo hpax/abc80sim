@@ -161,7 +161,7 @@ int main(int argc, char **argv)
     z80_reset();
     clock_init();
 
-    z80_run(TRUE);
+    z80_run(TRUE, FALSE);
 
     screen_reset();
     exit(0);
