@@ -6,7 +6,7 @@
 #include <ctype.h>
 #include "z80.h"
 
-static char *Mnemonics[256] =
+static const char * const Mnemonics[256] =
 {
   "NOP","LD BC,#h","LD (BC),A","INC BC","INC B","DEC B","LD B,*h","RLCA",
   "EX AF,AF'","ADD HL,BC","LD A,(BC)","DEC BC","INC C","DEC C","LD C,*h","RRCA",
@@ -42,7 +42,7 @@ static char *Mnemonics[256] =
   "RET M","LD SP,HL","JP M,$h","EI","CALL M,$h","DEFB FDh","CP *h","RST 38h"
 };
 
-static char *MnemonicsCB[256] =
+static const char * const MnemonicsCB[256] =
 {
   "RLC B","RLC C","RLC D","RLC E","RLC H","RLC L","RLC (HL)","RLC A",
   "RRC B","RRC C","RRC D","RRC E","RRC H","RRC L","RRC (HL)","RRC A",
@@ -78,7 +78,7 @@ static char *MnemonicsCB[256] =
   "SET 7,B","SET 7,C","SET 7,D","SET 7,E","SET 7,H","SET 7,L","SET 7,(HL)","SET 7,A"
 };
 
-static char *MnemonicsED[256] =
+static const char * const MnemonicsED[256] =
 {
   "??ED00","??ED01","??ED02","??ED03","??ED04","??ED05","??ED06","??ED07",
   "??ED08","??ED09","??ED0A","??ED0B","??ED0C","??ED0D","??ED0E","??ED0F",
@@ -114,7 +114,7 @@ static char *MnemonicsED[256] =
   "??EDF8","??EDF9","??EDFA","??EDFB","??EDFC","??EDFD","??EDFE","??EDFF"
 };
 
-static char *MnemonicsXX[256] =
+static const char * const MnemonicsXX[256] =
 {
   "NOP","LD BC,#h","LD (BC),A","INC BC","INC B","DEC B","LD B,*h","RLCA",
   "EX AF,AF'","ADD I%,BC","LD A,(BC)","DEC BC","INC C","DEC C","LD C,*h","RRCA",
@@ -175,7 +175,7 @@ static char *MnemonicsXX[256] =
   XXCBb1(i,0)   XXCBb1(i,1)   XXCBb1(i,2)   XXCBb1(i,3) \
   XXCBb1(i,4)   XXCBb1(i,5)   XXCBb1(i,6)   XXCBb1(i,7)
 
-static char *MnemonicsXXCB[256] =
+static const char * const MnemonicsXXCB[256] =
 {
   XXCBi(RLC)
   XXCBi(RRC)
@@ -192,7 +192,7 @@ static char *MnemonicsXXCB[256] =
 
 /* XXED is never valid */
 
-static char **mtable[8] = {
+static const char * const * const mtable[8] = {
   Mnemonics,
   MnemonicsCB,
   MnemonicsED,
