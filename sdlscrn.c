@@ -387,7 +387,7 @@ void check_event(void)
 	if ( mysym >= 0 ) {
 	  keyboard_code = mysym | 0x80;
 	  keyboard_scan = event.key.keysym.scancode;
-	  z80_state.i_vector = 26;
+	  z80_state.i_vector = keyb_irq;
 	  z80_state.interrupt = 1;
 	  set_in_port(56, keyboard_code);
 	}

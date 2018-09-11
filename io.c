@@ -35,6 +35,9 @@ set_in_port(int port, uint8_t value)
 /* Select code for ABC/4680 bus */
 int abcbus_select = -1;
 
+/* Keyboard IRQ vector */
+uint8_t keyb_irq;
+
 extern void disk_reset(void);
 extern void disk_out(int, int, int);
 extern int disk_in(int, int);
@@ -72,7 +75,13 @@ z80_out(int port, uint8_t value)
   } else if (port == 6 && value == 131) { /* beep */
     putchar(7);
     fflush(stdout);
+  } else if (port == 57) {
+    /* Keyboard control port */
+    if (!(value & 1)) {
+      keyb_irq = value >> 1;
+    }
   }
+
   outports[port] = value;
 }
 
@@ -80,8 +89,7 @@ z80_out(int port, uint8_t value)
 /*
  * This function is called from the z80 at an IN instruction.
  */
-int 
-z80_in(int port)
+int z80_in(int port)
 {
   if ( port == 7 ) {
     abcbus_select = -1;

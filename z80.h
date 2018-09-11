@@ -178,6 +178,7 @@ extern void io_init(void);
 extern int disassemble(int);
 extern int DAsm(uint16_t pc, char *T, int *target);
 extern void load_basic(int);
+extern uint8_t keyb_irq;
 
 /*
  extern void debug_init();
