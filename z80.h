@@ -16,13 +16,12 @@
 #include "config.h"
 
 #include <stdio.h>
+#include <stdlib.h>
+#include <stdbool.h>
 #include <ctype.h>
 #include <time.h>
 #include <inttypes.h>
 #include <sys/types.h>
-
-#define TRUE	(1)
-#define FALSE	(0)
 
 struct twobyte
 {
@@ -60,13 +59,13 @@ struct z80_state_struct
     uint8_t rc; /* counting part of register R (bits 6-0) */
     uint8_t rf; /* fixed part of register R (bit 7) */
 
-    uint8_t iff1, iff2;
     uint8_t interrupt_mode;
+    bool iff1, iff2;
 
-    int nmi_in_progress;	/* to prevent multiple simultaneous NMIs */
+    bool nmi_in_progress;	/* to prevent multiple simultaneous NMIs */
 
-    int nminterrupt;	/* used to signal a non maskable interrupt */
-    int interrupt;	/* used to signal an interrupt */
+    bool nminterrupt;	/* used to signal a non maskable interrupt */
+    bool interrupt;	/* used to signal an interrupt */
 
     uint8_t i_vector;     /* offset into interrupt-page from _external_ device */
 };
@@ -162,15 +161,18 @@ struct z80_state_struct
 extern struct z80_state_struct z80_state;
 
 extern void z80_reset(void);
-extern int z80_run(int,int);
+extern int z80_run(bool,bool);
 extern void mem_init(void);
 extern uint8_t mem_read(uint16_t);
+extern uint8_t mem_fetch(uint16_t);
 extern void mem_write(uint16_t, uint8_t);
 extern uint8_t *mem_rom_address(void);
 extern uint8_t *mem_get_addr(uint16_t);
 extern uint16_t mem_read_word(uint16_t);
+extern uint16_t mem_fetch_word(uint16_t);
 extern void mem_write_word(uint16_t, uint16_t);
 extern void mem_block_transfer(uint16_t, uint16_t, int, uint16_t);
+extern void tracemem(void);
 extern void set_in_port(int, uint8_t);
 extern void z80_out(int, uint8_t);
 extern int z80_in(int);
@@ -178,7 +180,9 @@ extern void io_init(void);
 extern int disassemble(int);
 extern int DAsm(uint16_t pc, char *T, int *target);
 extern void load_basic(int);
+
 extern uint8_t keyb_irq;
+extern bool tracing;
 
 /*
  extern void debug_init();

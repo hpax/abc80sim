@@ -20,7 +20,7 @@ volatile int event_pending = 1;
 static char *hexstring =  "0123456789ABCDEF";
 static uint8_t gethex(char *p)
 {
-    return (uint8_t)(((strchr(hexstring, *p) - hexstring) << 4) 
+    return (uint8_t)(((strchr(hexstring, *p) - hexstring) << 4)
           + (strchr(hexstring, *(p + 1)) - hexstring));
 }
 
@@ -74,7 +74,7 @@ static void load_rom(const struct rom *rom)
 /*
  * Load the BASIC interpretor into memory.
  */
-static int no_basic = 0;
+static bool no_basic = false;
 
 void load_basic(int mode40)
 {
@@ -92,7 +92,6 @@ usage(void)
     exit(1);
 }
 
-
 extern int   optind;
 extern int   getopt(int, char **, char *);
 
@@ -100,34 +99,46 @@ int main(int argc, char **argv)
 {
     char  sysfile_name[256];
     FILE *sysfile;
-    int   no_device = 0;
+    bool  no_device = false;
+    bool  width40   = false;
     int   c;
 
-    
-    while ((c = getopt(argc, argv, "bdv")) != EOF) {
+    while ((c = getopt(argc, argv, "bdvt48")) != EOF) {
         switch (c) {
 
-          case 'v':
+	case 'v':
             printf("ABC80 emulator version %s\n", __version_string);
             exit(0);
             break;
 
-          case 'b':
-            no_basic = 1;
+	case 'b':
+            no_basic = true;
             break;
 
-          case 'd':
-            no_device = 1;
+	case 'd':
+            no_device = true;
             break;
 
-          default:
+	case 't':
+	    tracing = true;
+	    break;
+
+	case '4':
+	    width40 = true;
+	    break;
+
+	case '8':
+	    width40 = false;
+	    break;
+
+	default:
             usage();
             exit(1);
             break;
         }
     }
 
-    screen_init();                         
+    screen_init(width40);
     mem_init();
     io_init();
 
@@ -161,7 +172,7 @@ int main(int argc, char **argv)
     z80_reset();
     clock_init();
 
-    z80_run(TRUE, FALSE);
+    z80_run(true, false);
 
     screen_reset();
     exit(0);

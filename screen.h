@@ -3,23 +3,21 @@
 
 #include "config.h"
 
+#include <stdlib.h>
+#include <inttypes.h>
+#include <stdbool.h>
+
 #ifdef HAVE_SDL_H
 # include <SDL.h>
 #elif defined(HAVE_SDL_SDL_H)
 # include <SDL/SDL.h>
 #endif
 
-#ifndef MAIN
-#define EXTERN extern
-#else
-#define EXTERN
-#endif 
-
-extern void  screen_init(void);
+extern void  screen_init(bool);
 extern void  screen_reset(void);
 extern void  screen_write(int, int);
 extern void  screen_flush(void);
-extern void  setmode40(int);
+extern void  setmode40(bool);
 
 extern void  get_event(void);
 extern void  key_check(void);

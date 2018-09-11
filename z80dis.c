@@ -229,7 +229,7 @@ int DAsm(uint16_t pc, char *T, int *target)
 
   XReg = '?';
 
-  I = mem_read(pc++);
+  I = mem_fetch(pc++);
   
   D = table = 0;
 
@@ -240,21 +240,21 @@ int DAsm(uint16_t pc, char *T, int *target)
       {
       case 0xCB:
 	if (table & 4)
-	  D = mem_read(pc++);	/* Displacement before extended opcode! */
-	I = mem_read(pc++);
+	  D = mem_fetch(pc++);	/* Displacement before extended opcode! */
+	I = mem_fetch(pc++);
 	table = (table & ~3) | 1;
 	break;
       case 0xED:
-	I = mem_read(pc++);
+	I = mem_fetch(pc++);
 	table = (table & ~3) | 2;
 	break;
       case 0xDD:
-	I = mem_read(pc++);
+	I = mem_fetch(pc++);
 	XReg = 'X';
 	table |= 4;
 	break;
       case 0xFD:
-	I = mem_read(pc++);
+	I = mem_fetch(pc++);
 	XReg = 'Y';
 	table |= 4;
 	break;
@@ -278,18 +278,18 @@ int DAsm(uint16_t pc, char *T, int *target)
       *R++ = XReg;
       break;
     case '*':
-      I = mem_read(pc++);
+      I = mem_fetch(pc++);
       R += sprintf(R,"%02X",I);
       break;
     case '#':
     case '$':
-      I = mem_read_word(pc);  pc += 2;
+      I = mem_fetch_word(pc);  pc += 2;
       R += sprintf(R,"%04X",I);
       if ( PP == '$' && target )
 	*target = I;
       break;
     case '@':
-      I = mem_read(pc++);
+      I = mem_fetch(pc++);
       if ( I >= 0x80 ) I -= 256;
       I = (I+pc) & 0xFFFF;
       R += sprintf(R,"%04X",I);
@@ -300,7 +300,7 @@ int DAsm(uint16_t pc, char *T, int *target)
       if (table == 5)
 	I = D;
       else
-	I = mem_read(pc++);
+	I = mem_fetch(pc++);
       if ( I >= 0x80 ) {
 	PP = '-';
 	I = -(I-256);

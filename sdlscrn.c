@@ -211,12 +211,12 @@ screen_write(int addr, int value)
   update_screen(x,y,xx-1,y);
 }
 
-void setmode40(int m)
+void setmode40(bool m)
 {
   int x, y, width;
 
   if (m != mode40) {
-    mode40 = !!m;
+    mode40 = m;
 
     width = TS_WIDTH >> mode40;
 
@@ -235,7 +235,7 @@ void setmode40(int m)
 /*
  * Initialize SDL and the data structures
  */
-void screen_init(void)
+void screen_init(bool width40)
 {
   int window = 1;		/* True = run in a window */
   int debug = 1;		/* False = force clean shutdown */
@@ -280,18 +280,15 @@ void screen_init(void)
     }
   }
 
-  mode40 = 0;
-  
   /* Blink timer */
   SDL_AddTimer(400, post_periodic, (void *)toggle_blink);
 
   /* Enable keyboard decoding */
   SDL_EnableUNICODE(1);
 
-  /* Load the appropriate BASIC */
-  load_basic(mode40);
-
-  return;
+  /* Set the screen width and load the appropriate BASIC */
+  mode40 = -1;			/* Force update */
+  setmode40(width40);
 }
 
 /*

@@ -30,24 +30,14 @@
 
 #include <setjmp.h>
 
+bool tracing;
+
 /*
  * The state of our Z-80 registers is kept in this structure:
  */
 struct z80_state_struct z80_state;
 
-#ifndef TRACE
-# define TRACE 0
-#endif
-
-#if TRACE
 static void diffstate(void);
-static void tracemem(void);
-static void trace_mem_write(uint16_t, uint8_t);
-static void trace_mem_write_word(uint16_t, uint16_t);
-
-#define mem_write      trace_mem_write
-#define mem_write_word trace_mem_write_word
-#endif
 
 /*
  * Tables and routines for computing various flag values:
@@ -1287,12 +1277,12 @@ static void do_outir(void)
 
 static void do_di(void)
 {
-    z80_state.iff1 = z80_state.iff2 = 0;
+    z80_state.iff1 = z80_state.iff2 = false;
 }
 
 static void do_ei(void)
 {
-    z80_state.iff1 = z80_state.iff2 = 1;
+    z80_state.iff1 = z80_state.iff2 = true;
 }
 
 static void do_im0(void)
@@ -1316,7 +1306,7 @@ static void do_nmi(void)
     REG_SP -= 2;
     mem_write_word(REG_SP, REG_PC);
     z80_state.iff2 = z80_state.iff1;
-    z80_state.iff1 = 0;
+    z80_state.iff1 = false;
     REG_PC = 0x66;
     inc_r();
 }
@@ -1357,7 +1347,7 @@ static uint16_t get_hl_addr(wordregister *ix)
     if (ix == &z80_state.hl)
       return ix->word;
     else
-      return ix->word + (int8_t)mem_read(REG_PC++);
+      return ix->word + (int8_t)mem_fetch(REG_PC++);
 }
 
 /*
@@ -1375,7 +1365,7 @@ static void do_CB_instruction(wordregister *ix)
        * Normal operation sans DD/FD prefix
        */
 
-      instruction = mem_read(REG_PC++);
+      instruction = mem_fetch(REG_PC++);
       inc_r();
 
       switch(instruction)
@@ -2170,8 +2160,8 @@ static void do_CB_instruction(wordregister *ix)
        * anything back to either memory or GPR.
        */
 
-      addr = ix->word + (int8_t)mem_read(REG_PC++);
-      instruction = mem_read(REG_PC++);
+      addr = ix->word + (int8_t)mem_fetch(REG_PC++);
+      instruction = mem_fetch(REG_PC++);
       /* No R increment here, for some reason */
 
       data = mem_read(addr);
@@ -2274,7 +2264,7 @@ static void do_ED_instruction(wordregister *ix)
      *   OUT (C),0 at ED71  -- OUT (C),0FFh for CMOS Z80
      */
 
-    instruction = mem_read(REG_PC++);
+    instruction = mem_fetch(REG_PC++);
     inc_r();
 
     switch(instruction)
@@ -2371,37 +2361,37 @@ static void do_ED_instruction(wordregister *ix)
 	break;
 
       case 0x4B:	/* ld bc, (address) */
-	REG_BC = mem_read_word(mem_read_word(REG_PC));
+	REG_BC = mem_read_word(mem_fetch_word(REG_PC));
 	REG_PC += 2;
 	break;
       case 0x5B:	/* ld de, (address) */
-	REG_DE = mem_read_word(mem_read_word(REG_PC));
+	REG_DE = mem_read_word(mem_fetch_word(REG_PC));
 	REG_PC += 2;
 	break;
       case 0x6B:	/* ld hl, (address) */
 	/* this instruction is redundant with the 2A instruction */
-	REG_HL = mem_read_word(mem_read_word(REG_PC));
+	REG_HL = mem_read_word(mem_fetch_word(REG_PC));
 	REG_PC += 2;
 	break;
       case 0x7B:	/* ld sp, (address) */
-	REG_SP = mem_read_word(mem_read_word(REG_PC));
+	REG_SP = mem_read_word(mem_fetch_word(REG_PC));
 	REG_PC += 2;
 	break;
 
       case 0x43:	/* ld (address), bc */
-	mem_write_word(mem_read_word(REG_PC), REG_BC);
+	mem_write_word(mem_fetch_word(REG_PC), REG_BC);
 	REG_PC += 2;
 	break;
       case 0x53:	/* ld (address), de */
-	mem_write_word(mem_read_word(REG_PC), REG_DE);
+	mem_write_word(mem_fetch_word(REG_PC), REG_DE);
 	REG_PC += 2;
 	break;
       case 0x63:	/* ld (address), hl */
-	mem_write_word(mem_read_word(REG_PC), REG_HL);
+	mem_write_word(mem_fetch_word(REG_PC), REG_HL);
 	REG_PC += 2;
 	break;
       case 0x73:	/* ld (address), sp */
-	mem_write_word(mem_read_word(REG_PC), REG_SP);
+	mem_write_word(mem_fetch_word(REG_PC), REG_SP);
 	REG_PC += 2;
 	break;
 
@@ -2480,7 +2470,7 @@ static void do_ED_instruction(wordregister *ix)
 	REG_PC = mem_read_word(REG_SP);
 	REG_SP += 2;
 	z80_state.iff1 = z80_state.iff2;  /* restore the iff state */
-	z80_state.nmi_in_progress = 0;
+	z80_state.nmi_in_progress = false;
 	break;
 
       case 0x6F:	/* rld */
@@ -2515,7 +2505,7 @@ static void do_ED_instruction(wordregister *ix)
 /*#define MEM_READ(a) ((a < 0x3000) ? memory[a] : mem_read(a));*/
 /* #define MEM_READ(a) (((((a) - 0x3000) & 0xffff) >= 0xc00) ? memory[a] : mem_read(a)) */
 
-int z80_run(int continuous, int halted)
+int z80_run(bool continuous, bool halted)
 {
     uint8_t instruction;
     uint16_t address; /* generic temps */
@@ -2544,27 +2534,27 @@ int z80_run(int continuous, int halted)
 		halted = 0;
 		z80_state.nmi_in_progress = 1;
 		do_nmi();
-		z80_state.nminterrupt = FALSE;
+		z80_state.nminterrupt = false;
 	      }
 	    } else if (z80_state.iff1 && z80_state.interrupt) {
-	      halted = 0;
+	      halted = false;
 	      do_int();
-	      z80_state.interrupt = FALSE;
+	      z80_state.interrupt = false;
 	    }
 	  } while (halted);
 
-#if TRACE
-	  diffstate();
-	  tracemem();
-	  putchar('\n');
-	  printf("PC=%04X ", z80_state.pc.word);
-	  disassemble(z80_state.pc.word);
-#endif
+	  if (tracing) {
+	      diffstate();
+	      tracemem();
+	      putchar('\n');
+	      printf("PC=%04X ", z80_state.pc.word);
+	      disassemble(z80_state.pc.word);
+	  }
 
 	  ix = &z80_state.hl;	/* Not an index instruction */
 
     indexed:
-	instruction = mem_read(REG_PC++);
+	instruction = mem_fetch(REG_PC++);
 	inc_r();
 
 	switch(instruction)
@@ -2604,7 +2594,7 @@ int z80_run(int continuous, int halted)
 	    do_adc_byte(ix->byte.low);
 	    break;
 	  case 0xCE:	/* adc a, value */
-	    do_adc_byte(mem_read(REG_PC++));
+	    do_adc_byte(mem_fetch(REG_PC++));
 	    break;
 	  case 0x8E:	/* adc a, (hl) */
 	    do_adc_byte(mem_read(get_hl_addr(ix)));
@@ -2632,7 +2622,7 @@ int z80_run(int continuous, int halted)
 	    do_add_byte(ix->byte.low);
 	    break;
 	  case 0xC6:	/* add a, value */
-	    do_add_byte(mem_read(REG_PC++));
+	    do_add_byte(mem_fetch(REG_PC++));
 	    break;
 	  case 0x86:	/* add a, (hl) */
 	    do_add_byte(mem_read(get_hl_addr(ix)));
@@ -2673,14 +2663,14 @@ int z80_run(int continuous, int halted)
 	    do_and_byte(ix->byte.low);
 	    break;
 	  case 0xE6:	/* and value */
-	    do_and_byte(mem_read(REG_PC++));
+	    do_and_byte(mem_fetch(REG_PC++));
 	    break;
 	  case 0xA6:	/* and (hl) */
 	    do_and_byte(mem_read(get_hl_addr(ix)));
 	    break;
 
 	  case 0xCD:	/* call address */
-	    address = mem_read_word(REG_PC);
+	    address = mem_fetch_word(REG_PC);
 	    REG_SP -= 2;
 	    mem_write_word(REG_SP, REG_PC + 2);
 	    REG_PC = address;
@@ -2689,7 +2679,7 @@ int z80_run(int continuous, int halted)
 	  case 0xC4:	/* call nz, address */
 	    if(!ZERO_FLAG)
 	    {
-		address = mem_read_word(REG_PC);
+		address = mem_fetch_word(REG_PC);
 		REG_SP -= 2;
 		mem_write_word(REG_SP, REG_PC + 2);
 		REG_PC = address;
@@ -2703,7 +2693,7 @@ int z80_run(int continuous, int halted)
 	  case 0xCC:	/* call z, address */
 	    if(ZERO_FLAG)
 	    {
-		address = mem_read_word(REG_PC);
+		address = mem_fetch_word(REG_PC);
 		REG_SP -= 2;
 		mem_write_word(REG_SP, REG_PC + 2);
 		REG_PC = address;
@@ -2717,7 +2707,7 @@ int z80_run(int continuous, int halted)
 	  case 0xD4:	/* call nc, address */
 	    if(!CARRY_FLAG)
 	    {
-		address = mem_read_word(REG_PC);
+		address = mem_fetch_word(REG_PC);
 		REG_SP -= 2;
 		mem_write_word(REG_SP, REG_PC + 2);
 		REG_PC = address;
@@ -2731,7 +2721,7 @@ int z80_run(int continuous, int halted)
 	  case 0xDC:	/* call c, address */
 	    if(CARRY_FLAG)
 	    {
-		address = mem_read_word(REG_PC);
+		address = mem_fetch_word(REG_PC);
 		REG_SP -= 2;
 		mem_write_word(REG_SP, REG_PC + 2);
 		REG_PC = address;
@@ -2745,7 +2735,7 @@ int z80_run(int continuous, int halted)
 	  case 0xE4:	/* call po, address */
 	    if(!PARITY_FLAG)
 	    {
-		address = mem_read_word(REG_PC);
+		address = mem_fetch_word(REG_PC);
 		REG_SP -= 2;
 		mem_write_word(REG_SP, REG_PC + 2);
 		REG_PC = address;
@@ -2759,7 +2749,7 @@ int z80_run(int continuous, int halted)
 	  case 0xEC:	/* call pe, address */
 	    if(PARITY_FLAG)
 	    {
-		address = mem_read_word(REG_PC);
+		address = mem_fetch_word(REG_PC);
 		REG_SP -= 2;
 		mem_write_word(REG_SP, REG_PC + 2);
 		REG_PC = address;
@@ -2773,7 +2763,7 @@ int z80_run(int continuous, int halted)
 	  case 0xF4:	/* call p, address */
 	    if(!SIGN_FLAG)
 	    {
-		address = mem_read_word(REG_PC);
+		address = mem_fetch_word(REG_PC);
 		REG_SP -= 2;
 		mem_write_word(REG_SP, REG_PC + 2);
 		REG_PC = address;
@@ -2787,7 +2777,7 @@ int z80_run(int continuous, int halted)
 	  case 0xFC:	/* call m, address */
 	    if(SIGN_FLAG)
 	    {
-		address = mem_read_word(REG_PC);
+		address = mem_fetch_word(REG_PC);
 		REG_SP -= 2;
 		mem_write_word(REG_SP, REG_PC + 2);
 		REG_PC = address;
@@ -2826,7 +2816,7 @@ int z80_run(int continuous, int halted)
 	    do_cp(ix->byte.low);
 	    break;
 	  case 0xFE:	/* cp value */
-	    do_cp(mem_read(REG_PC++));
+	    do_cp(mem_fetch(REG_PC++));
 	    break;
 	  case 0xBE:	/* cp (hl) */
 	    do_cp(mem_read(get_hl_addr(ix)));
@@ -2893,9 +2883,7 @@ int z80_run(int continuous, int halted)
 	    /* Zaks says no flag changes. */
 	    if(--REG_B != 0)
 	    {
-		uint8_t byte_value;
-		byte_value = mem_read(REG_PC++);
-		REG_PC += (char) byte_value;
+		REG_PC += ((int8_t) mem_fetch(REG_PC)) + 1;
 	    }
 	    else
 	    {
@@ -2954,7 +2942,7 @@ int z80_run(int continuous, int halted)
 	    break;
 
 	  case 0xDB:	/* in a, (port) */
-	    REG_A = z80_in(mem_read(REG_PC++));
+	    REG_A = z80_in(mem_fetch(REG_PC++));
 	    break;
 
 	  case 0x3C:	/* inc a */
@@ -3009,7 +2997,7 @@ int z80_run(int continuous, int halted)
 	    break;
 
 	  case 0xC3:	/* jp address */
-	    REG_PC = mem_read_word(REG_PC);
+	    REG_PC = mem_fetch_word(REG_PC);
 	    break;
 
 	  case 0xE9:	/* jp (hl) */
@@ -3019,7 +3007,7 @@ int z80_run(int continuous, int halted)
 	  case 0xC2:	/* jp nz, address */
 	    if(!ZERO_FLAG)
 	    {
-		REG_PC = mem_read_word(REG_PC);
+		REG_PC = mem_fetch_word(REG_PC);
 	    }
 	    else
 	    {
@@ -3029,7 +3017,7 @@ int z80_run(int continuous, int halted)
 	  case 0xCA:	/* jp z, address */
 	    if(ZERO_FLAG)
 	    {
-		REG_PC = mem_read_word(REG_PC);
+		REG_PC = mem_fetch_word(REG_PC);
 	    }
 	    else
 	    {
@@ -3039,7 +3027,7 @@ int z80_run(int continuous, int halted)
 	  case 0xD2:	/* jp nc, address */
 	    if(!CARRY_FLAG)
 	    {
-		REG_PC = mem_read_word(REG_PC);
+		REG_PC = mem_fetch_word(REG_PC);
 	    }
 	    else
 	    {
@@ -3049,7 +3037,7 @@ int z80_run(int continuous, int halted)
 	  case 0xDA:	/* jp c, address */
 	    if(CARRY_FLAG)
 	    {
-		REG_PC = mem_read_word(REG_PC);
+		REG_PC = mem_fetch_word(REG_PC);
 	    }
 	    else
 	    {
@@ -3059,7 +3047,7 @@ int z80_run(int continuous, int halted)
 	  case 0xE2:	/* jp po, address */
 	    if(!PARITY_FLAG)
 	    {
-		REG_PC = mem_read_word(REG_PC);
+		REG_PC = mem_fetch_word(REG_PC);
 	    }
 	    else
 	    {
@@ -3069,7 +3057,7 @@ int z80_run(int continuous, int halted)
 	  case 0xEA:	/* jp pe, address */
 	    if(PARITY_FLAG)
 	    {
-		REG_PC = mem_read_word(REG_PC);
+		REG_PC = mem_fetch_word(REG_PC);
 	    }
 	    else
 	    {
@@ -3079,7 +3067,7 @@ int z80_run(int continuous, int halted)
 	  case 0xF2:	/* jp p, address */
 	    if(!SIGN_FLAG)
 	    {
-		REG_PC = mem_read_word(REG_PC);
+		REG_PC = mem_fetch_word(REG_PC);
 	    }
 	    else
 	    {
@@ -3089,7 +3077,7 @@ int z80_run(int continuous, int halted)
 	  case 0xFA:	/* jp m, address */
 	    if(SIGN_FLAG)
 	    {
-		REG_PC = mem_read_word(REG_PC);
+		REG_PC = mem_fetch_word(REG_PC);
 	    }
 	    else
 	    {
@@ -3097,61 +3085,30 @@ int z80_run(int continuous, int halted)
 	    }
 	    break;
 
-	  case 0x18:	/* jr offset */
-	  {
-	      uint8_t byte_value;
-	      byte_value = mem_read(REG_PC++);
-	      REG_PC += (char) byte_value;
-	  }
-	    break;
+	    case 0x18:	/* jr offset */
+	      REG_PC += (int8_t) mem_fetch(REG_PC);
+	      REG_PC++;
+	      break;
 
 	  case 0x20:	/* jr nz, offset */
 	    if(!ZERO_FLAG)
-	    {
-		uint8_t byte_value;
-		byte_value = mem_read(REG_PC++);
-		REG_PC += (char) byte_value;
-	    }
-	    else
-	    {
-		REG_PC++;
-	    }
+		REG_PC += (int8_t) mem_fetch(REG_PC);
+	    REG_PC++;
 	    break;
 	  case 0x28:	/* jr z, offset */
 	    if(ZERO_FLAG)
-	    {
-		uint8_t byte_value;
-		byte_value = mem_read(REG_PC++);
-		REG_PC += (char) byte_value;
-	    }
-	    else
-	    {
-		REG_PC++;
-	    }
+	        REG_PC += (int8_t) mem_fetch(REG_PC);
+	    REG_PC++;
 	    break;
 	  case 0x30:	/* jr nc, offset */
 	    if(!CARRY_FLAG)
-	    {
-		uint8_t byte_value;
-		byte_value = mem_read(REG_PC++);
-		REG_PC += (char) byte_value;
-	    }
-	    else
-	    {
-		REG_PC++;
-	    }
+	        REG_PC += (int8_t) mem_fetch(REG_PC);
+	    REG_PC++;
 	    break;
 	  case 0x38:	/* jr c, offset */
 	    if(CARRY_FLAG)
-	    {
-		uint8_t byte_value;
-		byte_value = mem_read(REG_PC++);
-		REG_PC += (char) byte_value;
-	    }
-	    else
-	    {
-		REG_PC++;
-	    }
+	        REG_PC += (int8_t) mem_fetch(REG_PC);
+	    REG_PC++;
 	    break;
 
 	  case 0x7F:	/* ld a, a */
@@ -3353,48 +3310,48 @@ int z80_run(int continuous, int halted)
 	    break;
 
 	  case 0x3E:	/* ld a, value */
-	    REG_A = mem_read(REG_PC++);
+	    REG_A = mem_fetch(REG_PC++);
 	    break;
 	  case 0x06:	/* ld b, value */
-	    REG_B = mem_read(REG_PC++);
+	    REG_B = mem_fetch(REG_PC++);
 	    break;
 	  case 0x0E:	/* ld c, value */
-	    REG_C = mem_read(REG_PC++);
+	    REG_C = mem_fetch(REG_PC++);
 	    break;
 	  case 0x16:	/* ld d, value */
-	    REG_D = mem_read(REG_PC++);
+	    REG_D = mem_fetch(REG_PC++);
 	    break;
 	  case 0x1E:	/* ld e, value */
-	    REG_E = mem_read(REG_PC++);
+	    REG_E = mem_fetch(REG_PC++);
 	    break;
 	  case 0x26:	/* ld h, value */
-	    ix->byte.high = mem_read(REG_PC++);
+	    ix->byte.high = mem_fetch(REG_PC++);
 	    break;
 	  case 0x2E:	/* ld l, value */
-	    ix->byte.low = mem_read(REG_PC++);
+	    ix->byte.low = mem_fetch(REG_PC++);
 	    break;
 
 	  case 0x01:	/* ld bc, value */
-	    REG_BC = mem_read_word(REG_PC);
+	    REG_BC = mem_fetch_word(REG_PC);
 	    REG_PC += 2;
 	    break;
 	  case 0x11:	/* ld de, value */
-	    REG_DE = mem_read_word(REG_PC);
+	    REG_DE = mem_fetch_word(REG_PC);
 	    REG_PC += 2;
 	    break;
 	  case 0x21:	/* ld hl, value */
-	    ix->word = mem_read_word(REG_PC);
+	    ix->word = mem_fetch_word(REG_PC);
 	    REG_PC += 2;
 	    break;
 	  case 0x31:	/* ld sp, value */
-	    REG_SP = mem_read_word(REG_PC);
+	    REG_SP = mem_fetch_word(REG_PC);
 	    REG_PC += 2;
 	    break;
 
 
 	  case 0x3A:	/* ld a, (address) */
 	    /* this one is missing from Zaks */
-	    REG_A = mem_read(mem_read_word(REG_PC));
+	    REG_A = mem_read(mem_fetch_word(REG_PC));
 	    REG_PC += 2;
 	    break;
 
@@ -3406,24 +3363,24 @@ int z80_run(int continuous, int halted)
 	    break;
 
 	  case 0x32:	/* ld (address), a */
-	    mem_write(mem_read_word(REG_PC), REG_A);
+	    mem_write(mem_fetch_word(REG_PC), REG_A);
 	    REG_PC += 2;
 	    break;
 
 	  case 0x22:	/* ld (address), hl */
-	    mem_write_word(mem_read_word(REG_PC), ix->word);
+	    mem_write_word(mem_fetch_word(REG_PC), ix->word);
 	    REG_PC += 2;
 	    break;
 
 	  case 0x36:	/* ld (hl), value */
 	  {
 	      uint16_t addr = get_hl_addr(ix);
-	      mem_write(addr, mem_read(REG_PC++));
+	      mem_write(addr, mem_fetch(REG_PC++));
 	      break;
 	  }
 
 	  case 0x2A:	/* ld hl, (address) */
-	    ix->word = mem_read_word(mem_read_word(REG_PC));
+	    ix->word = mem_read_word(mem_fetch_word(REG_PC));
 	    REG_PC += 2;
 	    break;
 
@@ -3435,7 +3392,7 @@ int z80_run(int continuous, int halted)
 	    break;
 
 	  case 0xF6:	/* or value */
-	    do_or_byte(mem_read(REG_PC++));
+	    do_or_byte(mem_fetch(REG_PC++));
 	    break;
 
 	  case 0xB7:	/* or a */
@@ -3465,7 +3422,7 @@ int z80_run(int continuous, int halted)
 	    break;
 
 	  case 0xD3:	/* out (port), a */
-	    z80_out(mem_read(REG_PC++), REG_A);
+	    z80_out(mem_fetch(REG_PC++), REG_A);
 	    break;
 
 	  case 0xC1:	/* pop bc */
@@ -3647,7 +3604,7 @@ int z80_run(int continuous, int halted)
 	    do_sbc_byte(ix->byte.low);
 	    break;
 	  case 0xDE:	/* sbc a, value */
-	    do_sbc_byte(mem_read(REG_PC++));
+	    do_sbc_byte(mem_fetch(REG_PC++));
 	    break;
 	  case 0x9E:	/* sbc a, (hl) */
 	    do_sbc_byte(mem_read(get_hl_addr(ix)));
@@ -3675,14 +3632,14 @@ int z80_run(int continuous, int halted)
 	    do_sub_byte(ix->byte.low);
 	    break;
 	  case 0xD6:	/* sub a, value */
-	    do_sub_byte(mem_read(REG_PC++));
+	    do_sub_byte(mem_fetch(REG_PC++));
 	    break;
 	  case 0x96:	/* sub a, (hl) */
 	    do_sub_byte(mem_read(get_hl_addr(ix)));
 	    break;
 
 	  case 0xEE:	/* xor value */
-	    do_xor_byte(mem_read(REG_PC++));
+	    do_xor_byte(mem_fetch(REG_PC++));
 	    break;
 
 	  case 0xAF:	/* xor a */
@@ -3720,17 +3677,15 @@ z80_reset(void)
 {
     REG_PC = 0;
     z80_state.i = 0;
-    z80_state.iff1 = 0;
-    z80_state.iff2 = 0;
+    z80_state.iff1 = false;
+    z80_state.iff2 = false;
     z80_state.interrupt_mode = 0;
-    z80_state.nmi_in_progress = 0;
-    z80_state.interrupt = FALSE;
+    z80_state.nmi_in_progress = false;
+    z80_state.interrupt = false;
 
     /* z80_state.r = 0; */
     srand(time(NULL));  /* Seed the RNG, for reading the refresh register */
 }
-
-#if TRACE
 
 #define WREG(U,L) \
     if (z80_state.L.word != old_state.L.word) {	\
@@ -3747,6 +3702,9 @@ static void diffstate(void)
 {
     static struct z80_state_struct old_state;
 
+    if (!tracing)
+	return;
+    
     BREG(A,af.byte.high);
     WREG(BC,bc);
     WREG(DE,de);
@@ -3761,50 +3719,3 @@ static void diffstate(void)
     WREG(DEx,de_prime);
     WREG(HLx,hl_prime);
 }
-
-struct mem_trace {
-    uint16_t size, addr, data;
-};
-
-#define MAX_TRACES 16
-static struct mem_trace mem_traces[MAX_TRACES];
-static struct mem_trace *mem_trace_head = mem_traces;
-
-static void tracemem(void)
-{
-    const struct mem_trace *mtp;
-
-    for (mtp = mem_traces; mtp < mem_trace_head; mtp++) {
-	/* printf(" (%04X)=%0*X", mtp->addr, mtp->size*2, mtp->data); */
-    }
-
-    mem_trace_head = mem_traces;
-}
-
-#undef mem_write
-static void trace_mem_write(uint16_t addr, uint8_t data)
-{
-    if (mem_trace_head < &mem_traces[MAX_TRACES]) {
-	mem_trace_head->addr = addr;
-	mem_trace_head->data = data;
-	mem_trace_head->size = 1;
-	mem_trace_head++;
-    }
-
-    mem_write(addr, data);
-}
-
-#undef mem_write_word
-static void trace_mem_write_word(uint16_t addr, uint16_t data)
-{
-    if (mem_trace_head < &mem_traces[MAX_TRACES]) {
-	mem_trace_head->addr = addr;
-	mem_trace_head->data = data;
-	mem_trace_head->size = 2;
-	mem_trace_head++;
-    }
-
-    mem_write_word(addr, data);
-}
-
-#endif /* TRACE */
