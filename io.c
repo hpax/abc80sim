@@ -41,6 +41,7 @@ uint8_t keyb_irq;
 extern void disk_reset(void);
 extern void disk_out(int, int, int);
 extern int disk_in(int, int);
+extern int rtc_in(int, int);
 extern void printer_reset(void);
 extern void printer_out(int, int, int);
 extern int printer_in(int, int);
@@ -110,6 +111,10 @@ int z80_in(int port)
 
     case 60:			/* PRx: */
       v = printer_in(abcbus_select, port);
+      break;
+
+    case 55:			/* RTC */
+      v = rtc_in(abcbus_select, port);
       break;
 
     default:

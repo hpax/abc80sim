@@ -28,11 +28,11 @@ GENO = abcrom40.$(O) abcrom80.$(O) ufddos.$(O) printrom.$(O)
 GENC = abcrom40.c abcrom80.c ufddos.c printrom.c
 
 OBJS = abc80.$(O) clock.$(O) sdlscrn.$(O) z80.$(O) abc80_mem.$(O) io.$(O) \
-       abcfont.$(O) disk.$(O) \
+       abcfont.$(O) disk.$(O) rtc.$(O) \
        abcprint.$(O) print.$(O) fileop.$(O) \
        z80dis.$(O) $(GENO)
 SRCS = abc80.c clock.c sdlscrn.c z80.c abc80_mem.c io.c \
-       abcfont.c disk.c \
+       abcfont.c disk.c rtc.c \
        abcprint.c print.c fileop.c \
        z80dis.c abcrom40.c abcrom80.c $(GENC)
 HDRS = clock.h screen.h z80.h patchlevel.h
