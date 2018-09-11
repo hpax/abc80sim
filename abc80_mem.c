@@ -49,6 +49,8 @@ void tracemem(void)
 {
     const struct mem_trace *mtp;
     bool overflow = false;
+    uint16_t last_addr = 0;
+    int last_written = -1;
 
     if (!tracing)
 	return;
@@ -59,8 +61,12 @@ void tracemem(void)
     }
 
     for (mtp = mem_traces; mtp < mem_trace_tail; mtp++) {
-	printf(" (%04X)%c%0*X", mtp->addr, mtp->written ? '=' : ':',
-	       mtp->size*2, mtp->data);
+	putchar(' ');
+	if (mtp->addr != last_addr || mtp->written != last_written)
+	    printf("(%04X)%c", mtp->addr, mtp->written ? '=' : ':');
+	printf("%0*X", mtp->size*2, mtp->data);
+	last_addr = mtp->addr + mtp->size;
+	last_written = mtp->written;
     }
 
     if (overflow)
