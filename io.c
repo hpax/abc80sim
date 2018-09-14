@@ -33,7 +33,7 @@ set_in_port(int port, uint8_t value)
 }
 
 /* Select code for ABC/4680 bus */
-int abcbus_select = -1;
+int8_t abcbus_select = -1;
 
 /* Keyboard IRQ vector */
 uint8_t keyb_irq;
@@ -55,8 +55,8 @@ void
 z80_out(int port, uint8_t value)
 {
   if (tracing & TRACE_IO) {
-    printf("OUT port %02x (%3d) sel %02x (%3d) data %02x (%3d)\n",
-	   port, port, abcbus_select, abcbus_select, value, value);
+    printf("OUT: port %02x (%3d) sel %02x (%2d) data %02x (%3d)\n",
+	   port, port, abcbus_select & 0xff, abcbus_select, value, value);
   }
 
   if ( port == 1 )
@@ -156,7 +156,7 @@ int z80_in(int port)
 
   if (tracing & TRACE_IO) {
     printf(" IN: port %02x (%3d) sel %02x (%3d) data %02x (%3d)\n",
-	   port, port, sel, sel, v, v);
+	   port, port, sel, (int8_t)sel, v, v);
   }
   return v;
 }
