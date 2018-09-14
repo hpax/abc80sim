@@ -55,7 +55,7 @@ void
 z80_out(int port, uint8_t value)
 {
   if (tracing & TRACE_IO) {
-    printf("OUT: port %02x (%3d) sel %02x (%2d) data %02x (%3d)\n",
+    printf("OUT: port 0x%02x (%3d) sel 0x%02x (%2d) data 0x%02x (%3d)\n",
 	   port, port, abcbus_select & 0xff, abcbus_select, value, value);
   }
 
@@ -155,7 +155,7 @@ int z80_in(int port)
   v   = do_in(port);
 
   if (tracing & TRACE_IO) {
-    printf(" IN: port %02x (%3d) sel %02x (%3d) data %02x (%3d)\n",
+    printf(" IN: port 0x%02x (%3d) sel 0x%02x (%2d) data 0x%02x (%3d)\n",
 	   port, port, sel, (int8_t)sel, v, v);
   }
   return v;
