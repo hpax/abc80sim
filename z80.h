@@ -182,7 +182,11 @@ extern int DAsm(uint16_t pc, char *T, int *target);
 extern void load_basic(int);
 
 extern uint8_t keyb_irq;
-extern bool tracing;
+extern unsigned int tracing;
+
+#define TRACE_CPU	1
+#define TRACE_IO	2
+#define TRACE_DISK	4
 
 /*
  extern void debug_init();

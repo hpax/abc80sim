@@ -30,7 +30,7 @@
 
 #include <setjmp.h>
 
-bool tracing;
+unsigned int tracing;
 
 /*
  * The state of our Z-80 registers is kept in this structure:
@@ -2543,7 +2543,7 @@ int z80_run(bool continuous, bool halted)
 	    }
 	  } while (halted);
 
-	  if (tracing) {
+	  if (tracing & TRACE_CPU) {
 	      diffstate();
 	      tracemem();
 	      putchar('\n');
@@ -3702,7 +3702,7 @@ static void diffstate(void)
 {
     static struct z80_state_struct old_state;
 
-    if (!tracing)
+    if (!(tracing & TRACE_CPU))
 	return;
     
     BREG(A,af.byte.high);

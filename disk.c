@@ -9,7 +9,6 @@
 
 #define NOTTHERE 0
 #define READONLY 0
-#define TRACE 0
 #define INTERLEAVE 0
 
 /* This is the interpretation of an "out" command */
@@ -78,7 +77,7 @@ static struct ctl_state * const sel_to_state[64] =
     [46] = &sf_state,
   };
 
-static inline int cur_sector(struct ctl_state *state)
+static inline unsigned int cur_sector(struct ctl_state *state)
 {
   uint8_t k2 = state->k[2], k3 = state->k[3];
 
@@ -189,7 +188,9 @@ void disk_out(int sel, int port, int value)
   switch ( port ) {
   case 0:
     switch ( state->state ) {
-    case disk_k0 ... disk_k2:
+    case disk_k0:
+    case disk_k1:
+    case disk_k2:
       state->status = state->aux_status = 0;
       state->k[state->state - disk_k0] = value;
       state->state++;
@@ -199,13 +200,13 @@ void disk_out(int sel, int port, int value)
       state->k[3] = value;
       state->state = disk_k0;
 
-#if TRACE
-      printf("%s%d: command %02X %02X %02X %02X\n",
-	     state->name, state->k[1] & 7,
-	     state->k[0], state->k[1], state->k[2], state->k[3]);
-      printf("PC = %04X  BC = %04X  DE = %04X  HL = %04X\n",
-	     REG_PC, REG_BC, REG_DE, REG_HL);
-#endif 
+      if (tracing & TRACE_DISK) {
+	printf("%s%d: command %02X %02X %02X %02X\n",
+	       state->name, state->k[1] & 7,
+	       state->k[0], state->k[1], state->k[2], state->k[3]);
+	printf("PC = %04X  BC = %04X  DE = %04X  HL = %04X\n",
+	       REG_PC, REG_BC, REG_DE, REG_HL);
+      }
 
       /* Bad drive/sector? */
       if ( !state->files[state->k[1] & 7] ) {
@@ -220,29 +221,30 @@ void disk_out(int sel, int port, int value)
       break;
     case disk_upload:
       state->buf[state->k[1] >> 6][state->out_ptr++] = value;
-#if TRACE
-	  printf("%02X", value);
-#endif
+      if (tracing & TRACE_DISK)
+	printf("%02X", value);
       if ( state->out_ptr >= 256 ) {
-#if TRACE
-      printf("\nPC = %04X  BC = %04X  DE = %04X  HL = %04X\n",
-	     REG_PC, REG_BC, REG_DE, REG_HL);
-#endif
+	if (tracing & TRACE_DISK)
+	  printf("\nPC = %04X  BC = %04X  DE = %04X  HL = %04X\n",
+		 REG_PC, REG_BC, REG_DE, REG_HL);
 	do_next_command(state);
       }
       break;
     case disk_download:
+      break;
+    case disk_need_init:
+      abort();			/* Should never happen */
       break;
     }
     break;
 
   case 2:			/* Start command */
   case 4:			/* Reset */
-#if TRACE
-    printf("OUT %d/%d : ", sel, port);
-    printf("PC = %04X  BC = %04X  DE = %04X  HL = %04X\n",
-	   REG_PC, REG_BC, REG_DE, REG_HL);
-#endif
+    if (tracing & TRACE_DISK) {
+      printf("OUT %d/%d : ", sel, port);
+      printf("PC = %04X  BC = %04X  DE = %04X  HL = %04X\n",
+	     REG_PC, REG_BC, REG_DE, REG_HL);
+    }
     disk_reset();
     break;
     
@@ -289,10 +291,10 @@ int disk_in(int sel, int port)
     break;
   }
 
-#if TRACE
-  printf("IN %d/%d: %02X : ", sel, port, v);
-  printf("PC = %04X  BC = %04X  DE = %04X  HL = %04X\n",
-	 REG_PC, REG_BC, REG_DE, REG_HL);
-#endif
+  if (tracing & TRACE_DISK) {
+    printf("IN %d/%d: %02X : ", sel, port, v);
+    printf("PC = %04X  BC = %04X  DE = %04X  HL = %04X\n",
+	   REG_PC, REG_BC, REG_DE, REG_HL);
+  }
   return v;
 }

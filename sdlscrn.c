@@ -40,6 +40,10 @@ static struct rgba { uint8_t a, r, g, b; } rgbcolors[NCOLORS] = {
 unsigned char screendata[2048];
 static struct { int x, y; } addr_to_xy[2][2048];
 
+struct do_event {
+  void (*func)(void);
+};
+
 static SDL_Surface *rscreen;
 static volatile uint8_t blink_mask = 0x80; /* 0x80 for inverse enable */
 
@@ -161,6 +165,8 @@ static void toggle_blink(void)
     SDL_UpdateRects(rscreen, nrects, rects);
 }
 
+static struct do_event toggle_blink_event = { toggle_blink };
+
 /*
  * Refresh rectangle and unlock screen
  * Coordinates are inclusive and must be adjusted for double-pixel mode
@@ -281,7 +287,7 @@ void screen_init(bool width40)
   }
 
   /* Blink timer */
-  SDL_AddTimer(400, post_periodic, (void *)toggle_blink);
+  SDL_AddTimer(400, post_periodic, &toggle_blink_event);
 
   /* Enable keyboard decoding */
   SDL_EnableUNICODE(1);
@@ -399,7 +405,7 @@ void check_event(void)
       }
       break;
     case SDL_USEREVENT:
-      ((void (*)(void)) event.user.data1)();
+      ((struct do_event *)event.user.data1)->func();
       event_pending--;
       break;
     case SDL_QUIT:

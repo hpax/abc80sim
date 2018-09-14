@@ -32,7 +32,7 @@ static struct mem_trace *mem_trace_tail = mem_traces;
 static inline void
 mem_trace_record(uint16_t addr, uint16_t data, uint8_t size, bool written)
 {
-    if (!tracing)
+    if (!(tracing & TRACE_CPU))
 	return;
 
     if (mem_trace_tail <= &mem_traces[MAX_TRACES]) {
@@ -52,7 +52,7 @@ void tracemem(void)
     uint16_t last_addr = 0;
     int last_written = -1;
 
-    if (!tracing)
+    if (!(tracing & TRACE_CPU))
 	return;
 
     if (mem_trace_tail >= &mem_traces[MAX_TRACES]) {

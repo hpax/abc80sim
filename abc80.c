@@ -93,6 +93,7 @@ usage(void)
 }
 
 extern int   optind;
+extern char *optarg;
 extern int   getopt(int, char **, char *);
 
 int main(int argc, char **argv)
@@ -103,7 +104,7 @@ int main(int argc, char **argv)
     bool  width40   = false;
     int   c;
 
-    while ((c = getopt(argc, argv, "bdvt48")) != EOF) {
+    while ((c = getopt(argc, argv, "bdvt:48")) != EOF) {
         switch (c) {
 
 	case 'v':
@@ -120,8 +121,23 @@ int main(int argc, char **argv)
             break;
 
 	case 't':
-	    tracing = true;
+	{
+	    const char *tok;
+	    tok = strtok(optarg, ",");
+	    while (tok) {
+		if (!strcasecmp(tok, "cpu"))
+		    tracing |= TRACE_CPU;
+		else if (!strcasecmp(tok, "io"))
+		    tracing |= TRACE_IO;
+		else if (!strcasecmp(tok, "disk"))
+		    tracing |= TRACE_DISK;
+		else if (!strcasecmp(tok, "all"))
+		    tracing = -1;
+
+		tok = strtok(NULL, ",");
+	    }
 	    break;
+	}
 
 	case '4':
 	    width40 = true;

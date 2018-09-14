@@ -54,6 +54,11 @@ extern int printer_in(int, int);
 void 
 z80_out(int port, uint8_t value)
 {
+  if (tracing & TRACE_IO) {
+    printf("OUT port %02x (%3d) sel %02x (%3d) data %02x (%3d)\n",
+	   port, port, abcbus_select, abcbus_select, value, value);
+  }
+
   if ( port == 1 )
     abcbus_select = value & 0x3f;
 
@@ -90,7 +95,7 @@ z80_out(int port, uint8_t value)
 /*
  * This function is called from the z80 at an IN instruction.
  */
-int z80_in(int port)
+static uint8_t do_in(uint8_t port)
 {
   if ( port == 7 ) {
     abcbus_select = -1;
@@ -140,6 +145,20 @@ int z80_in(int port)
   }
   
   return (int)inports[port];
+}
+
+int z80_in(int port)
+{
+  uint8_t sel, v;
+
+  sel = abcbus_select;
+  v   = do_in(port);
+
+  if (tracing & TRACE_IO) {
+    printf(" IN: port %02x (%3d) sel %02x (%3d) data %02x (%3d)\n",
+	   port, port, sel, sel, v, v);
+  }
+  return v;
 }
 
 void
