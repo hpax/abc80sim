@@ -45,6 +45,20 @@ extern void printer_reset(void);
 extern void printer_out(int, int, int);
 extern int printer_in(int, int);
 
+static inline uint8_t abc800_mangle_port(uint8_t port)
+{
+  if ((port & 0xe0) == 0x00)
+    return port & 0xe7;
+  else if ((port & 0xf0) == 0x20)
+    return port & 0xf3;
+  else if ((port & 0xf8) == 0x28)
+    return port & 0xf9;
+  else if ((port & 0xc0) == 0x40)
+    return port & 0xe3;
+  else
+    return port;
+}
+
 /*
  * This function is called from the z80 at an OUT instruction.
  * We check if any special port was accessed and
@@ -117,6 +131,8 @@ void abc80_out(uint8_t port, uint8_t value)
 
 static void abc802_out(uint8_t port, uint8_t value)
 {
+  port = abc800_mangle_port(port);
+
   switch (port) {
   case 0:
   case 1:
@@ -220,6 +236,8 @@ static uint8_t abc80_in(uint8_t port)
 static uint8_t abc802_in(uint8_t port)
 {
   uint8_t v = 0xff;
+
+  port = abc800_mangle_port(port);
 
   switch (port) {
   case 0:
