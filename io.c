@@ -51,12 +51,12 @@ extern int printer_in(int, int);
  * We check if any special port was accessed and
  * dispatch possible actions.
  */
-void 
+void
 z80_out(int port, uint8_t value)
 {
   if (tracing & TRACE_IO) {
-    printf("OUT: port 0x%02x (%3d) sel 0x%02x (%2d) data 0x%02x (%3d)\n",
-	   port, port, abcbus_select & 0xff, abcbus_select, value, value);
+    printf("OUT: port 0x%02x (%3d) sel 0x%02x (%2d) data 0x%02x (%3d) PC=%04x\n",
+	   port, port, abcbus_select & 0xff, abcbus_select, value, value, REG_PC);
   }
 
   if ( port == 1 )
@@ -143,7 +143,7 @@ static uint8_t do_in(uint8_t port)
     inports[port] &= ~0x80;
     return v;
   }
-  
+
   return (int)inports[port];
 }
 
@@ -155,8 +155,8 @@ int z80_in(int port)
   v   = do_in(port);
 
   if (tracing & TRACE_IO) {
-    printf(" IN: port 0x%02x (%3d) sel 0x%02x (%2d) data 0x%02x (%3d)\n",
-	   port, port, sel, (int8_t)sel, v, v);
+    printf(" IN: port 0x%02x (%3d) sel 0x%02x (%2d) data 0x%02x (%3d) PC=%04x\n",
+	   port, port, sel, (int8_t)sel, v, v, REG_PC);
   }
   return v;
 }

@@ -2,12 +2,12 @@
  * Copyright (C) 1992 Clarendon Hill Software.
  *
  * Permission is granted to any individual or institution to use, copy,
- * or redistribute this software, provided this copyright notice is retained. 
+ * or redistribute this software, provided this copyright notice is retained.
  *
  * This software is provided "as is" without any expressed or implied
  * warranty.  If this software brings on any sort of damage -- physical,
  * monetary, emotional, or brain -- too bad.  You've got no one to blame
- * but yourself. 
+ * but yourself.
  *
  * The software may be modified for your own purposes, but modified versions
  * must retain this notice.
@@ -115,7 +115,7 @@ struct z80_state_struct
  *
  *	7   6   5   4   3   2   1   0
  *	S   Z   -   H   -  P/V  N   C
- *	
+ *
  *	C	Carry
  *	N	Subtract
  *	P/V	Parity/Overflow
@@ -138,7 +138,7 @@ struct z80_state_struct
 #define CLEAR_SIGN()		(REG_F &= (~SIGN_MASK))
 #define SET_ZERO()		(REG_F |= ZERO_MASK)
 #define CLEAR_ZERO()		(REG_F &= (~ZERO_MASK))
-#define SET_HALF_CARRY()       	(REG_F |= HALF_CARRY_MASK)
+#define SET_HALF_CARRY()	(REG_F |= HALF_CARRY_MASK)
 #define CLEAR_HALF_CARRY()	(REG_F &= (~HALF_CARRY_MASK))
 #define SET_OVERFLOW()		(REG_F |= OVERFLOW_MASK)
 #define CLEAR_OVERFLOW()	(REG_F &= (~OVERFLOW_MASK))
@@ -187,6 +187,13 @@ extern unsigned int tracing;
 #define TRACE_CPU	1
 #define TRACE_IO	2
 #define TRACE_DISK	4
+
+enum model {
+    MODEL_ABC80,
+    MODEL_ABC802
+};
+
+extern enum model model;
 
 /*
  extern void debug_init();

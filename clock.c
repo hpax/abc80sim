@@ -8,7 +8,7 @@
 /*
  * Trig a non maskable interrupt in the Z80 on the clock signal.
  */
-static Uint32 clock_handler(Uint32 interval, void *param)
+static Uint32 clock_nmi_handler(Uint32 interval, void *param)
 {
     (void)param;
     z80_state.nminterrupt = 1;
@@ -22,7 +22,14 @@ static Uint32 clock_handler(Uint32 interval, void *param)
 void
 clock_init(void)
 {
-    SDL_AddTimer(20, clock_handler, NULL);
+  switch (model) {
+  case MODEL_ABC80:
+    SDL_AddTimer(20, clock_nmi_handler, NULL); /* 20 ms NMI timer */
+    break;
+  case MODEL_ABC802:
+    /* Do stuff */
+    break;
+  }
 }
 
 /* Standard callback routine to post a periodic user event */
@@ -42,4 +49,3 @@ Uint32 post_periodic(Uint32 interval, void *param)
 
   return interval;
 }
-

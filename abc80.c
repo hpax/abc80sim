@@ -92,6 +92,8 @@ usage(void)
     exit(1);
 }
 
+enum model model = MODEL_ABC802;
+
 extern int   optind;
 extern char *optarg;
 extern int   getopt(int, char **, char *);

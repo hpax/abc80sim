@@ -9,12 +9,11 @@
 
 #define ROM_START	(0x0000)
 #define ROM_END		(0x4000)
-#define VIDEO_START	(0x7400) /* GeJo2 80 tecken */
-#define VIDEO_MASK	(0xf400)
-#define VIDEO_LEN       (0x0400)
 #define RAM_START       (0x8000)
 
-static uint8_t memory[MEMORY_SIZE];
+static uint8_t memory[MEMORY_SIZE], vram[MEMORY_SIZE];
+
+extern uint16_t video_base, video_mask;
 
 /*
  * Memory tracing support
@@ -80,6 +79,12 @@ void tracemem(void)
  */
 #define WRITEABLE(address)  ((address) >= ROM_END)
 
+static inline bool is_video(uint16_t address)
+{
+    return ((address & video_mask) == video_base) &&
+	!(model == MODEL_ABC802 && ((REG_PC & video_mask) == video_base));
+}
+
 void mem_init(void)
 {
 }
@@ -103,7 +108,7 @@ uint8_t *mem_get_addr(uint16_t address)
 
 static inline uint8_t do_mem_read(uint16_t address)
 {
-    return memory[address];
+    return is_video(address) ? vram[address] : memory[address];
 }
 
 uint8_t mem_read(uint16_t address)
@@ -148,13 +153,9 @@ uint16_t mem_fetch_word(uint16_t address)
 
 static void do_mem_write(uint16_t address, uint8_t value)
 {
-    if ((address & VIDEO_MASK) == VIDEO_START) {
-	/*
-	 * Speed hack -- check to see if the character has actually changed.
-	 * Only call the video emulator if it has.
-	 */
-	if (memory[address] != value) {
-	    memory[address] = value;
+    if (is_video(address)) {
+	if (vram[address] != value) {
+	    vram[address] = value;
 	    screen_write(address, value);
 	}
     } else if (WRITEABLE(address)) {

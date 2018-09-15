@@ -1303,6 +1303,10 @@ static void do_im2(void)
 static void do_nmi(void)
 {
     /* handle a non-maskable interrupt */
+    if (tracing & (TRACE_IO|TRACE_CPU)) {
+	printf("NMI: PC=%02x\n", REG_PC);
+    }
+
     REG_SP -= 2;
     mem_write_word(REG_SP, REG_PC);
     z80_state.iff2 = z80_state.iff1;
@@ -1315,6 +1319,12 @@ static void do_nmi(void)
 static void
 do_int(void)
 {
+    if (tracing & (TRACE_CPU | TRACE_IO)) {
+	printf("INT: vector %02x (%3d) I=%02x PC=%04x\n",
+	       z80_state.i_vector, z80_state.i_vector,
+	       z80_state.i, REG_PC);
+    }
+
     switch (z80_state.interrupt_mode) {
       case 0:
         /* NYI */
@@ -3704,7 +3714,7 @@ static void diffstate(void)
 
     if (!(tracing & TRACE_CPU))
 	return;
-    
+
     BREG(A,af.byte.high);
     WREG(BC,bc);
     WREG(DE,de);

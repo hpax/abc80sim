@@ -26,7 +26,9 @@
 #define PX_WIDTH  (TS_WIDTH*FONT_XSIZE*FONT_XDUP)
 #define PX_HEIGHT (TS_HEIGHT*FONT_YSIZE*FONT_YDUP)
 
-extern unsigned char abc_font[256][FONT_YSIZE];
+uint16_t video_base, video_mask;
+
+extern const unsigned char abc_font[256][FONT_YSIZE];
 
 #define NCOLORS 2
 
@@ -55,10 +57,25 @@ static int mode40;
  */
 static inline unsigned char *screenptr(int y, int x)
 {
-  if (mode40)
-    return &screendata[1024 + (((y >> 3)*5) << 3) + ((y & 7) << 7) + x];
-  else
-    return &screendata[(((y >> 3)*5) << 4) + ((y & 7) << 8) + x];
+  size_t offs;
+
+  switch (model) {
+  case MODEL_ABC80:
+    if (mode40)
+      offs = 1024 + (((y >> 3)*5) << 3) + ((y & 7) << 7) + x;
+    else
+      offs = (((y >> 3)*5) << 4) + ((y & 7) << 8) + x;
+    break;
+
+  case MODEL_ABC802:
+    offs = (y * 80) + (x << mode40);
+    break;
+
+  default:
+    abort();
+  }
+
+  return &screendata[offs];
 }
 
 /*
@@ -76,7 +93,8 @@ static void lock_screen(void)
  */
 static void put_screen(int tx, int ty)
 {
-  unsigned char *fontp, v;
+  const unsigned char *fontp;
+  unsigned char v;
   uint32_t *pixelp, *pixelpp, fgp, bgp;
   int x, xx, y, yy;
   int bmask = blink_mask;
@@ -102,11 +120,11 @@ static void put_screen(int tx, int ty)
     bgp = colors[0];
     fgp = colors[1];
   }
-  
+
   pixelp = ((uint32_t *) rscreen->pixels) +
-    ty*PX_WIDTH*FONT_YSIZE*FONT_YDUP + 
+    ty*PX_WIDTH*FONT_YSIZE*FONT_YDUP +
     ((tx*FONT_XSIZE*FONT_XDUP) << mode40);
-  
+
   for ( y = 0 ; y < FONT_YSIZE ; y++ ) {
     for ( yy = 0 ; yy < FONT_YDUP ; yy++ ) {
       v = *fontp;
@@ -192,8 +210,9 @@ screen_write(int addr, int value)
   unsigned char *p;
   int width = TS_WIDTH >> mode40;
 
-  addr = ((addr & 0x800) >> 1) | (addr & 0x3ff);
-  
+  addr &= ~video_mask;
+  addr = ((addr >= 0x7c00) ? 0x400 : 0) | (addr & 0x3ff);
+
   x = addr_to_xy[mode40][addr].x;
   y = addr_to_xy[mode40][addr].y;
   if ( y == -1 )
@@ -223,8 +242,19 @@ void setmode40(bool m)
 
   if (m != mode40) {
     mode40 = m;
-
     width = TS_WIDTH >> mode40;
+
+    switch (model) {
+    case MODEL_ABC80:
+      video_base = m ? 0x7c00 : 0x7400;
+      video_mask = m ? 0xfc00 : 0xf400;
+      break;
+
+    case MODEL_ABC802:
+      video_base = 0x7800;
+      video_mask = 0xf800;
+      break;
+    }
 
     lock_screen();
 
@@ -287,7 +317,8 @@ void screen_init(bool width40)
   }
 
   /* Blink timer */
-  SDL_AddTimer(400, post_periodic, &toggle_blink_event);
+  if (model == MODEL_ABC80)
+    SDL_AddTimer(400, post_periodic, &toggle_blink_event);
 
   /* Enable keyboard decoding */
   SDL_EnableUNICODE(1);
