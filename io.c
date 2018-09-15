@@ -74,7 +74,7 @@ static void abcbus_out(uint8_t port, uint8_t value)
   }
 }
 
-void abc80_out(int port, uint8_t value)
+void abc80_out(uint8_t port, uint8_t value)
 {
   if (tracing & TRACE_IO) {
     printf("OUT: port 0x%02x (%3d) sel 0x%02x (%2d) data 0x%02x (%3d) PC=%04x\n",
@@ -195,6 +195,7 @@ static uint8_t abc80_in(uint8_t port)
   case 1:
   case 7:
     v = abcbus_in(port);
+    break;
 
   case 3:
     setmode40(1);
