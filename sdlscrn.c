@@ -99,7 +99,7 @@ static inline struct xy addr_to_xy(const uint8_t *p)
 /*
  * Compute the raw offset for a specific x,y coordinates
  */
-static inline uint16_t screenoffs(uint8_t y, uint8_t x)
+static inline unsigned int screenoffs(uint8_t y, uint8_t x)
 {
   size_t offs;
 
@@ -150,11 +150,11 @@ static unsigned int upd_x0, upd_y0, upd_x1, upd_y1;
 static void put_screen(unsigned int tx, unsigned int ty)
 {
   const unsigned char *fontp;
-  size_t voffs;
+  unsigned int voffs;
   unsigned char v, vv;
   uint32_t *pixelp, *pixelpp, fgp, bgp;
   unsigned int x, xx, y, yy, gx;
-  uint8_t curmask;
+  uint32_t curmask;
   unsigned char gmode, fg, bg;
   unsigned char cc, invmask = inverse_mask;
   unsigned int xdup = FONT_XDUP << mode40;
@@ -176,7 +176,7 @@ static void put_screen(unsigned int tx, unsigned int ty)
   }
 
   voffs = screenoffs(ty,tx);
-  cc = screendata(ty,tx);
+  cc = video_ram[voffs & VRAM_MASK];
   fontp = abc_font[(cc & 0x7f) + gmode];
 
   if ( cc & invmask ) {
@@ -203,8 +203,8 @@ static void put_screen(unsigned int tx, unsigned int ty)
   curmask = 0;
   if (voffs == curaddr) {
     if (blink_on | (crtc.r.curstart & 0x40)) {
-      curmask = (1 << (crtc.r.curstart & 0x1f))-1;
-      curmask &= (1 << ((crtc.r.curend & 0x1f) - 1))-1;
+      curmask = (~0U << (crtc.r.curstart & 0x1f));
+      curmask &= (2U << (crtc.r.curend & 0x1f))-1;
     }
   }
 
@@ -329,7 +329,7 @@ static void toggle_blink(void)
     break;
 
   case MODEL_ABC802:
-    if (crtc.r.curstart & 0x40) {
+    if (!(crtc.r.curstart & 0x40)) {
       xy = addr_to_xy(curaddr + video_ram);
       put_screen(xy.x, xy.y);
     }
