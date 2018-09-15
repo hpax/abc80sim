@@ -6,10 +6,7 @@
 *.lst
 abcdisk
 abcdir
-abcrom40.c
-abcrom80.c
-ufddos.c
-printrom.c
+roms/*.c
 abc80
 config.h
 config.h.in
