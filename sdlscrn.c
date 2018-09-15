@@ -28,12 +28,18 @@
 
 extern unsigned char abc_font[256][FONT_YSIZE];
 
-#define NCOLORS 2
+#define NCOLORS 8
 
 static uint32_t colors[NCOLORS];
 
 static struct rgba { uint8_t a, r, g, b; } rgbcolors[NCOLORS] = {
   {0x00,0x00,0x00,0x00},	/* black */
+  {0x00,0xff,0x00,0x00},	/* red */
+  {0x00,0x00,0xff,0x00},	/* green */
+  {0x00,0xff,0xff,0x00},	/* yellow */
+  {0x00,0x00,0x00,0xff},	/* blue */
+  {0x00,0xff,0x00,0xff},	/* purple */
+  {0x00,0x00,0xff,0xff},	/* cyan */
   {0x00,0xff,0xff,0xff},	/* white */
 };
 
@@ -79,34 +85,38 @@ static void put_screen(int tx, int ty)
   unsigned char *fontp, v;
   uint32_t *pixelp, *pixelpp, fgp, bgp;
   int x, xx, y, yy;
-  int bmask = blink_mask;
   int gx;
-  unsigned char gmode;
-  unsigned char cc;
+  unsigned char gmode, fg, bg;
+  unsigned char cc, bmask = blink_mask;
   int xdup = FONT_XDUP << mode40;
+
+  bg = 0;			/* XXX: handle NWBG */
+  fg = 7;
 
   gmode = 0;
   for ( gx = 0 ; gx < tx ; gx++ ) {
     cc = *screenptr(ty,gx);
-    if ( (cc & 0x68) == 0 )
+    if ( (cc & 0x68) == 0 ) {
       gmode = (cc & 0x10) << 3;
+      fg = (cc & 0x07);
+    }
   }
 
   cc = *screenptr(ty,tx);
   fontp = abc_font[(cc & 0x7f) + gmode];
 
   if ( cc & bmask ) {
-    bgp = colors[1];
-    fgp = colors[0];
+    bgp = colors[bg ^ 7];
+    fgp = colors[fg ^ 7];
   } else {
-    bgp = colors[0];
-    fgp = colors[1];
+    bgp = colors[bg];
+    fgp = colors[fg];
   }
-  
+
   pixelp = ((uint32_t *) rscreen->pixels) +
-    ty*PX_WIDTH*FONT_YSIZE*FONT_YDUP + 
+    ty*PX_WIDTH*FONT_YSIZE*FONT_YDUP +
     ((tx*FONT_XSIZE*FONT_XDUP) << mode40);
-  
+
   for ( y = 0 ; y < FONT_YSIZE ; y++ ) {
     for ( yy = 0 ; yy < FONT_YDUP ; yy++ ) {
       v = *fontp;
@@ -193,7 +203,7 @@ screen_write(int addr, int value)
   int width = TS_WIDTH >> mode40;
 
   addr = ((addr & 0x800) >> 1) | (addr & 0x3ff);
-  
+
   x = addr_to_xy[mode40][addr].x;
   y = addr_to_xy[mode40][addr].y;
   if ( y == -1 )
