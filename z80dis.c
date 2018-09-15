@@ -230,11 +230,11 @@ int DAsm(uint16_t pc, char *T, int *target)
   XReg = '?';
 
   I = mem_fetch(pc++);
-  
+
   D = table = 0;
 
   S = NULL;
-  
+
   while ( !S ) {
     switch(I)
       {
@@ -311,9 +311,9 @@ int DAsm(uint16_t pc, char *T, int *target)
       *R++ = PP;
       break;
     }
-  }    
+  }
   *R = '\0';
-       
+
   /* Return the number of consumed bytes */
   return (uint16_t)(pc-pc0);
-}  
+}

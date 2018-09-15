@@ -10,6 +10,7 @@
 #include <string.h>
 #include "screen.h"
 #include "z80.h"
+#include "rom.h"
 
 #define min(x,y) ((x)<(y)?(x):(y))
 #define max(x,y) ((x)>(y)?(x):(y))
@@ -25,9 +26,6 @@
 
 #define PX_WIDTH  (TS_WIDTH*FONT_XSIZE*FONT_XDUP)
 #define PX_HEIGHT (TS_HEIGHT*FONT_YSIZE*FONT_YDUP)
-
-uint16_t video_base, video_mask;
-static uint16_t video_hbit;	/* Bit to test for high half of video RAM */
 
 extern const unsigned char abc_font[256][FONT_YSIZE];
 
@@ -46,23 +44,62 @@ static struct rgba { uint8_t a, r, g, b; } rgbcolors[NCOLORS] = {
   {0x00,0xff,0xff,0xff},	/* white */
 };
 
-unsigned char screendata[2048];
-static struct { int x, y; } addr_to_xy[2][2048];
+#define VRAM_SIZE 2048
+#define VRAM_MASK (VRAM_SIZE-1)
+unsigned char video_ram[VRAM_SIZE];
+
+union crtc {
+  uint8_t regs[18];
+  struct {
+    uint8_t htotal;		/* Horizontal total characters */
+    uint8_t hdisp;		/* Horizontal displayed characters */
+    uint8_t hsyncpos;		/* Horizontal sync position (char units) */
+    uint8_t hsyncwidth;	        /* Horizontal sync width (char units) */
+    uint8_t vscantotal;         /* Vertical total (char units) */
+    uint8_t vadjust;		/* Vertical adjust scan lines */
+    uint8_t vdisplay;		/* Displayed character rows */
+    uint8_t vsyncpos;		/* Vertical sync position */
+    uint8_t interlace;		/* Interlace mode */
+    uint8_t maxscan;		/* Maximum scan line address */
+    uint8_t curstart;		/* Cursor start line */
+    uint8_t curend;		/* Cursor end line */
+    uint8_t starth;		/* High half of start address */
+    uint8_t startl;		/* Low half of start address */
+    uint8_t curh;		/* High half of cursor address */
+    uint8_t curl;		/* Low half of cursor address */
+  } r;
+};
+static union crtc crtc;
+static uint8_t crtc_addr;
+static uint16_t startaddr, curaddr;
+struct xy {
+  uint8_t x, y;
+};
+static struct xy addr_to_xy_tbl[2][2048];
 
 struct do_event {
   void (*func)(void);
 };
 
 static SDL_Surface *rscreen;
-static volatile uint8_t blink_mask = 0x80; /* 0x80 for inverse enable */
-
-static int mode40;
+static volatile uint8_t inverse_mask = 0x80; /* 0x80 for inverse enable */
+static bool blink_on = true;
+static bool mode40;
 
 /*
- * Get the pointer for a specific row -- this decodes the ABC80
- * funky video memory.
+ * Give the x,y coordinates for a given location in video RAM
  */
-static inline unsigned char *screenptr(int y, int x)
+static inline struct xy addr_to_xy(const uint8_t *p)
+{
+  uint16_t addr = p - video_ram;
+  addr = (addr - startaddr) & VRAM_MASK;
+  return addr_to_xy_tbl[mode40][addr];
+}
+
+/*
+ * Compute the raw offset for a specific x,y coordinates
+ */
+static inline uint16_t screenoffs(uint8_t y, uint8_t x)
 {
   size_t offs;
 
@@ -82,7 +119,15 @@ static inline unsigned char *screenptr(int y, int x)
     abort();
   }
 
-  return &screendata[offs];
+  return offs + startaddr;
+}
+
+/*
+ * Return a specific character
+ */
+static inline uint8_t screendata(uint8_t y, uint8_t x)
+{
+  return video_ram[screenoffs(y,x) & VRAM_MASK];
 }
 
 /*
@@ -98,33 +143,43 @@ static void lock_screen(void)
  * for character (tx,ty), but don't refresh the rectangle just
  * yet...
  */
-static void put_screen(int tx, int ty)
+
+/* This keeps track of the rectangle we need to update */
+static unsigned int upd_x0, upd_y0, upd_x1, upd_y1;
+
+static void put_screen(unsigned int tx, unsigned int ty)
 {
   const unsigned char *fontp;
-  unsigned char v;
+  size_t voffs;
+  unsigned char v, vv;
   uint32_t *pixelp, *pixelpp, fgp, bgp;
-  int x, xx, y, yy;
-  int gx;
+  unsigned int x, xx, y, yy, gx;
+  uint8_t curmask;
   unsigned char gmode, fg, bg;
-  unsigned char cc, bmask = blink_mask;
-  int xdup = FONT_XDUP << mode40;
+  unsigned char cc, invmask = inverse_mask;
+  unsigned int xdup = FONT_XDUP << mode40;
+
+  if (tx >= (unsigned int)(TS_WIDTH >> mode40) ||
+      ty >= (unsigned int)TS_HEIGHT)
+    return;
 
   bg = 0;			/* XXX: handle NWBG */
   fg = 7;
 
   gmode = 0;
   for ( gx = 0 ; gx < tx ; gx++ ) {
-    cc = *screenptr(ty,gx);
+    cc = screendata(ty,gx);
     if ( (cc & 0x68) == 0 ) {
       gmode = (cc & 0x10) << 3;
       fg = (cc & 0x07);
     }
   }
 
-  cc = *screenptr(ty,tx);
+  voffs = screenoffs(ty,tx);
+  cc = screendata(ty,tx);
   fontp = abc_font[(cc & 0x7f) + gmode];
 
-  if ( cc & bmask ) {
+  if ( cc & invmask ) {
     bgp = colors[bg ^ 7];
     fgp = colors[fg ^ 7];
   } else {
@@ -132,13 +187,34 @@ static void put_screen(int tx, int ty)
     fgp = colors[fg];
   }
 
+  if (tx < upd_x0)
+    upd_x0 = tx;
+  if (tx > upd_x1)
+    upd_x1 = tx;
+  if (ty < upd_y0)
+    upd_y0 = ty;
+  if (ty > upd_y1)
+    upd_y1 = ty;
+
   pixelp = ((uint32_t *) rscreen->pixels) +
     ty*PX_WIDTH*FONT_YSIZE*FONT_YDUP +
     ((tx*FONT_XSIZE*FONT_XDUP) << mode40);
 
+  curmask = 0;
+  if (voffs == curaddr) {
+    if (blink_on | (crtc.r.curstart & 0x40)) {
+      curmask = (1 << (crtc.r.curstart & 0x1f))-1;
+      curmask &= (1 << ((crtc.r.curend & 0x1f) - 1))-1;
+    }
+  }
+
   for ( y = 0 ; y < FONT_YSIZE ; y++ ) {
+    vv = *fontp++;
+    if (curmask & 1)
+      vv = 0x3f;
+    curmask >>= 1;
     for ( yy = 0 ; yy < FONT_YDUP ; yy++ ) {
-      v = *fontp;
+      v = vv;
       pixelpp = pixelp;
       for ( x = 0 ; x < FONT_XSIZE ; x++ ) {
 	for ( xx = 0 ; xx < xdup ; xx++) {
@@ -148,137 +224,122 @@ static void put_screen(int tx, int ty)
       }
       pixelp += PX_WIDTH;
     }
-    fontp++;
   }
 }
-
-/*
- * This routine switches the blink status, then goes around the screen
- * and updates all characters which has the blink attribute set.
- */
-static void toggle_blink(void)
-{
-  int x, y;
-  int gx, gy, gw, gh;
-  SDL_Rect rects[TS_HEIGHT*TS_WIDTH/2];	/* Absolute maximum needed */
-  SDL_Rect *rect = rects-1;
-  int nrects = 0;
-  int width = TS_WIDTH >> mode40;
-
-  blink_mask ^= 0x80;
-
-  SDL_LockSurface(rscreen);
-
-  gw = (FONT_XSIZE*FONT_XDUP) << mode40;
-  gh = FONT_YSIZE*FONT_YDUP;
-
-  for ( y = 0, gy = 0 ; y < TS_HEIGHT ; y++, gy += gh ) {
-    for ( x = 0, gx = 0 ; x < width ; x++, gx += gw ) {
-      if ( *screenptr(y,x) & 0x80 ) {
-	put_screen(x,y);
-	if ( !nrects || rect->y != gy || rect->x+rect->w != gx ) {
-	  nrects++;
-	  rect++;
-	  rect->x = gx; rect->y = gy;
-	  rect->w = gw; rect->h = gh;
-	} else {
-	  rect->w += gw;
-	}
-      }
-    }
-  }
-
-  SDL_UnlockSurface(rscreen);
-
-  if ( nrects )
-    SDL_UpdateRects(rscreen, nrects, rects);
-}
-
-static struct do_event toggle_blink_event = { toggle_blink };
 
 /*
  * Refresh rectangle and unlock screen
- * Coordinates are inclusive and must be adjusted for double-pixel mode
  */
-static void update_screen(int x0, int y0, int x1, int y1)
+static void update_screen(void)
 {
   SDL_UnlockSurface(rscreen);
 
-  SDL_UpdateRect(rscreen, (x0*FONT_XSIZE*FONT_XDUP) << mode40,
-		 y0*FONT_YSIZE*FONT_YDUP,
-		 ((x1-x0+1)*FONT_XSIZE*FONT_XDUP) << mode40,
-		 (y1-y0+1)*FONT_YSIZE*FONT_YDUP);
+  if (upd_x0 == UINT_MAX)
+    return;
+
+  SDL_UpdateRect(rscreen, (upd_x0*FONT_XSIZE*FONT_XDUP) << mode40,
+		 upd_y0*FONT_YSIZE*FONT_YDUP,
+		 ((upd_x1-upd_x0+1)*FONT_XSIZE*FONT_XDUP) << mode40,
+		 (upd_y1-upd_y0+1)*FONT_YSIZE*FONT_YDUP);
+
+  upd_x0 = upd_y0 = UINT_MAX;
+  upd_x1 = upd_y1 = 0;
+}
+
+/* Refresh the entire screen */
+void refresh_screen(void)
+{
+  unsigned int x, y;
+  unsigned int width = TS_WIDTH >> mode40;
+
+  lock_screen();
+
+  for (y = 0; y < TS_HEIGHT; y++)
+    for (x = 0; x < width; x++)
+      put_screen(x, y);
+
+  update_screen();
 }
 
 /*
  * Called whenever something is written to the screen
  */
-void
-screen_write(int addr, int value)
+void write_screen(uint8_t *p, uint8_t v)
 {
-  int x, y, xx;
-  int old;
-  unsigned char *p;
+  struct xy xy;
+  uint8_t oldv;
   int width = TS_WIDTH >> mode40;
 
-  addr = ((addr & video_hbit) ? 0x400 : 0) + (addr & 0x3ff);
+  oldv = *p;
+  if (v == oldv)
+    return;			/* Nothing to do */
 
-  x = addr_to_xy[mode40][addr].x;
-  y = addr_to_xy[mode40][addr].y;
-  if ( y == -1 )
+  *p = v;
+
+  xy = addr_to_xy(p);
+  if ( xy.y >= TS_HEIGHT )
     return;			/* Nothing to do */
 
   lock_screen();
 
-  p = &screendata[addr];
-  old = *p;
+  put_screen(xy.x,xy.y);
 
-  *p = value;
-  put_screen(x,y);
-  xx = x+1;
-
-  if ( (old & 0x68) == 0 || (value & 0x68) == 0 ) {
+  if ( (oldv & 0x68) == 0 || (v & 0x68) == 0 ) {
     /* Graphics control character change */
-    for ( ; xx < width ; xx++ )
-      put_screen(xx,y);
+    for ( ; xy.x < width ; xy.x++ )
+      put_screen(xy.x,xy.y);
   }
 
-  update_screen(x,y,xx-1,y);
+  update_screen();
 }
 
 void setmode40(bool m)
 {
-  int x, y, width;
+  mode40 = m;
 
-  if (m != mode40) {
-    mode40 = m;
-    width = TS_WIDTH >> mode40;
-
-    switch (model) {
-    case MODEL_ABC80:
-      video_base = m ? 0x7c00 : 0x7400;
-      video_mask = m ? 0xfc00 : 0xf400;
-      video_hbit = 0x0800;
-      break;
-
-    case MODEL_ABC802:
-      video_base = 0x7800;
-      video_mask = 0xf800;
-      video_hbit = 0x0400;
-      break;
-    }
-
-    lock_screen();
-
-    for (y = 0; y < TS_HEIGHT; y++)
-      for (x = 0; x < width; x++)
-	put_screen(x, y);
-
-    update_screen(0,0,width-1,23);
-
-    load_basic(m);
-  }
+  refresh_screen();
+  if (model == MODEL_ABC80)
+    abc80_mem_mode40(m);
 }
+
+/*
+ * This routine switches the blink status, then goes around the screen
+ * and updates all characters which has any kind of blink.
+ */
+static void toggle_blink(void)
+{
+  struct xy xy;
+  int x, y;
+  int width = TS_WIDTH >> mode40;
+
+  blink_on = !blink_on;
+
+  SDL_LockSurface(rscreen);
+
+  switch (model) {
+  case MODEL_ABC80:
+    inverse_mask = blink_on << 7;
+
+    for ( y = 0 ; y < TS_HEIGHT ; y++ ) {
+      for ( x = 0 ; x < width ; x++ ) {
+	if ( screendata(y,x) & 0x80 )
+	  put_screen(x,y);
+      }
+    }
+    break;
+
+  case MODEL_ABC802:
+    if (crtc.r.curstart & 0x40) {
+      xy = addr_to_xy(curaddr + video_ram);
+      put_screen(xy.x, xy.y);
+    }
+    break;
+  }
+
+  update_screen();
+}
+
+static struct do_event toggle_blink_event = { toggle_blink };
 
 /*
  * Initialize SDL and the data structures
@@ -287,7 +348,7 @@ void screen_init(bool width40)
 {
   int window = 1;		/* True = run in a window */
   int debug = 1;		/* False = force clean shutdown */
-  int i, j, x, y;
+  int i, x, y;
 
   if ( SDL_Init(SDL_INIT_TIMER|SDL_INIT_VIDEO
 		| (debug ? SDL_INIT_NOPARACHUTE : 0)) )
@@ -310,33 +371,35 @@ void screen_init(bool width40)
 			   rgbcolors[i].r, rgbcolors[i].g, rgbcolors[i].b);
   }
 
+  /* Initialize CRTC values to something sensible (also applies for ABC80) */
+  memset(&crtc, 0, sizeof crtc);
+  crtc.r.htotal = 80;
+  crtc.r.hdisp  = 80;
+  crtc.r.vscantotal = 24;
+  crtc.r.vdisplay = 24;
+  crtc.r.curstart = 0x1f;	/* No CRTC cursor */
+  startaddr = curaddr = 0;
+
   /* Initialize reverse mapping table */
+  memset(addr_to_xy_tbl, -1, sizeof addr_to_xy_tbl);
   for ( i = 0 ; i < 2 ; i++ ) {
     mode40 = i;
-
-    for ( j = 0 ; j < 2048 ; j++ ) {
-      addr_to_xy[i][j].x = -1;
-      addr_to_xy[i][j].y = -1;
-    }
-
     for ( y = 0 ; y < TS_HEIGHT ; y++ ) {
       for ( x = 0 ; x < (TS_WIDTH >> i); x++ ) {
-	int p = screenptr(y,x)-screendata;
-	addr_to_xy[i][p].x = x;
-	addr_to_xy[i][p].y = y;
+	size_t p = screenoffs(y,x);
+	addr_to_xy_tbl[i][p].x = x;
+	addr_to_xy_tbl[i][p].y = y;
       }
     }
   }
 
   /* Blink timer */
-  if (model == MODEL_ABC80)
-    SDL_AddTimer(400, post_periodic, &toggle_blink_event);
+  SDL_AddTimer(400, post_periodic, &toggle_blink_event);
 
   /* Enable keyboard decoding */
   SDL_EnableUNICODE(1);
 
   /* Set the screen width and load the appropriate BASIC */
-  mode40 = -1;			/* Force update */
   setmode40(width40);
 }
 
@@ -346,14 +409,6 @@ void screen_init(bool width40)
 void screen_reset(void)
 {
   /* Handled by atexit */
-}
-
-/*
- * Flush the screen
- */
-void screen_flush(void)
-{
-  /* Handled elsewhere */
 }
 
 /*
@@ -456,4 +511,33 @@ void check_event(void)
       break;
     }
   }
+}
+
+void crtc_out(uint8_t port, uint8_t data)
+{
+  if (!(port & 1)) {
+    crtc_addr = data;
+    return;
+  }
+
+  if (crtc_addr >= sizeof crtc.regs)
+    return;
+
+  crtc.regs[crtc_addr] = data;
+
+  startaddr = ((crtc.r.starth & 0x3f) << 8) + crtc.r.startl;
+  curaddr   = ((crtc.r.curh & 0x3f) << 8) + crtc.r.curl;
+
+  refresh_screen();
+}
+
+uint8_t crtc_in(uint8_t port)
+{
+  if (!(port & 1))
+    return crtc_addr;
+
+  if (crtc_addr >= sizeof crtc.regs)
+    return 0xff;
+
+  return crtc.regs[crtc_addr];
 }

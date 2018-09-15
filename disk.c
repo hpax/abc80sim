@@ -247,7 +247,7 @@ void disk_out(int sel, int port, int value)
     }
     disk_reset();
     break;
-    
+
   default:
     /* Nothing */
     break;

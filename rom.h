@@ -2,13 +2,11 @@
 #define ROM_H
 
 #include <stddef.h>
+#include <inttypes.h>
 
-struct rom {
-    const unsigned char *data;
-    unsigned int offset;
-    unsigned int size;
-};
-
-extern const struct rom abcrom40, abcrom80, printrom, ufddos;
+extern uint8_t abc80_bas40[16384];
+extern uint8_t abc80_bas80[16384];
+extern uint8_t abc80_devs[16384];
+extern uint8_t abc802rom[32768];
 
 #endif /* ROM_H */

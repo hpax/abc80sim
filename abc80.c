@@ -39,7 +39,7 @@ load_sysfile(FILE *sysfile)
     int   type;
 
     while ( !feof(sysfile) ) {
-        memory = mem_rom_address();
+        memory = ram;
         fgets(line, 128, sysfile);
         if (line[0] != ':') {
             fprintf(stderr, "Invalid Intel-hex file.\n");
@@ -62,27 +62,6 @@ load_sysfile(FILE *sysfile)
 }
 
 /*
- * Load an internal ROM
- */
-static void load_rom(const struct rom *rom)
-{
-    uint8_t *memory = mem_rom_address();
-
-    memcpy(memory + rom->offset, rom->data, rom->size);
-}
-
-/*
- * Load the BASIC interpretor into memory.
- */
-static bool no_basic = false;
-
-void load_basic(int mode40)
-{
-    if (!no_basic)
-	load_rom(mode40 ? &abcrom40 : &abcrom80);
-}
-
-/*
  * Print usage message
  */
 static void
@@ -100,9 +79,7 @@ extern int   getopt(int, char **, char *);
 
 int main(int argc, char **argv)
 {
-    char  sysfile_name[256];
-    FILE *sysfile;
-    bool  no_device = false;
+    unsigned int memflags = 0;
     bool  width40   = false;
     int   c;
 
@@ -115,11 +92,11 @@ int main(int argc, char **argv)
             break;
 
 	case 'b':
-            no_basic = true;
+            memflags |= MEMFL_NOBASIC;
             break;
 
 	case 'd':
-            no_device = true;
+            memflags |= MEMFL_NODEV;
             break;
 
 	case 't':
@@ -157,31 +134,23 @@ int main(int argc, char **argv)
     }
 
     screen_init(width40);
-    mem_init();
+    mem_init(memflags);
     io_init();
-
-    /*
-     * Load the device driver code unless
-     * we are asked not to.
-     */
-    if (!no_device) {
-	load_rom(&ufddos);
-	load_rom(&printrom);
-    }
 
     /*
      * Load any other program files the
      * user gave on the command line.
      */
     while (optind < argc) {
-        strcpy(sysfile_name, argv[optind]);
-        if ((sysfile = fopen(sysfile_name, "r")) == NULL) {
-            fprintf(stderr, "ABC80: Can't open file: %s\n", sysfile_name);
-            exit(1);
-        }
-        load_sysfile(sysfile);
-        fclose(sysfile);
-        optind++;
+	const char *sysfile_name = argv[optind];
+	FILE *sysfile;
+	if ((sysfile = fopen(sysfile_name, "r")) == NULL) {
+	    fprintf(stderr, "ABC80: Can't open file: %s\n", sysfile_name);
+	    exit(1);
+	}
+	load_sysfile(sysfile);
+	fclose(sysfile);
+	optind++;
     }
 
     /*

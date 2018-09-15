@@ -5,7 +5,6 @@
 #include "screen.h"
 
 static uint8_t inports[256];
-static uint8_t outports[256];
 
 #define READ_MODE   0
 #define WRITE_MODE  1
@@ -29,11 +28,11 @@ static struct {
 void
 set_in_port(int port, uint8_t value)
 {
-    inports[port] = value;
+    inports[port & 0x17] = value;
 }
 
 /* Select code for ABC/4680 bus */
-int8_t abcbus_select = -1;
+static int8_t abcbus_select = -1;
 
 /* Keyboard IRQ vector */
 uint8_t keyb_irq;
@@ -51,101 +50,197 @@ extern int printer_in(int, int);
  * We check if any special port was accessed and
  * dispatch possible actions.
  */
-void
-z80_out(int port, uint8_t value)
+static void abcbus_out(uint8_t port, uint8_t value)
+{
+  if (port == 1) {
+    abcbus_select = value & 0x3f;
+    return;
+  }
+
+  switch (abcbus_select) {
+  case 36:			/* HDx: */
+  case 44:			/* MFx: */
+  case 45:			/* MOx: */
+  case 46:			/* SFx: */
+    disk_out(abcbus_select, port, value);
+    break;
+
+  case 60:			/* PRx: */
+    printer_out(abcbus_select, port, value);
+    break;
+
+  default:
+    break;
+  }
+}
+
+void abc80_out(int port, uint8_t value)
 {
   if (tracing & TRACE_IO) {
     printf("OUT: port 0x%02x (%3d) sel 0x%02x (%2d) data 0x%02x (%3d) PC=%04x\n",
 	   port, port, abcbus_select & 0xff, abcbus_select, value, value, REG_PC);
   }
 
-  if ( port == 1 )
-    abcbus_select = value & 0x3f;
+  port &= 0x17;			/* Only these bits decoded in ABC80 */
 
-  if (port < 6) {
-    switch (abcbus_select) {
-    case 36:			/* HDx: */
-    case 44:			/* MFx: */
-    case 45:			/* MOx: */
-    case 46:			/* SFx: */
-      disk_out(abcbus_select, port, value);
-      break;
+  switch (port) {
+  case 0:
+  case 1:
+  case 2:
+  case 3:
+  case 4:
+  case 5:
+    abcbus_out(port, value);
+    break;
 
-    case 60:			/* PRx: */
-      printer_out(abcbus_select, port, value);
-      break;
-
-    default:
-      break;
+  case 6:			/* sound */
+    if (value == 131) {
+      putchar(7);		/* beep */
+      fflush(stdout);
     }
-  } else if (port == 6 && value == 131) { /* beep */
-    putchar(7);
-    fflush(stdout);
-  } else if (port == 57) {
-    /* Keyboard control port */
+    break;
+
+  case 7:			/* Mikrodatorn 64K page switch port */
+    abc80_mem_setmap(value & 3);
+    break;
+
+  case (57 & 0x17):		/* Keyboard control port */
     if (!(value & 1)) {
       keyb_irq = value >> 1;
     }
-  }
+    break;
 
-  outports[port] = value;
+  default:
+    break;
+  }
 }
 
+static void abc802_out(uint8_t port, uint8_t value)
+{
+  switch (port) {
+  case 0:
+  case 1:
+  case 2:
+  case 3:
+  case 4:
+  case 5:
+    abcbus_out(port, value);
+    break;
+
+  case 56:
+  case 57:
+    crtc_out(port, value);
+    break;
+
+  default:
+    break;
+  }
+}
+
+static void (*do_out)(uint8_t, uint8_t);
+
+void z80_out(int port, uint8_t value)
+{
+  if (tracing & TRACE_IO) {
+    printf("OUT: port 0x%02x (%3d) sel 0x%02x (%2d) data 0x%02x (%3d) PC=%04x\n",
+	   port, port, abcbus_select & 0xff, abcbus_select, value, value, REG_PC);
+  }
+
+  do_out(port, value);
+}
 
 /*
  * This function is called from the z80 at an IN instruction.
  */
-static uint8_t do_in(uint8_t port)
+static uint8_t abcbus_in(uint8_t port)
 {
-  if ( port == 7 ) {
+  if (port == 7) {
+    /* Reset all */
     abcbus_select = -1;
-    disk_reset();		/* Reset ALL devices */
+    disk_reset();
     printer_reset();
+    return 0xff;
   }
 
-  if ( port == 0 || port == 1 ) {
-    int v;
+  switch (abcbus_select) {
+  case 36:			/* HDx: */
+  case 44:			/* MFx: */
+  case 45:			/* MOx: */
+  case 46:			/* SFx: */
+    return disk_in(abcbus_select, port);
+    break;
 
-    switch (abcbus_select) {
-    case 36:			/* HDx: */
-    case 44:			/* MFx: */
-    case 45:			/* MOx: */
-    case 46:			/* SFx: */
-      v = disk_in(abcbus_select, port);
-      break;
+  case 60:			/* PRx: */
+    return printer_in(abcbus_select, port);
+    break;
 
-    case 60:			/* PRx: */
-      v = printer_in(abcbus_select, port);
-      break;
+  case 55:			/* RTC */
+    return rtc_in(abcbus_select, port);
+    break;
 
-    case 55:			/* RTC */
-      v = rtc_in(abcbus_select, port);
-      break;
-
-    default:
-      v = 0xff;
-      break;
-    }
-
-    return v;
+  default:
+    return 0xff;
+    break;
   }
+ }
 
-  if ( port == 3 ) {
+static uint8_t abc80_in(uint8_t port)
+{
+  uint8_t v = 0xff;
+
+  port &= 0x1f;
+
+  switch (port) {
+  case 0:
+  case 1:
+  case 7:
+    v = abcbus_in(port);
+
+  case 3:
     setmode40(1);
-  }
+    break;
 
-  if ( port == 4 ) {
+  case 4:
     setmode40(0);
-  }
+    break;
 
-  if (port == 56) {
-    int v = inports[port];
+  case (56 & 0x17):
+    v = inports[port];
     inports[port] &= ~0x80;
-    return v;
+    break;
+
+  default:
+    break;
   }
 
-  return (int)inports[port];
+  return v;
 }
+
+static uint8_t abc802_in(uint8_t port)
+{
+  uint8_t v = 0xff;
+
+  switch (port) {
+  case 0:
+  case 1:
+  case 2:
+  case 7:
+    v = abcbus_in(port);
+    break;
+
+  case 56:
+  case 57:
+    v = crtc_in(port);
+    break;
+
+  default:
+    break;
+  }
+
+  return v;
+}
+
+static uint8_t (*do_in)(uint8_t port);
 
 int z80_in(int port)
 {
@@ -170,5 +265,15 @@ io_init(void)
 
     for (i = 0; i < 8; i++) {
         files[i].u.fp = NULL;
+    }
+
+    switch (model) {
+    case MODEL_ABC80:
+      do_out = abc80_out;
+      do_in  = abc80_in;
+      break;
+    case MODEL_ABC802:
+      do_out = abc802_out;
+      do_in  = abc802_in;
     }
 }

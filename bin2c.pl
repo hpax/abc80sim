@@ -19,56 +19,47 @@ eval { use bytes; };
 eval { binmode STDIN; };
 
 if ( $#ARGV != 0 ) {
-    print STDERR "Usage: $0 input_file [offset] > output_file\n";
+    print STDERR "Usage: $0 input_file [tablename] > output_file\n";
     exit 1;
 }
 
-($input_file, $offset) = @ARGV;
+($input_file, $table_name) = @ARGV;
 
-$table_name = $input_file;
-$table_name =~ s/\.[^\.]*$//;	# Drop extension
+$table_name = $input_file unless (defined($table_name));
 
-unless (defined ($offset)) {
-    $offset = 0x404b if ($table_name eq 'abcdev');
-    $offset = 0x6000 if ($table_name =~ /dos$/);
-    $offset = 0x7800 if ($table_name eq 'printrom');
-}
+$table_name =~ s/\.[^\.]*$//;		# Drop extension
+$table_name =~ s/^.*[^A-Za-z0-9_]//;	# Drop any path prefix
 
-open(IN, '<', $input_file)
+open(IN, '<:raw', $input_file)
     or die "$0: unable to open input file $input_file: $!\n";
 
-print "#include \"rom.h\"\n\n";
+$total_len = 0;
+$data = '';
+while (($n = read(IN, $data, 65536, $total_len)) > 0) {
+    $total_len += $n;
+}
+close(IN);
 
-printf "static const unsigned char data[] = {\n", $table_name;
+print "#include \"../rom.h\"\n\n";
+printf "uint8_t %s[%d] = {\n", $table_name, $total_len;
 
 $pos = 0;
 $linelen = 8;
 
-$total_len = 0;
-
-while ( ($n = read(IN, $data, 4096)) > 0 ) {
-    $total_len += $n;
-    for ( $i = 0 ; $i < $n ; $i++ ) {
-	$byte = substr($data, $i, 1);
-	if ( $pos >= $linelen ) {
-	    print ",\n\t";
-	    $pos = 0;
-	} elsif ( $pos > 0 ) {
-	    print ", ";
-	} else {
-	    print "\t";
-	}
-	printf("0x%02x", unpack("C", $byte));
-	$pos++;
+for ( $i = 0 ; $i < $total_len ; $i++ ) {
+    $byte = substr($data, $i, 1);
+    if ( $pos >= $linelen ) {
+	print ",\n\t";
+	$pos = 0;
+    } elsif ( $pos > 0 ) {
+	print ", ";
+    } else {
+	print "\t";
     }
+    printf("0x%02x", unpack("C", $byte));
+    $pos++;
 }
 
-print "\n};\n\n";
-printf "const struct rom %s = { data, %u, %u };\n",
-    $table_name, $offset, $total_len;
-
-# @st = stat STDIN;
-# printf "\nunsigned int %s_len = %u;\n", $table_name, $total_len;
-# printf "\nint %s_mtime = %d;\n", $table_name, $st[9];
+print "\n};\n";
 
 exit 0;

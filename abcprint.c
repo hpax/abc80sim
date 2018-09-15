@@ -52,4 +52,3 @@ int printer_in(int sel, int port)
 
   return v;
 }
-

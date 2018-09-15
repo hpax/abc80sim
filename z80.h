@@ -21,6 +21,7 @@
 #include <ctype.h>
 #include <time.h>
 #include <inttypes.h>
+#include <limits.h>
 #include <sys/types.h>
 
 struct twobyte
@@ -162,7 +163,6 @@ extern struct z80_state_struct z80_state;
 
 extern void z80_reset(void);
 extern int z80_run(bool,bool);
-extern void mem_init(void);
 extern uint8_t mem_read(uint16_t);
 extern uint8_t mem_fetch(uint16_t);
 extern void mem_write(uint16_t, uint8_t);
@@ -194,6 +194,16 @@ enum model {
 };
 
 extern enum model model;
+
+extern void abc80_mem_mode40(bool);
+extern void abc80_mem_setmap(unsigned int);
+extern void abc802_set_mem(bool);
+
+extern uint8_t ram[];		/* Array for plain RAM */
+
+extern void mem_init(unsigned int flags);
+#define MEMFL_NOBASIC	1
+#define MEMFL_NODEV	2
 
 /*
  extern void debug_init();
