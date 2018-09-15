@@ -27,6 +27,7 @@
 #define PX_HEIGHT (TS_HEIGHT*FONT_YSIZE*FONT_YDUP)
 
 uint16_t video_base, video_mask;
+static uint16_t video_hbit;	/* Bit to test for high half of video RAM */
 
 extern const unsigned char abc_font[256][FONT_YSIZE];
 
@@ -220,8 +221,7 @@ screen_write(int addr, int value)
   unsigned char *p;
   int width = TS_WIDTH >> mode40;
 
-  addr &= ~video_mask;
-  addr = ((addr >= 0x7c00) ? 0x400 : 0) | (addr & 0x3ff);
+  addr = ((addr & video_hbit) ? 0x400 : 0) + (addr & 0x3ff);
 
   x = addr_to_xy[mode40][addr].x;
   y = addr_to_xy[mode40][addr].y;
@@ -258,11 +258,13 @@ void setmode40(bool m)
     case MODEL_ABC80:
       video_base = m ? 0x7c00 : 0x7400;
       video_mask = m ? 0xfc00 : 0xf400;
+      video_hbit = 0x0800;
       break;
 
     case MODEL_ABC802:
       video_base = 0x7800;
       video_mask = 0xf800;
+      video_hbit = 0x0400;
       break;
     }
 
