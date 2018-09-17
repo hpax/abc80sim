@@ -125,42 +125,6 @@ err:
     return -1;
 }
 
-#if 0
-/*
- * Create a 24-bit surface in RGB format, as used by PNG
- */
-static png_color *make_rgb(const SDL_Surface *surf)
-{
-    int x, y;
-    png_color *data, *rp;
-    size_t np;
-    const uint32_t *pvp, pix, last_pix;
-
-    np = surf->w * surf->h;
-    data = rp = malloc(np * 3);
-    if (!data)
-	return data;
-
-    last_pix = ~*(const uint32_t *)surf->pixels; /* Don't match first time */
-    for (y = 0; y < surf->h; y++) {
-	pvp = ((const uint32_t *)surf->pixels) + (y * surf->w);
-	for (x = 0; x < surf->w; x++) {
-	    pix = *pvp++;
-	    if (pix == last_pix) {
-		/* Speed hack */
-		*rp = rp[-1];
-	    } else {
-		SDL_GetRGB(pix, surf->format, &rp->red, &rp->green, &rp->blue);
-		last_pix = pix;
-	    }
-	    rp++;
-	}
-    }
-
-    return data;
-}
-#endif
-
 /*
  * Open a screenshot file for writing
  */
