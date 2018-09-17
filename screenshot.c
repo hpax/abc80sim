@@ -1,6 +1,5 @@
 /*
  * Take a PNG screenshot of an SDL surface
- * Currently assumes the SDL surface is 32 bits
  */
 
 #include "config.h"
@@ -11,6 +10,7 @@
 #include <string.h>
 #include <fcntl.h>
 #include <time.h>
+#include <stdbool.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <errno.h>
@@ -39,6 +39,24 @@ static int sort_by_pixel(const void *vp1, const void *vp2)
     return -(pix1 < pix2) | (pix1 > pix2);
 }
 
+/* 32-bit pixel format; the exact aspects of which are arbitrary */
+static const SDL_PixelFormat argbfmt = {
+    NULL,			/* palette */
+    32,				/* bits per pixel */
+    4,				/* bytes per pixel */
+    0, 0, 0, 0,			/* precision loss (8 = all alpha lost) */
+    16,				/* Rshift */
+    8,				/* Gshift */
+    0,				/* Bshift */
+    24,				/* Ashift */
+    0x00ff0000,			/* Rmask */
+    0x0000ff00,			/* Gmask */
+    0x000000ff,			/* Bmask */
+    0xff000000,			/* Amask */
+    0,				/* No actual color key */
+    255				/* Completely opaque */
+};
+
 #define MAX_PALETTE 256
 /* Returns the number of indicies, or -1 on failure */
 static int
@@ -53,11 +71,22 @@ make_indexed(SDL_Surface *surf, uint8_t **data, png_color **palettep)
     int x, y;
     int last_index;			/* Last allocated index */
     uint32_t last_pixel;		/* Last equivalent pixel */
-    SDL_PixelFormat * const fmt = surf->format;	/* Cached for speed */
-    uint8_t *iimg;			/* Actual indexed image */
+    SDL_PixelFormat *fmt;		/* Cached for speed */
+    SDL_PixelFormat cfmt;
+    bool surface_copy = false;		/* We copied the surface */
+    uint8_t *iimg = NULL;		/* Actual indexed image */
     png_color *palette = NULL;
 
     /* This is kind of an idiotic algorithm, but it works and is kind of fun */
+
+    /* If this not a 32-bit surface, make it one */
+    if (surf->format->BytesPerPixel != 4) {
+      cfmt = argbfmt;
+      surface_copy = true;	/* We created a new surface, need to free it */
+      surf = SDL_ConvertSurface(surf, &cfmt, SDL_SWSURFACE);
+      if (!surf)
+	goto err;
+    }
 
     /* 1. Allocate arrays and initialize the position array */
     np = surf->w * surf->h;	/* Total pixels */
@@ -89,6 +118,7 @@ make_indexed(SDL_Surface *surf, uint8_t **data, png_color **palettep)
     qsort(pixp, np, sizeof *pixp, sort_by_pixel);
 
     /* 3. Create palette and index values */
+    fmt = surf->format;
     ppp = pixp;
     last_pixel = ~ppp->pix;	/* Make sure we don't match on the first */
     last_index = -1;
@@ -108,21 +138,27 @@ make_indexed(SDL_Surface *surf, uint8_t **data, png_color **palettep)
     }
 
     /* Done! */
+    last_index++;		/* Convert to a count */
+common_exit:
     *data = iimg;
     *palettep = palette;
-    free(pixp);
-    return last_index + 1;
-
-err:
-    if (palette)
-	free(palette);
     if (pixp)
 	free(pixp);
-    if (iimg)
+    if (surface_copy)
+      SDL_FreeSurface(surf);
+    return last_index;
+
+err:
+    if (palette) {
+	free(palette);
+	palette = NULL;
+    }
+    if (iimg) {
 	free(iimg);
-    *data = NULL;
-    *palettep = NULL;
-    return -1;
+	iimg = NULL;
+    }
+    last_index = -1;		/* Return -1 */
+    goto common_exit;
 }
 
 /*
