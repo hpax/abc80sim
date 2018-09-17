@@ -12,9 +12,10 @@ mandir          = @mandir@
 datarootdir     = @datarootdir@
 
 CC		= @CC@
-CFLAGS		= @CFLAGS@
-LDFLAGS		= @LDFLAGS@
-LIBS		= @LIBS@
+CPPFLAGS	= @CPPFLAGS@
+CFLAGS		= $(CPPFLAGS) @CFLAGS@ @SDL_CFLAGS@
+LDFLAGS		= $(CFLAGS) @LDFLAGS@
+LIBS		= @LIBS@ @SDL_LIBS@
 
 MKDIR		= mkdir
 PERL		= perl
@@ -25,7 +26,7 @@ O		= @OBJEXT@
 X		= @EXEEXT@
 
 .SUFFIXES:
-.SUFFIXES: .c .h .$(O) .bin
+.SUFFIXES: .c .h .$(O) .bin $(X)
 
 GENC = $(patsubst %.rom,%.c,$(wildcard roms/*.rom))
 SRCS = abc80.c clock.c sdlscrn.c screenshot.c z80.c abc80_mem.c io.c \
@@ -35,7 +36,7 @@ HDRS = clock.h screen.h z80.h patchlevel.h screenshot.h
 
 OBJS = $(patsubst %.c,%.$(O),$(SRCS))
 
-all: abc80
+all: abc80$(X)
 
 install: abc80$(X)
 	$(MKDIR) -p $(INSTALLROOT)$(bindir)

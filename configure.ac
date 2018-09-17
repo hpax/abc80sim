@@ -1,10 +1,23 @@
 dnl Process this file with autoconf 2.61 or later to produce
 dnl a configure script.
-AC_PREREQ(2.61)
-AC_INIT(config.h.in)
+AC_PREREQ([2.69])
+
+AC_CONFIG_MACRO_DIR(autoconf)
+
+AC_INIT
+AC_CONFIG_SRCDIR([abc80.c])
 AC_CONFIG_HEADERS(config.h)
 
+AC_CONFIG_AUX_DIR(autoconf)
+
+dnl If we have wine installed, don't run it when checking for cross-compile
+WINELOADER=/dev/null
+export WINELOADER
+
 AC_PREFIX_PROGRAM(abc80)
+
+dnl Get canonical target ("host") name
+AC_CANONICAL_HOST
 
 dnl Checks for programs.
 dnl Consider AC_USE_SYSTEM_EXTENSIONS if autoconf 2.61 is OK in the future
@@ -56,22 +69,29 @@ AH_TEMPLATE(WORDS_LITTLEENDIAN,
 [Define to 1 if your processor stores words with the least significant
 byte first (like Intel and VAX, unlike Motorola and SPARC).])
 
-dnl Checks for library functions.
-AC_SEARCH_LIBS([png_write_png], [png])
-AC_SEARCH_LIBS([SDL_Init], [SDL])
+dnl Search files
+AC_CHECK_FUNCS([popen])
 
-dnl I am going to assume modern systems don't need to guess
-dnl what our dependent libraries may be...
-dnl AC_SEARCH_LIBS([deflate], [z])
-dnl AC_SEARCH_LIBS([pthread_create], [pthread])
+dnl See if we can find sdl-config
+AC_CHECK_TOOL([SDL_CONFIG], [sdl-config], [false])
+AS_IF(["$SDL_CONFIG" --cflags >/dev/null 2>&1],
+      [SDL_CFLAGS="`"$SDL_CONFIG" --cflags`"
+       SDL_LIBS="`"$SDL_CONFIG" --libs`"],
+      [AC_MSG_WARN([sdl-config not found or not functional, this is probably bad news])])
+AC_SUBST(SDL_CFLAGS)
+AC_SUBST(SDL_LIBS)
+
+dnl Checks for library functions.
+AC_SEARCH_LIBS([deflate], [z])
+AC_SEARCH_LIBS([png_write_png], [png])
 
 dnl
 dnl support cchace
 dnl
 AC_ARG_WITH([ccache],
-            [AC_HELP_STRING([--with-ccache],
-                            [Compile with ccache])],
+            [AS_HELP_STRING([--with-ccache],[Compile with ccache])],
           [CC="ccache $CC"],
           [])
 
-AC_OUTPUT(Makefile)
+AC_CONFIG_FILES([Makefile])
+AC_OUTPUT

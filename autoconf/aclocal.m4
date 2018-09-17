@@ -35,4 +35,3 @@ int foo(bool x, int y)
     [Define to 1 if your compiler has a correct implementation of bool])],
  [AC_MSG_RESULT([no])])
 ])
-

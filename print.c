@@ -19,10 +19,12 @@
 
 #include "abcprintd.h"
 
+#if 0
 #include <sys/wait.h>
 
 int lpr_argc;
 const char **lpr_argv;
+#endif
 
 enum output_state {
   os_first,			/* Brand new job */
@@ -33,6 +35,7 @@ enum output_state {
 
 static void print_setup(FILE **tfp, enum output_state *psp)
 {
+#if 0
   FILE *tf = *tfp;
   pid_t f;
 
@@ -61,6 +64,7 @@ static void print_setup(FILE **tfp, enum output_state *psp)
     perror("tmpfile");
     exit(1);
   }
+#endif
   *psp = os_first;
 }
 
@@ -110,11 +114,11 @@ static void output(int c, FILE *tf, enum output_state *psp)
 
   case os_text:
     if (c != '\r')
-      putwc(abc_to_unicode[(unsigned char)c], tf);
+      // putwc(abc_to_unicode[(unsigned char)c], tf);
     break;
 
   case os_binary:
-    putc(c, tf);
+    // putc(c, tf);
     break;
   }
 }

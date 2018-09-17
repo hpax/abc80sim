@@ -77,7 +77,7 @@ extern int   optind;
 extern char *optarg;
 extern int   getopt(int, char **, char *);
 
-int main(int argc, char **argv)
+int SDL_main(int argc, char **argv)
 {
     unsigned int memflags = 0;
     bool  width40   = false;

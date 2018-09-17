@@ -1,5 +1,4 @@
 #include <stdio.h>
-#include <dirent.h>
 
 #include "z80.h"
 #include "screen.h"
@@ -8,19 +7,6 @@ static uint8_t inports[256];
 
 #define READ_MODE   0
 #define WRITE_MODE  1
-
-
-/*
- * Information about files.
- * Max 7 can be open at one time,  file #0 is never used.
- */
-static struct {
-    union {
-        FILE *fp;
-        DIR  *dp;
-    } u;
-    int	  mode;
-} files[8];
 
 /*
  * Set a port to a value which the z80 can read later.
@@ -278,13 +264,7 @@ int z80_in(int port)
 void
 io_init(void)
 {
-    int i;
-
     memset(inports, 0xff, sizeof inports);
-
-    for (i = 0; i < 8; i++) {
-        files[i].u.fp = NULL;
-    }
 
     switch (model) {
     case MODEL_ABC80:
