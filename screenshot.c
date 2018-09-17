@@ -144,7 +144,7 @@ common_exit:
     *palettep = palette;
     if (pixp)
 	free(pixp);
-    if (surface_copy)
+    if (surface_copy && surf)
       SDL_FreeSurface(surf);
     return last_index;
 
