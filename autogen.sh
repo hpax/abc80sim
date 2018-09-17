@@ -2,6 +2,5 @@
 #
 # Simple script to run the appropriate autotools from a repository.
 #
-autoheader
-autoconf
+autoreconf
 rm -rf autom4te.cache config.log config.status

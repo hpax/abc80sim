@@ -9,6 +9,7 @@
 #include <inttypes.h>
 #include <string.h>
 #include "screen.h"
+#include "screenshot.h"
 #include "z80.h"
 #include "rom.h"
 
@@ -33,7 +34,7 @@ extern const unsigned char abc_font[256][FONT_YSIZE];
 
 static uint32_t colors[NCOLORS];
 
-static struct rgba { uint8_t a, r, g, b; } rgbcolors[NCOLORS] = {
+static struct argb { uint8_t a, r, g, b; } rgbcolors[NCOLORS] = {
   {0x00,0x00,0x00,0x00},	/* black */
   {0x00,0xff,0x00,0x00},	/* red */
   {0x00,0x00,0xff,0x00},	/* green */
@@ -399,6 +400,9 @@ void screen_init(bool width40)
   /* Enable keyboard decoding */
   SDL_EnableUNICODE(1);
 
+  /* Enable keyboard repeat */
+  SDL_EnableKeyRepeat(SDL_DEFAULT_REPEAT_DELAY, SDL_DEFAULT_REPEAT_INTERVAL);
+
   /* Set the screen width and load the appropriate BASIC */
   setmode40(width40);
 }
@@ -420,19 +424,47 @@ void check_event(void)
 {
   SDL_Event event;
   static int keyboard_scan = -1; /* No key currently down */
+  enum kmod {
+    MOD_SHIFT = 1,
+    MOD_CTRL  = 2,
+    MOD_ALT   = 4
+  } kmod;
 
   while ( SDL_PollEvent(&event) ) {
     switch ( event.type ) {
     case SDL_KEYDOWN:
-      {
-	int mysym = -1;
+      kmod = ((event.key.keysym.mod & (KMOD_LALT|KMOD_RALT)) ? MOD_ALT : 0) |
+	((event.key.keysym.mod & (KMOD_LCTRL|KMOD_RCTRL)) ? MOD_CTRL : 0) |
+	((event.key.keysym.mod & (KMOD_LSHIFT|KMOD_RSHIFT)) ? MOD_SHIFT : 0);
+
+      if (kmod & MOD_ALT) {
+	/* Alt+key are special functions */
 
 	switch (event.key.keysym.sym) {
 	case SDLK_END:
-	  if (event.key.keysym.mod & (KMOD_RALT|KMOD_LALT))
-	    exit(0);		/* Alt+End = quit */
+	case SDLK_q:
+	  exit(0);
+
+	case SDLK_s:
+	  {
+	    bool old_blink_on = blink_on;
+
+	    /* Always screenshot with anything blinking turned on */
+	    if (!old_blink_on)
+	      toggle_blink();
+	    screenshot(rscreen);
+	    if (!old_blink_on)
+	      toggle_blink();
+	  }
 	  break;
 
+	default:
+	  break;
+	}
+      } else {
+	int mysym = -1;
+
+	switch (event.key.keysym.sym) {
 	case SDLK_LEFT:
 	  mysym = 8;
 	  break;
@@ -441,50 +473,111 @@ void check_event(void)
 	  mysym = 9;
 	  break;
 
+	case SDLK_F1:
+	case SDLK_F2:
+	case SDLK_F3:
+	case SDLK_F4:
+	case SDLK_F5:
+	case SDLK_F6:
+	case SDLK_F7:
+	case SDLK_F8:
+	  mysym = (event.key.keysym.sym - SDLK_F1 + 192) + ((int)kmod << 3);
+	  break;
+
+	case SDLK_ESCAPE:
+	  mysym = 127;
+	  break;
+
+	case SDLK_SPACE:	/* Ctrl+Space -> NUL */
+	  mysym = (kmod^MOD_CTRL) << 4;
+	  break;
+
 	default:
-	  if (event.key.keysym.unicode <= 0x7f) {
+	  switch (event.key.keysym.unicode) {
+	  case   1: case   2: case   3:
+	  case   4: case   5: case   6: case   7:
+	  case   8: case   9: case  10: case  11:
+	  case  12: case  13: case  14: case  15:
+	  case  16: case  17: case  18: case  19:
+	  case  20: case  21: case  22: case  23:
+	  case  24: case  25: case  26: case  27:
+	  case  28: case  29: case  30: case  31:
+	  case ' ': case '!': case '"': case '#':
+	  case '$': case '%': case '&': case  39:
+	  case '(': case ')': case '*': case '+':
+	  case ',': case '-': case '.': case '/':
+	  case '0': case '1': case '2': case '3':
+	  case '4': case '5': case '6': case '7':
+	  case '8': case '9': case ':': case ';':
+	  case '=': case '?':
+	  case '@': case 'A': case 'B': case 'C':
+	  case 'D': case 'E': case 'F': case 'G':
+	  case 'H': case 'I': case 'J': case 'K':
+	  case 'L': case 'M': case 'N': case 'O':
+	  case 'P': case 'Q': case 'R': case 'S':
+	  case 'T': case 'U': case 'V': case 'W':
+	  case 'X': case 'Y': case 'Z': case '[':
+	  case  92: case ']': case '^': case '_':
+	  case '`': case 'a': case 'b': case 'c':
+	  case 'd': case 'e': case 'f': case 'g':
+	  case 'h': case 'i': case 'j': case 'k':
+	  case 'l': case 'm': case 'n': case 'o':
+	  case 'p': case 'q': case 'r': case 's':
+	  case 't': case 'u': case 'v': case 'w':
+	  case 'x': case 'y': case 'z': case '{':
+	  case '|': case '}': case '~': case 127:
 	    mysym = event.key.keysym.unicode;
-	  } else {
-	    switch ( event.key.keysym.unicode ) {
-	    case L'¤':
-	      mysym = '$';
-	      break;
-	    case L'É':
-	      mysym = '@';
-	      break;
-	    case L'Å':
-	      mysym = ']';
-	      break;
-	    case L'Ä':
-	      mysym = '[';
-	      break;
-	    case L'Ö':
-	      mysym = '\\';
-	      break;
-	    case L'Ü':
-	      mysym = '^';
-	      break;
-	    case L'é':
-	      mysym = '`';
-	      break;
-	    case L'å':
-	      mysym = '}';
-	      break;
-	    case L'ä':
-	      mysym = '{';
-	      break;
-	    case L'ö':
-	      mysym = '|';
-	      break;
-	    case L'ü':
-	      mysym = '~';
-	      break;
-	    default:
-	      break;
-	    }
+	    break;
+	  case L'¤':
+	    mysym = '$';
+	    break;
+	  case L'É':
+	    mysym = '@';
+	    break;
+	  case L'Å':
+	    mysym = ']';
+	    break;
+	  case L'Ä':
+	    mysym = '[';
+	    break;
+	  case L'Ö':
+	    mysym = '\\';
+	    break;
+	  case L'Ü':
+	    mysym = '^';
+	    break;
+	  case L'é':
+	    mysym = '`';
+	    break;
+	  case L'å':
+	    mysym = '}';
+	    break;
+	  case L'ä':
+	    mysym = '{';
+	    break;
+	  case L'ö':
+	    mysym = '|';
+	    break;
+	  case L'ü':
+	    mysym = '~';
+	    break;
+	  case L'<':
+	  case L'>':
+	    mysym = (kmod & MOD_CTRL) ? 127 : event.key.keysym.unicode;
+	    break;
+	  case L'§':
+	  case L'½':
+	    mysym = 127;
+	    break;
+	  default:
+	    break;
+	  }
+	  if (!(mysym & ~0x1f)) {
+	    /* Shift+Ctrl -> invert bit 4 */
+	    if (kmod == (MOD_CTRL|MOD_SHIFT))
+	      mysym ^= 0x10;
 	  }
 	}
-
 	if ( mysym >= 0 ) {
 	  keyboard_code = mysym | 0x80;
 	  keyboard_scan = event.key.keysym.scancode;
@@ -508,6 +601,8 @@ void check_event(void)
       break;
     case SDL_QUIT:
       exit(1);
+      break;
+    default:
       break;
     }
   }

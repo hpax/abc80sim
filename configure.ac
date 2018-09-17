@@ -20,22 +20,6 @@ PA_ADD_CFLAGS([-Wall])
 PA_ADD_CFLAGS([-std=c99])
 PA_ADD_CFLAGS([-pedantic])
 
-dnl Look for programs...
-AC_CHECK_PROGS(NROFF,    nroff,    false)
-AC_CHECK_PROGS(ASCIIDOC, asciidoc, false)
-AC_CHECK_PROGS(XMLTO,    xmlto,    false)
-AC_CHECK_PROGS(ACRODIST, acrodist, false)
-AC_CHECK_PROGS(PS2PDF,   ps2pdf,   false)
-AC_CHECK_PROGS(PSTOPDF,  pstopdf,  false)
-
-dnl Check for progs needed for manpage generation
-if test $ASCIIDOC = false; then
-  AC_MSG_WARN([No acsciidoc package found])
-fi
-if test $XMLTO = false; then
-  AC_MSG_WARN([No xmlto package found])
-fi
-
 dnl Checks for header files.
 AC_HEADER_STDC
 if test $ac_cv_header_stdc = no; then
@@ -47,9 +31,6 @@ if test $ac_cv_header_limits_h = no; then
   AC_MSG_ERROR([abc80sim requires '<limits.h>' to compile])
 fi
 
-dnl Check for <inttypes.h> or add a substitute version
-AC_CHECK_HEADERS(inttypes.h, , CFLAGS="$CFLAGS -I\$(top_srcdir)/inttypes")
-
 dnl The standard header for str*casecmp is <strings.h>
 AC_CHECK_HEADERS(strings.h)
 
@@ -58,6 +39,8 @@ AC_CHECK_HEADERS(stdbool.h)
 
 AC_CHECK_HEADERS(SDL.h)
 AC_CHECK_HEADERS(SDL/SDL.h)
+AC_CHECK_HEADERS(png.h)
+AC_CHECK_HEADERS(zlib.h)
 
 dnl Checks for typedefs, structures, and compiler characteristics.
 AC_C_CONST
@@ -74,8 +57,10 @@ AH_TEMPLATE(WORDS_LITTLEENDIAN,
 byte first (like Intel and VAX, unlike Motorola and SPARC).])
 
 dnl Checks for library functions.
-AC_SEARCH_LIBS([pthread_create], [pthread])
+AC_SEARCH_LIBS([deflate], [z])
+AC_SEARCH_LIBS([png_write_png], [png])
 AC_SEARCH_LIBS([SDL_Init], [SDL])
+AC_SEARCH_LIBS([pthread_create], [pthread])
 AC_SUBST(XOBJS)
 
 dnl
