@@ -22,7 +22,7 @@
 
 static inline void *pixel_row(const SDL_Surface *surf, size_t y)
 {
-    return (char *)surf->pixels + (y * surf->pitch);
+    return (uint8_t *)surf->pixels + (y * surf->pitch);
 }
 
 struct sort_pixel {
@@ -76,7 +76,7 @@ make_indexed(SDL_Surface *surf, uint8_t **data, png_color **palettep)
     ppp = pixp;
     pos = 0;
     for (y = 0; y < surf->h; y++) {
-	pvp = (const uint32_t *)pixel_row(surf, y);
+	pvp = pixel_row(surf, y);
 	for (x = 0; x < surf->w; x++) {
 	    ppp->pix = *pvp++;
 	    ppp->pos = pos++;
@@ -215,28 +215,27 @@ static const SDL_PixelFormat rgbfmt = {
     NULL,			/* palette */
     24,				/* bits per pixel */
     3,				/* bytes per pixel */
-    0, 0, 0, 0,			/* precision loss */
-#if SDL_ENDIAN == SDL_LIL_ENDIAN
+    0, 0, 0, 8,			/* precision loss (8 = all alpha lost) */
+#if SDL_BYTEORDER == SDL_LIL_ENDIAN
     0,				/* Rshift */
     8,				/* Gshift */
     16,				/* Bshift */
-    24,				/* Ashift */
+    0,				/* Ashift */
     0x000000ff,			/* Rmask */
     0x0000ff00,			/* Gmask */
     0x00ff0000,			/* Bmask */
-    0x00000000,			/* Amask */
 #else
     16,				/* Rshift */
     8,				/* Gshift */
     0,				/* Bshift */
-    24,				/* Ashift */
+    0,				/* Ashift */
     0x00ff0000,			/* Rmask */
     0x0000ff00,			/* Gmask */
     0x000000ff,			/* Bmask */
-    0x00000000,			/* Amask */
 #endif
-    -1,				/* No actual color key */
-    0				/* Completely opaque */
+    0x00000000,			/* Amask */
+    0,				/* No actual color key */
+    255				/* Completely opaque */
 };
 
 /*
@@ -329,7 +328,7 @@ static int do_screenshot(SDL_Surface *surf, struct allocable *a)
 
     /* IHDR configuration */
     png_set_IHDR(a->png, a->png_info, surf->w, surf->h, depth,
-		 a->palette ? PNG_COLOR_TYPE_PALETTE : PNG_COLOR_TYPE_RGB,
+		 (npalette > 0) ? PNG_COLOR_TYPE_PALETTE : PNG_COLOR_TYPE_RGB,
 		 PNG_INTERLACE_NONE, PNG_COMPRESSION_TYPE_DEFAULT,
 		 PNG_FILTER_TYPE_DEFAULT);
 
