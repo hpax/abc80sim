@@ -168,18 +168,15 @@ static png_color *make_rgb(const SDL_Surface *surf)
 # define O_BINARY 0
 #endif
 
-FILE *open_screenshot(const char **name)
+static FILE *open_screenshot(char *namebuf)
 {
     int fd;
     unsigned int n;
-    static char filename[16];
     FILE *f;
 
-    *name = NULL;
-
     for (n = 1; n <= 9999; n++) {
-	snprintf(filename, sizeof filename, "scrn%04u.png", n);
-	fd = open(filename, O_CREAT|O_EXCL|O_WRONLY|O_BINARY,
+	snprintf(namebuf, PATH_MAX, "scrn%04u.png", n);
+	fd = open(namebuf, O_CREAT|O_EXCL|O_WRONLY|O_BINARY,
 		  S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP|S_IROTH|S_IWOTH);
 
 	if (fd >= 0 || errno != EEXIST) {
@@ -198,13 +195,8 @@ FILE *open_screenshot(const char **name)
 	return NULL;
     }
 
-    *name = filename;
     return f;
 }
-
-struct my_png_error {
-    jmp_buf jump;
-};
 
 static void my_png_error(png_structp png, png_const_charp errmsg)
 {
@@ -247,121 +239,138 @@ static const SDL_PixelFormat rgbfmt = {
     0				/* Completely opaque */
 };
 
-int screenshot(SDL_Surface *surf)
+/*
+ * This is a bit of a hack to work around potentially dangerous
+ * setjmp() side effects.  The structure contains anything that
+ * we may have to deallocate or clean up.
+ */
+struct allocable {
+    uint8_t *img;		/* Image data */
+    SDL_Surface *rgbsurf;	/* RGB converted surface */
+    png_bytepp rowptrs;		/* Array of row pointers */
+    png_color *palette;		/* Palette data */
+    png_structp png;		/* PNG write structure */
+    png_infop png_info;		/* PNG info structure */
+    FILE *f;			/* File pointer to screenshot file */
+    char filename[PATH_MAX];	/* Filename (to remove on failure) */
+};
+
+static int do_screenshot(SDL_Surface *surf, struct allocable *a)
 {
-    FILE *f = NULL;
-    int rv = -1;
-    int err;
-    uint8_t *img = NULL;
-    SDL_Surface *rgbsurf = NULL;
     uint8_t *row;
-    png_bytepp rowptrs = NULL;
     size_t bytes_per_row;
     int y;
-    png_color *palette = NULL;
     int npalette, depth;
-    png_structp png = NULL;
-    png_infop png_info;
-    const char *filename;
     time_t now;
     png_time png_now;
     SDL_PixelFormat fmt;
+    png_bytepp rowptr;
 
     /* Get current time for timestamp */
     time(&now);
     png_convert_from_time_t(&png_now, now);
 
-    /* Allocate row pointers (why, libpng?) */
-    rowptrs = malloc(surf->h * sizeof *rowptrs);
-    if (!rowptrs)
-	goto err;
+    /* Allocate row pointers */
+    a->rowptrs = malloc(surf->h * sizeof *a->rowptrs);
+    if (!a->rowptrs)
+	return -1;
 
     /* First, try an indexed image */
-    bytes_per_row = surf->w;
-    npalette = make_indexed(surf, &img, &palette);
-    if (!palette) {
+    npalette = make_indexed(surf, &a->img, &a->palette);
+    if (npalette > 0) {
+	if (npalette <= 2)
+	    depth = 1;
+	else if (npalette <= 4)
+	    depth = 2;
+	else if (npalette <= 16)
+	    depth = 4;
+	else
+	    depth = 8;
+
+	bytes_per_row = surf->w;
+	row = a->img;
+    } else {
 	/* Otherwise create an RGB image */
 	fmt = rgbfmt; /* Is this really needed? */
-	rgbsurf = SDL_ConvertSurface(surf, &fmt, SDL_SWSURFACE);
-	if (!rgbsurf)
-	    goto err;
-	SDL_LockSurface(rgbsurf);
-	img = rgbsurf->pixels;
+	a->rgbsurf = SDL_ConvertSurface(surf, &fmt, SDL_SWSURFACE);
+	if (!a->rgbsurf)
+	    return -1;
+	SDL_LockSurface(a->rgbsurf);
 	depth = 8;
-	bytes_per_row *= 3;
-    } else if (npalette <= 2) {
-	depth = 1;
-    } else if (npalette <= 4) {
-	depth = 2;
-    } else if (npalette <= 16) {
-	depth = 4;
-    } else {
-	depth = 8;
+	bytes_per_row = a->rgbsurf->pitch;
+	row = a->rgbsurf->pixels;
     }
 
-    /* Create a PNG write and info structures */
-    png = png_create_write_struct(PNG_LIBPNG_VER_STRING, NULL,
-				  my_png_error, my_png_warning);
-    if (!png)
-	goto err;
-
-    png_info = png_create_info_struct(png);
-    if (!png_info)
-	goto err;
-
-    /* Open screenshot file */
-    f = open_screenshot(&filename);
-    if (!f)
-	goto err;
-    png_init_io(png, f);
-
-    if (setjmp(png_jmpbuf(png)))
-	goto err;
-
-    /* IHDR configuration */
-    png_set_IHDR(png, png_info, surf->w, surf->h, depth,
-		 palette ? PNG_COLOR_TYPE_PALETTE : PNG_COLOR_TYPE_RGB,
-		 PNG_INTERLACE_NONE, PNG_COMPRESSION_TYPE_DEFAULT,
-		 PNG_FILTER_TYPE_DEFAULT);
-
-    png_set_tIME(png, png_info, &png_now);
-
-    if (palette)
-	png_set_PLTE(png, png_info, palette, npalette);
-
-    /* Why does libpng need this? */
-    row = img;
+    /* Generate row pointers */
+    rowptr = a->rowptrs;
     for (y = 0; y < surf->h; y++) {
-	rowptrs[y] = row;
+	*rowptr++ = row;
 	row += bytes_per_row;
     }
 
-    png_set_rows(png, png_info, rowptrs);
+    /* Create a PNG write and info structures */
+    a->png = png_create_write_struct(PNG_LIBPNG_VER_STRING, NULL,
+				     my_png_error, my_png_warning);
+    if (!a->png)
+	return -1;
 
-    png_write_png(png, png_info,
+    a->png_info = png_create_info_struct(a->png);
+    if (!a->png_info)
+	return -1;
+
+    if (setjmp(png_jmpbuf(a->png)))
+	return -1;
+
+    /* Open screenshot file */
+    a->f = open_screenshot(a->filename);
+    if (!a->f)
+	return -1;
+    png_init_io(a->png, a->f);
+
+    /* IHDR configuration */
+    png_set_IHDR(a->png, a->png_info, surf->w, surf->h, depth,
+		 a->palette ? PNG_COLOR_TYPE_PALETTE : PNG_COLOR_TYPE_RGB,
+		 PNG_INTERLACE_NONE, PNG_COMPRESSION_TYPE_DEFAULT,
+		 PNG_FILTER_TYPE_DEFAULT);
+
+    png_set_tIME(a->png, a->png_info, &png_now);
+
+    if (npalette > 0)
+	png_set_PLTE(a->png, a->png_info, a->palette, npalette);
+
+    png_set_rows(a->png, a->png_info, a->rowptrs);
+
+    png_write_png(a->png, a->png_info,
 		  (depth < 8) ? PNG_TRANSFORM_PACKING : PNG_TRANSFORM_IDENTITY,
 		  NULL);
-    rv = 0;			/* Success! */
+    return 0;
+}
 
-err:
+int screenshot(SDL_Surface *surf)
+{
+    struct allocable a;
+    int rv, err;
+
+    memset(&a, 0, sizeof a);
+    rv = do_screenshot(surf, &a);
+
     err = errno;
-    if (rgbsurf) {
-	SDL_UnlockSurface(rgbsurf);
-	SDL_FreeSurface(rgbsurf);
+    if (a.rgbsurf) {
+	SDL_UnlockSurface(a.rgbsurf);
+	SDL_FreeSurface(a.rgbsurf);
     }
-    if (png)
-	png_destroy_write_struct(&png, &png_info);
-    if (f) {
-	fclose(f);
-	if (rv)
-	    remove(filename);
-    }
-    if (palette)
-	free(palette);
-    if (img)
-	free(img);
-    if (rowptrs)
-	free(rowptrs);
+    if (a.png)
+	png_destroy_write_struct(&a.png, &a.png_info);
+    if (a.f)
+	fclose(a.f);
+    if (a.filename[0] && rv)
+	remove(a.filename);
+    if (a.palette)
+	free(a.palette);
+    if (a.img)
+	free(a.img);
+    if (a.rowptrs)
+	free(a.rowptrs);
 
     errno = err;
     return rv;
