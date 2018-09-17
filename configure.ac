@@ -22,14 +22,6 @@ PA_ADD_CFLAGS([-pedantic])
 
 dnl Checks for header files.
 AC_HEADER_STDC
-if test $ac_cv_header_stdc = no; then
-  AC_MSG_ERROR([abc80sim requires ANSI C header files to compile])
-fi
-
-AC_CHECK_HEADERS(limits.h)
-if test $ac_cv_header_limits_h = no; then
-  AC_MSG_ERROR([abc80sim requires '<limits.h>' to compile])
-fi
 
 dnl The standard header for str*casecmp is <strings.h>
 AC_CHECK_HEADERS(strings.h)
@@ -40,7 +32,15 @@ AC_CHECK_HEADERS(stdbool.h)
 AC_CHECK_HEADERS(SDL.h)
 AC_CHECK_HEADERS(SDL/SDL.h)
 AC_CHECK_HEADERS(png.h)
-AC_CHECK_HEADERS(zlib.h)
+
+AC_CHECK_HEADERS(dirent.h)
+AC_CHECK_HEADERS(sys/types.h)
+AC_CHECK_HEADERS(sys/stat.h)
+AC_CHECK_HEADERS(sys/time.h)
+AC_CHECK_HEADERS(unistd.h)
+AC_CHECK_HEADERS(fcntl.h)
+AC_CHECK_HEADERS(io.h)
+AC_CHECK_HEADERS(windows.h)
 
 dnl Checks for typedefs, structures, and compiler characteristics.
 AC_C_CONST
@@ -57,11 +57,13 @@ AH_TEMPLATE(WORDS_LITTLEENDIAN,
 byte first (like Intel and VAX, unlike Motorola and SPARC).])
 
 dnl Checks for library functions.
-AC_SEARCH_LIBS([deflate], [z])
 AC_SEARCH_LIBS([png_write_png], [png])
 AC_SEARCH_LIBS([SDL_Init], [SDL])
-AC_SEARCH_LIBS([pthread_create], [pthread])
-AC_SUBST(XOBJS)
+
+dnl I am going to assume modern systems don't need to guess
+dnl what our dependent libraries may be...
+dnl AC_SEARCH_LIBS([deflate], [z])
+dnl AC_SEARCH_LIBS([pthread_create], [pthread])
 
 dnl
 dnl support cchace

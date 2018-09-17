@@ -8,15 +8,31 @@
 #include <stdio.h>
 #include <inttypes.h>
 #include <string.h>
-#include <fcntl.h>
 #include <time.h>
 #include <stdbool.h>
-#include <sys/stat.h>
-#include <sys/types.h>
 #include <errno.h>
 
-#include <png.h>
-#include <zlib.h>
+#ifdef HAVE_UNISTD_H
+# include <unistd.h>
+#endif
+#ifdef HAVE_IO_H
+# include <io.h>
+#endif
+#ifdef HAVE_FCNTL_H
+# include <fcntl.h>
+#endif
+#ifdef HAVE_SYS_STAT_H
+# include <sys/stat.h>
+#endif
+#ifdef HAVE_SYS_TYPES_H
+# include <sys/types.h>
+#endif
+
+#ifdef HAVE_PNG_H
+# include <png.h>
+#else
+# error "png.h not found"
+#endif
 
 #include "screenshot.h"
 
