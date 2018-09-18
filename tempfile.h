@@ -11,6 +11,7 @@ enum temp_file_mode {
 
 struct temp_file {
     FILE *f;
+    size_t namelen;
     int fd;
     enum temp_file_mode mode;
     char filename[1];

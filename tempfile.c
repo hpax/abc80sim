@@ -47,7 +47,7 @@ struct temp_file *temp_file(enum temp_file_mode mode)
 	return NULL;
 
     temp->mode = mode;
-
+    temp->namelen = sizeof template - 1;
     memcpy(temp->filename, template, sizeof template);
 
     temp->fd = mkstemp(temp->filename);
@@ -80,7 +80,7 @@ struct temp_file *temp_file(enum temp_file_mode mode)
     char *filename = NULL;
     int fd;
     int attempts = TMP_MAX;
-    size_t fnlen;
+    size_t namelen;
     const int openflags = O_RDWR|O_CREAT|O_EXCL|O_NOFOLLOW|O_SHORT_LIVED| \
 	mode_openflags(mode);
 
@@ -102,9 +102,10 @@ struct temp_file *temp_file(enum temp_file_mode mode)
 	return NULL;
     }
 
-    fnlen = strlen(filename);
-    temp = malloc(sizeof *temp + fnlen);
-    memcpy(temp->filename, filename, fnlen+1);
+    namelen = strlen(filename);
+    temp = malloc(sizeof *temp + namelen);
+    memcpy(temp->filename, filename, namelen + 1);
+    temp->namelen = namelen;
     temp->fd = fd;
     temp->mode = mode;
     free(filename);

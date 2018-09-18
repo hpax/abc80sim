@@ -22,78 +22,45 @@
 #include "tempfile.h"
 
 #ifdef __WIN32__
-const char lpr_command[] = "powershell -command \"GetContent -raw -path $Env:PRINT_FILE | OutPrinter\"";
+const char lpr_command[] = "powershell -command \"GetContent -raw -path '*' | OutPrinter\"";
 #else
-const char lpr_command[] = "lpr";
+const char lpr_command[] = "lpr '*'";
 #endif
 
 static struct temp_file *temp;
 
-static char **push_env(const char *var, const char *val)
-{
-  char **oldenviron = environ;
-  char **newenviron, **oep, **nep;
-  size_t nenv;
-  size_t varlen, vallen;
-  char *newvar;
-
-  nenv = 0;
-  while (oldenviron[nenv])
-    nenv++;
-
-  varlen = strlen(var);
-  vallen = strlen(val);
-
-  newenviron = malloc((nenv+2)*sizeof(char *) + varlen + vallen + 2);
-  if (!newenviron)
-    return NULL;
-
-  newvar = (char *)&newenviron[nenv+2];
-
-  memcpy(newvar, var, varlen);
-  newvar[varlen] = '=';
-  memcpy(newvar + varlen + 1, val, vallen+1);
-
-  nep = newenviron;
-  *nep++ = newvar;
-  oep = oldenviron;
-  while (*oep) {
-    /* Don't copy a duplicate variable */
-    if (strncmp(*oep, newvar, varlen+1))
-      *nep++ = *oep;
-    oep++;
-  }
-  *nep = NULL;
-
-  environ = newenviron;
-  return oldenviron;
-}
-
-static void pop_env(char **oldenviron)
-{
-  char **newenviron = environ;
-
-  environ = oldenviron;
-  free(newenviron);
-}
-
 static void print_finish(void)
 {
-  int oldstdin;
-  char **oldenviron;
+  const char *p;
+  char *cmd, *q;
+  size_t cmdlen, namelen;
 
   if (!temp)
     return;
 
   fflush(temp->f);
-  rewind(temp->f);
 
-  oldstdin = dup(STDIN_FILENO);
-  oldenviron = push_env("PRINT_FILE", temp->filename);
-  dup2(temp->fd, STDIN_FILENO);
-  system(lpr_command);
-  dup2(oldstdin, STDIN_FILENO);
-  pop_env(oldenviron);
+  namelen = temp->namelen;
+  cmdlen = 0;
+  for (p = lpr_command; *p; p++) {
+    cmdlen += (*p == '*') ? namelen : 1;
+  }
+  cmd = malloc(cmdlen+1);
+
+  if (cmd) {
+    for (p = lpr_command, q = cmd; *p; p++) {
+      if (*p == '*') {
+	memcpy(q, temp->filename, namelen);
+	q += namelen;
+      } else {
+	*q++ = *p;
+      }
+    }
+    *q = '\0';
+
+    system(cmd);
+    free(cmd);
+  }
   close_temp(&temp);
 }
 
