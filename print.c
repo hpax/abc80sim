@@ -32,7 +32,7 @@ static struct temp_file *temp;
 static char **push_env(const char *var, const char *val)
 {
   char **oldenviron = environ;
-  char **newenviron;
+  char **newenviron, **oep, **nep;
   size_t nenv;
   size_t varlen, vallen;
   char *newvar;
@@ -54,8 +54,16 @@ static char **push_env(const char *var, const char *val)
   newvar[varlen] = '=';
   memcpy(newvar + varlen + 1, val, vallen+1);
 
-  newenviron[0] = newvar;
-  memcpy(newenviron+1, oldenviron, (nenv+1) * sizeof(char *));
+  nep = newenviron;
+  *nep++ = newvar;
+  oep = oldenviron;
+  while (*oep) {
+    /* Don't copy a duplicate variable */
+    if (strncmp(*oep, newvar, varlen+1))
+      *nep++ = *oep;
+    oep++;
+  }
+  *nep = NULL;
 
   environ = newenviron;
   return oldenviron;
