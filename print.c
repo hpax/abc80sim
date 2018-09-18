@@ -1,6 +1,6 @@
 /* ----------------------------------------------------------------------- *
  *
- *   Copyright 2004-2013 H. Peter Anvin - All Rights Reserved
+ *   Copyright 2004-2018 H. Peter Anvin - All Rights Reserved
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
@@ -17,58 +17,79 @@
  *
  */
 
+#include "compiler.h"
 #include "abcprintd.h"
+#include "tempfile.h"
 
-#if 0
-#include <sys/wait.h>
-
-int lpr_argc;
-const char **lpr_argv;
+#ifdef __WIN32__
+const char lpr_command[] = "powershell -command \"GetContent -raw -path $Env:PRINT_FILE | OutPrinter";
+#else
+const char lpr_command[] = "lpr";
 #endif
 
-enum output_state {
-  os_first,			/* Brand new job */
-  os_percent,			/* Job started with %, might be Postscript */
-  os_binary,			/* Don't touch this */
-  os_text			/* It's text, OK to modify */
-};
+static struct temp_file *temp;
 
-static void print_setup(FILE **tfp, enum output_state *psp)
+static char **push_env(const char *var, const char *val)
 {
-#if 0
-  FILE *tf = *tfp;
-  pid_t f;
+  char **oldenviron = environ;
+  char **newenviron;
+  size_t nenv;
+  size_t varlen, vallen;
+  char *newvar;
 
-  if ( tf ) {
-    fflush(tf);
-    rewind(tf);
+  nenv = 0;
+  while (oldenviron[nenv])
+    nenv++;
 
-    f = fork();
+  varlen = strlen(var);
+  vallen = strlen(val);
 
-    if ( f < 0 ) {
-      perror("fork");
-      exit(1);
-    } else if ( f == 0 ) {
-      dup2(fileno(tf), STDIN_FILENO);
-      fclose(tf);
-      execvp(lpr_argv[0], (char **)lpr_argv);
-      _exit(255);
-    } else {
-      fclose(tf);
-      while ( waitpid(f, NULL, 0) != f );
-    }
-  }
+  newenviron = malloc((nenv+2)*sizeof(char *) + varlen + vallen + 2);
+  if (!newenviron)
+    return NULL;
 
-  *tfp = tmpfile();
-  if ( !*tfp ) {
-    perror("tmpfile");
-    exit(1);
-  }
-#endif
-  *psp = os_first;
+  newvar = (char *)&newenviron[nenv+2];
+
+  memcpy(newvar, var, varlen);
+  newvar[varlen] = '=';
+  memcpy(newvar + varlen + 1, val, vallen+1);
+
+  newenviron[0] = newvar;
+  memcpy(newenviron+1, oldenviron, (nenv+1) * sizeof(char *));
+
+  environ = newenviron;
+  return oldenviron;
 }
 
-static void output(int c, FILE *tf, enum output_state *psp)
+static void pop_env(char **oldenviron)
+{
+  char **newenviron = environ;
+
+  environ = oldenviron;
+  free(newenviron);
+}
+
+static void print_finish(void)
+{
+  int oldstdin;
+  char **oldenviron;
+
+  if (!temp)
+    return;
+
+  fflush(temp->f);
+  rewind(temp->f);
+
+  oldstdin = dup(STDIN_FILENO);
+  oldenviron = push_env("PRINT_FILE", temp->filename);
+  dup2(temp->fd, STDIN_FILENO);
+  system(lpr_command);
+  dup2(oldstdin, STDIN_FILENO);
+  pop_env(oldenviron);
+  close_temp(&temp);
+}
+
+static void output(unsigned char c)
 {
   static const wchar_t abc_to_unicode[256] =
     L"\000\001\002\003\004\005\006\007\010\011\012\013\014\015\016\017"
@@ -87,44 +108,18 @@ static void output(int c, FILE *tf, enum output_state *psp)
     L"\340\341\342\343{}\346\347\350`\352\353\354\355\356\357"
     L"\360\361\362\363\364\365|\367\370\371\372\373~\375\376\377";
 
-  switch ( *psp ) {
-  case os_first:
-    if ( c == 27 )
-      *psp = os_binary;
-    else if ( c == '%' ) {
-      *psp = os_percent;
-      return;
-    } else {
-      *psp = os_text;
-      // fwrite(text_prefix, 1, sizeof text_prefix - 1, tf);
-    }
-    output(c, tf, psp);
-    break;
-
-  case os_percent:
-    if ( c == '!' ) {
-      *psp = os_binary;
-    } else {
-      *psp = os_text;
-      // fwrite(text_prefix, 1, sizeof text_prefix - 1, tf);
-    }
-    output('%', tf, psp);
-    output(c, tf, psp);
-    break;
-
-  case os_text:
-    if (c != '\r')
-      // putwc(abc_to_unicode[(unsigned char)c], tf);
-    break;
-
-  case os_binary:
-    // putc(c, tf);
-    break;
+  if (!temp) {
+    if (c < '\b' || (c > '\r' && c < 31))
+      temp = temp_file(TF_BINARY);
+    else
+      temp = temp_file(TF_UNICODE);
   }
-}
 
-static FILE *tf = NULL;
-static enum output_state os;
+  if (temp->mode == TF_BINARY)
+    putc(c, temp->f);
+  else if (c != '\r')
+    putwc(abc_to_unicode[c], temp->f);
+}
 
 enum input_state {
   is_normal,                  /* Normal operation */
@@ -133,10 +128,16 @@ enum input_state {
 };
 static enum input_state is;
 
+static void cleanup_temp(void)
+{
+  /* Print job still active on exit, just delete it */
+  close_temp(&temp);
+}
+
 void abcprint_init(void)
 {
-  print_setup(&tf, &os);
   is = is_normal;
+  atexit(cleanup_temp);
 }
 
 void abcprint(const void *data, size_t len)
@@ -152,18 +153,19 @@ void abcprint(const void *data, size_t len)
       if ( c == 0xff )
 	is = is_ff;
       else
-	output(c, tf, &os);
+	output(c);
       break;
 
     case is_ff:
-      if ( c == 0 ) {
-	print_setup(&tf, &os);	/* BREAK received, end of job */
+      if (c == 0) {
+	/* End of job */
+	print_finish();
 	is = is_normal;
-      } else if ( c >= 0xa0 && c <= 0xbf ) {
+      } else if (c >= 0xa0 && c <= 0xbf) {
 	/* Opcode range reserved for file ops */
 	is = file_op(c) ? is_file : is_normal;
       } else {
-	output(c, tf, &os);
+	output(c);
 	is = is_normal;
       }
       break;

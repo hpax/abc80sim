@@ -9,6 +9,14 @@ enum temp_file_mode {
     TF_UNICODE			/* Platform preferred Unicode encoding */
 };
 
-extern FILE *temp_file(char **filename, enum temp_file_mode mode);
+struct temp_file {
+    FILE *f;
+    int fd;
+    enum temp_file_mode mode;
+    char filename[1];
+};
+
+extern struct temp_file *temp_file(enum temp_file_mode mode);
+extern int close_temp(struct temp_file **temp);
 
 #endif /* TEMPFILE_H */

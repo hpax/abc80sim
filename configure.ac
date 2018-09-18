@@ -86,6 +86,9 @@ AC_CHECK_FUNCS([_findfirst _findfirst64])
 dnl Temporary file functions
 AC_CHECK_FUNCS([mkstemp tempnam])
 
+dnl File attributes
+AC_CHECK_FUNCS([_setmode])
+
 dnl Timekeeping...
 AC_CHECK_FUNCS(clock_gettime)
 AC_CHECK_FUNCS(gettimeofday)

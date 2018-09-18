@@ -6,43 +6,58 @@
 #include "compiler.h"
 #include "tempfile.h"
 
-#ifdef HAVE_MKSTEMP
+#define FILE_PREFIX "abc80sim_"
 
-FILE *temp_file(char **filenamep, enum temp_file_mode mode)
+#if defined(__WIN32__) && defined(_O_U16TEXT)
+# define UNICODE_O_FLAGS _O_U16TEXT
+#else
+# define UNICODE_O_FLAGS O_TEXT
+#endif
+
+static inline int mode_openflags(enum temp_file_mode mode)
 {
-    static const char template[] = "abc80_print_XXXXXX";
-    char *filename = NULL;
-    int err;
-    int fd = -1;
-    FILE *f = NULL;
-
-    *filenamep = NULL;
-
-    filename = strdup(template);
-    if (!filename)
-	goto err;
-
-    fd = mkstemp(filename);
-    if (fd < 0)
-	goto err;
-
-    f = fdopen(fd, (mode == TF_BINARY) ? "w+b" : "w+t");
-    if (!f)
-	goto err;
-
-    *filenamep = filename;
-    return f;
-
-err:
-    err = errno;
-    if (fd >= 0) {
-	close(fd);
-	remove(filename);
+    switch (mode) {
+    case TF_BINARY:
+	return O_BINARY;
+    case TF_TEXT:
+	return O_TEXT;
+    case TF_UNICODE:
+	return UNICODE_O_FLAGS;
+    default:
+	return 0;
     }
-    if (filename)
-	free(filename);
-    errno = err;
-    return NULL;
+}
+
+#ifndef HAVE__SETMODE
+# define _setmode(x,y) ((void)(x), (void)(y))
+#endif
+
+/* Common routine to finish the job once we have a name and fd */
+static struct temp_file *finish_temp_file(struct temp_file *temp);
+
+#if 0 //def HAVE_MKSTEMP
+
+struct temp_file *temp_file(enum temp_file_mode mode)
+{
+    static const char template[] = FILE_PREFIX "XXXXXX";
+    struct temp_file *temp = NULL;
+
+    temp = malloc(sizeof *temp + sizeof template - 1);
+    if (!temp)
+	return NULL;
+
+    temp->mode = mode;
+
+    memcpy(temp->filename, template, sizeof template);
+
+    temp->fd = mkstemp(temp->filename);
+    if (temp->fd < 0) {
+	free(temp);
+	return NULL;
+    }
+    _setmode(temp->fd, mode_openflags(mode));
+
+    return finish_temp_file(temp);
 }
 
 #else
@@ -59,63 +74,76 @@ err:
 # define O_SHORT_LIVED 0
 #endif
 
-#if defined(__WIN32__) && defined(_O_U16TEXT)
-# define UNICODE_O_FLAGS _O_U16TEXT
-#else
-# define UNICODE_O_FLAGS O_TEXT
-#endif
-
-FILE *temp_file(char **filenamep, enum temp_file_mode mode)
+struct temp_file *temp_file(enum temp_file_mode mode)
 {
+    struct temp_file *temp;
     char *filename = NULL;
+    int fd;
     int err;
-    int fd = -1;
-    FILE *f = NULL;
     int attempts = TMP_MAX;
-    int openflags;
-    static const int mode_openflags[] =
-    {
-	[TF_BINARY]  = O_BINARY,
-	[TF_TEXT]    = O_TEXT,
-	[TF_UNICODE] = UNICODE_O_FLAGS
-    };
-
-    openflags = O_RDWR|O_CREAT|O_EXCL|O_NOFOLLOW|O_SHORT_LIVED;
-    openflags |= mode_openflags[mode];
-
-    *filenamep = NULL;
+    size_t fnlen;
+    const int openflags = O_RDWR|O_CREAT|O_EXCL|O_NOFOLLOW|O_SHORT_LIVED| \
+	mode_openflags(mode);
 
     do {
 	if (filename)
 	    free(filename);
 
-	filename = tempnam(NULL, "abc80_print_");
+	filename = tempnam(NULL, FILE_PREFIX);
 	if (!filename)
-	    goto err;
+	    return NULL;
 
 	fd = open(filename, openflags, S_IREAD|S_IWRITE);
     } while (fd < 0 && errno == EEXIST && --attempts);
 
-    if (fd < 0)
-	goto err;
-
-    f = fdopen(fd, "w+");
-    if (!f)
-	goto err;
-
-    *filenamep = filename;
-    return f;
-
-err:
-    err = errno;
-    if (fd >= 0) {
-	close(fd);
-	remove(filename);
-    }
-    if (filename)
+    if (fd < 0) {
 	free(filename);
-    errno = err;
-    return NULL;
+	return NULL;
+    }
+
+    fnlen = strlen(filename);
+    temp = malloc(sizeof *temp + fnlen);
+    memcpy(temp->filename, filename, fnlen+1);
+    temp->fd = fd;
+    temp->mode = mode;
+    free(filename);
+
+    return finish_temp_file(temp);
 }
 
 #endif
+
+/* Common routine to finish the job once we have a name and fd */
+static struct temp_file *finish_temp_file(struct temp_file *temp)
+{
+    temp->f = fdopen(temp->fd, "w+");
+    if (!temp->f) {
+	int err = errno;
+	close(temp->fd);
+	remove(temp->filename);
+	free(temp);
+	errno = err;
+	return NULL;
+    }
+    return temp;
+}
+
+int close_temp(struct temp_file **tempp)
+{
+    struct temp_file *temp;
+    int err = 0;
+
+    if (!tempp || !(temp = *tempp))
+	return 0;
+
+    if (temp->f)
+	err = fclose(temp->f);
+
+    if (temp->filename[0])
+	err |= remove(temp->filename);
+
+    free(temp);
+    *tempp = NULL;
+
+    return err;
+}
