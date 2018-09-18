@@ -43,7 +43,7 @@ PA_ADD_CFLAGS([-fwrapv])
 
 dnl Some environments abuse __STRICT_ANSI__ to disable some
 dnl function declarations
-PA_ADD_CFLAGS([-U__STRICT_ANSI__])
+PA_ADD_CPPFLAGS([-U__STRICT_ANSI__])
 
 dnl Don't put things in common if we can avoid it.  We don't want to
 dnl assume all compilers support common, and this will help find those
@@ -58,7 +58,7 @@ PA_HAVE_FUNC(__builtin_constant_p, (0))
 dnl See if we can find sdl-config
 AC_CHECK_TOOL([SDL_CONFIG], [sdl-config], [false])
 AS_IF(["$SDL_CONFIG" --cflags >/dev/null 2>&1],
-      [CFLAGS="$CFLAGS `"$SDL_CONFIG" --cflags`"
+      [CPPFLAGS="$CPPFLAGS `"$SDL_CONFIG" --cflags`"
        LIBS="$LIBS `"$SDL_CONFIG" --libs`"],
       [AC_MSG_WARN([sdl-config not found or not functional, this is probably bad news])])
 
@@ -95,7 +95,7 @@ dnl Check for supported gcc attributes; some compilers (e.g. Sun CC)
 dnl support these, but don't define __GNUC__ as they don't support
 dnl some other features of gcc.
 dnl
-PA_ADD_CFLAGS([-Werror=attributes])
+PA_ADD_CPPFLAGS([-Werror=attributes])
 PA_FUNC_ATTRIBUTE(noreturn)
 PA_FUNC_ATTRIBUTE(returns_nonnull)
 PA_FUNC_ATTRIBUTE(malloc)
@@ -112,9 +112,9 @@ dnl support function sections (if available)
 dnl
 PA_ARG_ENABLED([sections],
  [compile with function/data section support],
- [PA_ADD_CLDFLAGS([-ffunction-sections])
-  PA_ADD_CLDFLAGS([-fdata-sections])
-  PA_ADD_CLDFLAGS([-Wl,--gc-sections])],
+ [PA_ADD_CFLAGS([-ffunction-sections])
+  PA_ADD_CFLAGS([-fdata-sections])
+  PA_ADD_CFLAGS([-Wl,--gc-sections])],
  [])
 
 dnl
@@ -122,7 +122,7 @@ dnl support LTO
 dnl
 PA_ARG_ENABLED([lto],
  [compile with gcc-style link time optimization],
- [PA_ADD_CLDFLAGS([-flto])
+ [PA_ADD_CFLAGS([-flto])
   dnl Note: we use _PROG rather than _TOOL since we are prepending the full
   dnl CC name which ought to already contain the host triplet if needed
   ccbase=`echo "$CC" | awk '{ print $1; }'`
@@ -137,42 +137,42 @@ dnl
 PA_ARG_ENABLED([sanitizer],
  [compile with sanitizers enabled],
  [PA_ADD_CFLAGS([-fno-omit-frame-pointer])
-  PA_ADD_CLDFLAGS([-fsanitize=address])
-  PA_ADD_CLDFLAGS([-fsanitize=undefined])])
+  PA_ADD_CFLAGS([-fsanitize=address])
+  PA_ADD_CFLAGS([-fsanitize=undefined])])
 
 dnl
 dnl Don't make symbols visible, there is no point and it just
 dnl makes the code slower.
 dnl
-PA_ADD_CLDFLAGS([-fvisibility=hidden])
+PA_ADD_CFLAGS([-fvisibility=hidden])
 
 dnl If we have gcc, add appropriate code cleanliness options
-PA_ADD_CFLAGS([-W])
-PA_ADD_CFLAGS([-Wall])
-PA_ADD_CFLAGS([-pedantic])
+PA_ADD_CPPFLAGS([-W])
+PA_ADD_CPPFLAGS([-Wall])
+PA_ADD_CPPFLAGS([-pedantic])
 dnl LLVM doesn't error out on invalid -W options unless this option is
 dnl specified first.  Enable this so this script can actually discover
 dnl which -W options are possible for this compiler.
-PA_ADD_CFLAGS([-Werror=unknown-warning-option])
+PA_ADD_CPPFLAGS([-Werror=unknown-warning-option])
 dnl Suppress format warning on Windows targets due to their <inttypes.h>
-PA_ADD_CFLAGS([-Wpedantic-ms-format],[-Wno-pedantic-ms-format])
+PA_ADD_CPPFLAGS([-Wpedantic-ms-format],[-Wno-pedantic-ms-format])
 dnl This is needed because we intentionally expect strncpy() to fill
 dnl in a zero-padded (not zero-terminated) buffer in several backends
-PA_ADD_CFLAGS([-Wstringop-truncation],[-Wno-stringop-truncation])
-dnl PA_ADD_CFLAGS([-Wwrite-strings])
+PA_ADD_CPPFLAGS([-Wstringop-truncation],[-Wno-stringop-truncation])
+dnl PA_ADD_CPPFLAGS([-Wwrite-strings])
 PA_ARG_ENABLED([werror],
  [compile with -Werror to error out on any warning],
- [PA_ADD_CFLAGS([-Werror])],
- [PA_ADD_CFLAGS([-Werror=implicit])
-  PA_ADD_CFLAGS([-Werror=missing-braces])
-  PA_ADD_CFLAGS([-Werror=return-type])
-  PA_ADD_CFLAGS([-Werror=trigraphs])
-  PA_ADD_CFLAGS([-Werror=pointer-arith])
-  PA_ADD_CFLAGS([-Werror=strict-prototypes])
-  PA_ADD_CFLAGS([-Werror=missing-prototypes])
-  PA_ADD_CFLAGS([-Werror=missing-declarations])
-  PA_ADD_CFLAGS([-Werror=comment])
-  PA_ADD_CFLAGS([-Werror=vla])]
+ [PA_ADD_CPPFLAGS([-Werror])],
+ [PA_ADD_CPPFLAGS([-Werror=implicit])
+  PA_ADD_CPPFLAGS([-Werror=missing-braces])
+  PA_ADD_CPPFLAGS([-Werror=return-type])
+  PA_ADD_CPPFLAGS([-Werror=trigraphs])
+  PA_ADD_CPPFLAGS([-Werror=pointer-arith])
+  PA_ADD_CPPFLAGS([-Werror=strict-prototypes])
+  PA_ADD_CPPFLAGS([-Werror=missing-prototypes])
+  PA_ADD_CPPFLAGS([-Werror=missing-declarations])
+  PA_ADD_CPPFLAGS([-Werror=comment])
+  PA_ADD_CPPFLAGS([-Werror=vla])]
 )
 
 dnl

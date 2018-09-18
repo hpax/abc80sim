@@ -7,48 +7,37 @@ AC_DEFUN(PA_SYM,
 [[$1]m4_bpatsubsts(m4_toupper([$2]),[[^ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789]+],[_],[^._?\(.*\)_.$],[[\1]])])
 
 dnl --------------------------------------------------------------------------
-dnl PA_ADD_CFLAGS(flag [,actual_flag])
+dnl PA_ADD_FLAGS(variable, flag [,actual_flag])
 dnl
-dnl Attempt to add the given option to CFLAGS, if it doesn't break
+dnl Attempt to add the given option to CPPFLAGS, if it doesn't break
 dnl compilation.  If the option to be tested is different than the
 dnl option that should actually be added, add the option to be
 dnl actually added as a second argument.
 dnl --------------------------------------------------------------------------
-AC_DEFUN(PA_ADD_CFLAGS,
-[AC_MSG_CHECKING([if $CC accepts $1])
- pa_add_cflags__old_cflags="$CFLAGS"
- CFLAGS="$CFLAGS $1"
+AC_DEFUN(PA_ADD_FLAGS,
+[AC_MSG_CHECKING([if $CC accepts $2])
+ pa_add_flags__old_flags="$$1"
+ $1="$$1 $2"
  AC_TRY_LINK(AC_INCLUDES_DEFAULT,
  [printf("Hello, World!\n");],
  [AC_MSG_RESULT([yes])
-  CFLAGS="$pa_add_cflags__old_cflags ifelse([$2],[],[$1],[$2])"
-  AC_DEFINE(PA_SYM([CFLAG_],[$1]), 1,
-   [Define to 1 if compiled with the `$1' compiler flag])],
+  $1="$pa_add_flags__old_flags ifelse([$3],[],[$2],[$3])"
+  AC_DEFINE(PA_SYM([$1_],[$2]), 1,
+   [Define to 1 if compiled with the `$2' compiler flag])],
  [AC_MSG_RESULT([no])
-  CFLAGS="$pa_add_cflags__old_cflags"])])
+  $1="$pa_add_flags__old_flags"])])
 
 dnl --------------------------------------------------------------------------
-dnl PA_ADD_CLDFLAGS(flag [,actual_flag])
+dnl PA_ADD_{CPP,C,LD}FLAGS(variable, flag [,actual_flag])
 dnl
-dnl Attempt to add the given option to CFLAGS and LDFLAGS,
-dnl if it doesn't break compilation
+dnl Attempt to add the given option to xFLAGS, if it doesn't break
+dnl compilation.  If the option to be tested is different than the
+dnl option that should actually be added, add the option to be
+dnl actually added as a second argument.
 dnl --------------------------------------------------------------------------
-AC_DEFUN(PA_ADD_CLDFLAGS,
-[AC_MSG_CHECKING([if $CC accepts $1])
- pa_add_cldflags__old_cflags="$CFLAGS"
- CFLAGS="$CFLAGS $1"
- pa_add_cldflags__old_ldflags="$LDFLAGS"
- LDFLAGS="$LDFLAGS $1"
- AC_TRY_LINK(AC_INCLUDES_DEFAULT,
- [printf("Hello, World!\n");],
- [AC_MSG_RESULT([yes])
-  CFLAGS="$pa_add_cldflags__old_cflags ifelse([$2],[],[$1],[$2])"
-  LDFLAGS="$pa_add_cldflags__old_ldflags ifelse([$2],[],[$1],[$2])"
-  AC_DEFINE(PA_SYM([CFLAG_],[$1]), 1,
-   [Define to 1 if compiled with the `$1' compiler flag])],
- [AC_MSG_RESULT([no])
-  CFLAGS="$pa_add_cldflags__old_cflags"
-  LDFLAGS="$pa_add_cldflags__old_ldflags"])])
+AC_DEFUN(PA_ADD_CPPFLAGS, [PA_ADD_FLAGS(CPPFLAGS, [$1], [$2])])
+AC_DEFUN(PA_ADD_CFLAGS,   [PA_ADD_FLAGS(CFLAGS, [$1], [$2])])
+AC_DEFUN(PA_ADD_LDFLAGS,  [PA_ADD_FLAGS(LDFLAGS, [$1], [$2])])
 
 dnl --------------------------------------------------------------------------
 dnl PA_HAVE_FUNC(func_name)
@@ -70,6 +59,7 @@ int main(void) {
   [Define to 1 if you have the `$1' intrinsic function.])],
  [AC_MSG_RESULT([no])])
 ])
+
 dnl --------------------------------------------------------------------------
 dnl PA_FUNC_ATTRIBUTE(attribute_name)
 dnl
