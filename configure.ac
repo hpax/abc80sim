@@ -75,18 +75,19 @@ AC_CHECK_HEADERS(io.h)
 AC_CHECK_HEADERS(windows.h)
 
 dnl These types are POSIX-specific, and Windows does it differently...
-AC_CHECK_TYPES([struct _stati64])
+AC_CHECK_TYPES([struct _stat64])
 AC_CHECK_TYPES([struct stat])
-AC_CHECK_FUNCS([stat _stati64])
-AC_CHECK_FUNCS([fstat _fstati64])
+AC_CHECK_FUNCS([stat _stat64])
+AC_CHECK_FUNCS([fstat _fstat64])
 
-dnl Windows file searching stuff
+dnl Windows file searching stuff (when dirent is unavailable)
 AC_CHECK_FUNCS([_findfirst _findfirst64])
 
-dnl Open a pipe
-AC_CHECK_FUNCS([popen])
+dnl Temporary file functions
+AC_CHECK_FUNCS([mkstemp tempnam])
 
 dnl Timekeeping...
+AC_CHECK_FUNCS(clock_gettime)
 AC_CHECK_FUNCS(gettimeofday)
 
 dnl Checks for library functions.

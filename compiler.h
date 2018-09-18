@@ -54,6 +54,13 @@
 # include <windows.h>
 #endif
 
+#ifndef O_BINARY
+# define O_BINARY 0
+#endif
+#ifndef O_TEXT
+# define O_TEXT 0
+#endif
+
 #include <SDL.h>		/* This includes endian definitions */
 
 #define WORDS_LITTLEENDIAN	(SDL_BYTEORDER == SDL_LIL_ENDIAN)
