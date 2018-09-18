@@ -35,7 +35,7 @@ static inline int mode_openflags(enum temp_file_mode mode)
 /* Common routine to finish the job once we have a name and fd */
 static struct temp_file *finish_temp_file(struct temp_file *temp);
 
-#if 0 //def HAVE_MKSTEMP
+#ifdef HAVE_MKSTEMP
 
 struct temp_file *temp_file(enum temp_file_mode mode)
 {
