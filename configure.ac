@@ -83,12 +83,16 @@ AC_CHECK_FUNCS([fstat _fstati64])
 dnl Windows file searching stuff
 AC_CHECK_FUNCS([_findfirst _findfirst64])
 
-dnl Search files
+dnl Open a pipe
 AC_CHECK_FUNCS([popen])
+
+dnl Timekeeping...
+AC_CHECK_FUNCS(gettimeofday)
 
 dnl Checks for library functions.
 AC_SEARCH_LIBS([deflate], [z])
 AC_SEARCH_LIBS([png_write_png], [png])
+AC_SEARCH_LIBS([clock_gettime], [rt])
 
 dnl
 dnl Check for supported gcc attributes; some compilers (e.g. Sun CC)

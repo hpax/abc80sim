@@ -29,23 +29,29 @@
 #include <limits.h>
 #include <errno.h>
 #include <time.h>
+
 #ifdef HAVE_FCNTL_H
 # include <fcntl.h>
 #endif
 #ifdef HAVE_SYS_STAT_H
 # include <sys/stat.h>
 #endif
+
+#ifdef HAVE_UNISTD_H
+# include <unistd.h>
+#endif
 #ifdef HAVE_SYS_TYPES_H
 # include <sys/types.h>
 #endif
+#ifdef HAVE_DIRENT_H
+# include <dirent.h>
+#endif
+
 #ifdef HAVE_IO_H
 # include <io.h>
 #endif
 #ifdef HAVE_WINDOWS_H
 # include <windows.h>
-#endif
-#ifdef HAVE_DIRENT_H
-# include <dirent.h>
 #endif
 
 #include <SDL.h>		/* This includes endian definitions */
