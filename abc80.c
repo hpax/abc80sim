@@ -75,7 +75,7 @@ enum model model = MODEL_ABC802;
 
 extern int   optind;
 extern char *optarg;
-extern int   getopt(int, char **, char *);
+extern int   getopt(int, char * const *, const char *);
 
 int main(int argc, char **argv)
 {
@@ -157,7 +157,7 @@ int main(int argc, char **argv)
      * Off we go...
      */
     z80_reset();
-    clock_init();
+    timer_init();
 
     z80_run(true, false);
 

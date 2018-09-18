@@ -2,74 +2,79 @@
 #include "screen.h"
 #include "abcio.h"
 #include "clock.h"
+#include "nstime.h"
 
 /*
  * ABC80: Trig a non maskable interrupt in the Z80 on the clock signal.
  */
-static Uint32 clock_nmi_handler(Uint32 interval, void *param)
+static void abc80_clock_tick(void)
 {
-    (void)param;
     z80_state.nminterrupt = 1;
-    return interval;
 }
 
-static uint8_t ctc_vector, ctc_cmd[4]; /*ctc_div[4] */
+static uint8_t ctc_irq = -1;
+static uint8_t ctc_cmd[4]; /*ctc_div[4] */
 
 /*
  * ABC800: Clock interrupt through the CTC
  */
-static Uint32 clock_ctc_handler(Uint32 interval, void *param)
+static void abc800_clock_tick(void)
 {
-  static unsigned int skipper;
-  int i;
-
-  (void)param;
-  (void)interval;
-
-  if (skipper-- == 0)
-    skipper = 2;
-
-  for (i = 0; i < 4; i++) {
-    if ((ctc_cmd[i] & 0xe0) == 0xe0) {
-      z80_state.i_vector = ctc_vector | (i << 1);
-      z80_state.interrupt = true;
-      break;
-    }
-  }
-
-  return skipper ? 11 : 10;	/* 11, 11, 10, 11, 11, 10... ms */
+  z80_interrupt(ctc_irq);
 }
 
 /*
- * Set up signal handler and schedule a signal every 20 ms.
+ * Initialize the time for next event
  */
-void
-clock_init(void)
+struct abctimer {
+  uint64_t last;
+  uint64_t period;
+};
+static struct abctimer clock_timer, blink_timer;
+static void (*clock_tick)(void);
+
+void timer_init(void)
 {
   switch (model) {
   case MODEL_ABC80:
-    SDL_AddTimer(20, clock_nmi_handler, NULL); /* 20 ms NMI timer */
+    clock_timer.period = 20000000;	/* 20 ms */
+    clock_tick = abc80_clock_tick;
     break;
   case MODEL_ABC802:
-    SDL_AddTimer(10, clock_ctc_handler, NULL); /* 10 ms CTC timer */
+    clock_timer.period = 10666667;	/* 10.67 ms = 93.75 Hz */
+    clock_tick = abc800_clock_tick;
     break;
   }
+
+  blink_timer.period = 400000000; /* 400 ms = 2.5 Hz */
+  clock_timer.last = blink_timer.last = nstime();
 }
 
-/* Standard callback routine to post a periodic user event */
-/* (int)param is the event code */
-Uint32 post_periodic(Uint32 interval, void *param)
+static inline bool trigger(uint64_t now, struct abctimer *tmr)
 {
-  SDL_Event event;
-  event.type = SDL_USEREVENT;
-  event.user.code  = 0;
-  event.user.data1 = param;
-  event.user.data2 = 0;
+  if (likely((now - tmr->last) < tmr->period))
+    return false;
 
-  if ( event_pending < 32 )
-    SDL_PushEvent(&event);
+  tmr->last += tmr->period;
+  if (unlikely((now - tmr->last) >= tmr->period)) {
+    /* Missed tick(s), advance clock to skip missed */
+    tmr->last = now - ((now - tmr->last) % tmr->period);
+  }
 
-  event_pending++;
+  return true;
+}
 
-  return interval;
+/* This returns the desired blink status */
+bool timer_poll(void)
+{
+  static bool blink = true;
+  uint64_t now = nstime();
+
+  if (trigger(now, &clock_timer))
+    clock_tick();
+
+  if (trigger(now, &blink_timer))
+    blink = !blink;
+
+  return blink;
 }

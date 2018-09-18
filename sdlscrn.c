@@ -11,6 +11,7 @@
 #include "screen.h"
 #include "screenshot.h"
 #include "z80.h"
+#include "clock.h"
 #include "abcio.h"
 
 #define min(x,y) ((x)<(y)?(x):(y))
@@ -305,15 +306,19 @@ void setmode40(bool m)
 
 /*
  * This routine switches the blink status, then goes around the screen
- * and updates all characters which has any kind of blink.
+ * and updates all characters which has any kind of blink.  Returns the
+ * previous value.
  */
-static void toggle_blink(void)
+static bool set_blink(bool to_what)
 {
   struct xy xy;
   int x, y;
   int width = TS_WIDTH >> mode40;
 
-  blink_on = !blink_on;
+  if (likely(to_what == blink_on))
+    return to_what;
+
+  blink_on = to_what;
 
   SDL_LockSurface(rscreen);
 
@@ -338,9 +343,9 @@ static void toggle_blink(void)
   }
 
   update_screen();
-}
 
-static struct do_event toggle_blink_event = { toggle_blink };
+  return !to_what;		/* We just flipped it... */
+}
 
 /*
  * Initialize SDL and the data structures
@@ -394,9 +399,6 @@ void screen_init(bool width40)
     }
   }
 
-  /* Blink timer */
-  SDL_AddTimer(400, post_periodic, &toggle_blink_event);
-
   /* Enable keyboard decoding */
   SDL_EnableUNICODE(1);
 
@@ -430,6 +432,8 @@ void check_event(void)
     MOD_ALT   = 4
   } kmod;
 
+  set_blink(timer_poll());	/* Poll timer, change blink if needed */
+
   while ( SDL_PollEvent(&event) ) {
     switch ( event.type ) {
     case SDL_KEYDOWN:
@@ -447,14 +451,10 @@ void check_event(void)
 
 	case SDLK_s:
 	  {
-	    bool old_blink_on = blink_on;
-
 	    /* Always screenshot with anything blinking turned on */
-	    if (!old_blink_on)
-	      toggle_blink();
+	    bool old_blink = set_blink(true);
 	    screenshot(rscreen);
-	    if (!old_blink_on)
-	      toggle_blink();
+	    set_blink(old_blink);
 	  }
 	  break;
 
@@ -588,10 +588,6 @@ void check_event(void)
     case SDL_KEYUP:
 	if ( event.key.keysym.scancode == keyboard_scan )
 	  keyboard_up();
-      break;
-    case SDL_USEREVENT:
-      ((struct do_event *)event.user.data1)->func();
-      event_pending--;
       break;
     case SDL_QUIT:
       exit(1);
