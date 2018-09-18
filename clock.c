@@ -9,7 +9,7 @@
  */
 static void abc80_clock_tick(void)
 {
-    z80_state.nminterrupt = 1;
+  z80_nmi();
 }
 
 static uint8_t ctc_irq = -1;
