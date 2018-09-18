@@ -12,10 +12,10 @@ mandir          = @mandir@
 datarootdir     = @datarootdir@
 
 CC		= @CC@
-CPPFLAGS	= @CPPFLAGS@
-CFLAGS		= $(CPPFLAGS) @CFLAGS@ @SDL_CFLAGS@
+CPPFLAGS	= @CPPFLAGS@ @DEFS@
+CFLAGS		= $(CPPFLAGS) @CFLAGS@
 LDFLAGS		= $(CFLAGS) @LDFLAGS@
-LIBS		= @LIBS@ @SDL_LIBS@
+LIBS		= @LIBS@
 
 MKDIR		= mkdir
 PERL		= perl
@@ -26,10 +26,10 @@ O		= @OBJEXT@
 X		= @EXEEXT@
 
 .SUFFIXES:
-.SUFFIXES: .c .h .$(O) .bin $(X)
+.SUFFIXES: .c .h .$(O) .bin $(X) .i .s .asm
 
 GENC = $(patsubst %.rom,%.c,$(wildcard roms/*.rom))
-SRCS = abc80.c clock.c sdlscrn.c screenshot.c z80.c abc80_mem.c io.c \
+SRCS = abc80.c clock.c sdlscrn.c screenshot.c z80.c abcmem.c abcio.c \
        abcfont.c disk.c rtc.c abcprint.c print.c fileop.c z80dis.c \
        $(GENC)
 HDRS = clock.h screen.h z80.h patchlevel.h screenshot.h
@@ -51,11 +51,21 @@ abc80$(X): $(OBJS)
 %.c: %.rom bin2c.pl
 	$(PERL) bin2c.pl $< > $@ || ( rm -f $@ ; false )
 
+.PRECIOUS: %.o
+%.o: %.c
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+%.i: %.c
+	$(CC) $(CFLAGS) -E -o $@ $<
+
+%.s: %.c
+	$(CC) $(CFLAGS) -S -o $@ $<
+
 abc80.$(O):        clock.h screen.h z80.h patchlevel.h
 clock.$(O):        clock.h z80.h
 sdlscrn.$(O):       screen.h z80.h
 z80.$(O):          z80.h
 
 clean:
-	$(RM_F) abc80$(X) *.$(O) *~ core *.lst
+	$(RM_F) abc80$(X) *.$(O) *~ core *.lst *.i *.s *~
 	$(RM_F) $(GENC)

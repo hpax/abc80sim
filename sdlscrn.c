@@ -11,7 +11,7 @@
 #include "screen.h"
 #include "screenshot.h"
 #include "z80.h"
-#include "rom.h"
+#include "abcio.h"
 
 #define min(x,y) ((x)<(y)?(x):(y))
 #define max(x,y) ((x)>(y)?(x):(y))
@@ -248,7 +248,7 @@ static void update_screen(void)
 }
 
 /* Refresh the entire screen */
-void refresh_screen(void)
+static void refresh_screen(void)
 {
   unsigned int x, y;
   unsigned int width = TS_WIDTH >> mode40;
@@ -579,21 +579,15 @@ void check_event(void)
 	  }
 	}
 	if ( mysym >= 0 ) {
-	  keyboard_code = mysym | 0x80;
+	  /* Remember which key so we can tell when it is released */
 	  keyboard_scan = event.key.keysym.scancode;
-	  z80_state.i_vector = keyb_irq;
-	  z80_state.interrupt = 1;
-	  set_in_port(56, keyboard_code);
+	  keyboard_down(mysym);
 	}
       }
       break;
     case SDL_KEYUP:
-      {
 	if ( event.key.keysym.scancode == keyboard_scan )
-	  keyboard_code &= ~0x80;
-
-	set_in_port(56, keyboard_code);
-      }
+	  keyboard_up();
       break;
     case SDL_USEREVENT:
       ((struct do_event *)event.user.data1)->func();

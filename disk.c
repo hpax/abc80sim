@@ -2,10 +2,9 @@
  * ABC80 simulated disk
  */
 
-#include <stdio.h>
-#include <inttypes.h>
-#include <string.h>
+#include "compiler.h"
 #include "z80.h"
+#include "abcio.h"
 
 #define NOTTHERE 0
 #define READONLY 0

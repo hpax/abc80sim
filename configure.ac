@@ -1,12 +1,11 @@
-dnl Process this file with autoconf 2.61 or later to produce
+dnl Process this file with autoconf 2.69 or later to produce
 dnl a configure script.
 AC_PREREQ([2.69])
 
 AC_CONFIG_MACRO_DIR(autoconf)
 
-AC_INIT
-AC_CONFIG_SRCDIR([abc80.c])
-AC_CONFIG_HEADERS(config.h)
+AC_INIT(abc80.c)
+AC_CONFIG_HEADERS(config/config.h)
 
 AC_CONFIG_AUX_DIR(autoconf)
 
@@ -20,30 +19,50 @@ dnl Get canonical target ("host") name
 AC_CANONICAL_HOST
 
 dnl Checks for programs.
-dnl Consider AC_USE_SYSTEM_EXTENSIONS if autoconf 2.61 is OK in the future
 AC_USE_SYSTEM_EXTENSIONS
 AC_PROG_CC
 AC_PROG_LN_S
 AC_PROG_MAKE_SET
 AC_PROG_INSTALL
 
-dnl If we have gcc, add appropriate options
-PA_ADD_CFLAGS([-W])
-PA_ADD_CFLAGS([-Wall])
-PA_ADD_CFLAGS([-std=c99])
-PA_ADD_CFLAGS([-pedantic])
+dnl Checks for typedefs, structures, and compiler characteristics.
+AC_C_CONST
+AC_C_INLINE
+AC_C_RESTRICT
+AC_TYPE_SIZE_T
 
-dnl Checks for header files.
+dnl Checks for standard header files.
 AC_HEADER_STDC
+AC_HEADER_STDBOOL
+AC_CHECK_HEADERS(inttypes.h)
+AC_CHECK_HEADERS(stdnoreturn.h)
 
-dnl The standard header for str*casecmp is <strings.h>
-AC_CHECK_HEADERS(strings.h)
+dnl Force gcc and gcc-compatible compilers treat signed integers
+dnl as 2's complement
+PA_ADD_CFLAGS([-fwrapv])
 
-dnl Look for <stdbool.h>
-AC_CHECK_HEADERS(stdbool.h)
+dnl Some environments abuse __STRICT_ANSI__ to disable some
+dnl function declarations
+PA_ADD_CFLAGS([-U__STRICT_ANSI__])
+
+dnl Don't put things in common if we can avoid it.  We don't want to
+dnl assume all compilers support common, and this will help find those
+dnl problems.  This also works around an OSX linker problem.
+PA_ADD_CFLAGS([-fno-common])
+
+dnl Compiler intrinsics
+PA_ADD_HEADERS(intrin.h)
+PA_HAVE_FUNC(__builtin_expect, (1,1))
+PA_HAVE_FUNC(__builtin_constant_p, (0))
+
+dnl See if we can find sdl-config
+AC_CHECK_TOOL([SDL_CONFIG], [sdl-config], [false])
+AS_IF(["$SDL_CONFIG" --cflags >/dev/null 2>&1],
+      [CFLAGS="$CFLAGS `"$SDL_CONFIG" --cflags`"
+       LIBS="$LIBS `"$SDL_CONFIG" --libs`"],
+      [AC_MSG_WARN([sdl-config not found or not functional, this is probably bad news])])
 
 AC_CHECK_HEADERS(SDL.h)
-AC_CHECK_HEADERS(SDL/SDL.h)
 AC_CHECK_HEADERS(png.h)
 
 AC_CHECK_HEADERS(dirent.h)
@@ -55,43 +74,118 @@ AC_CHECK_HEADERS(fcntl.h)
 AC_CHECK_HEADERS(io.h)
 AC_CHECK_HEADERS(windows.h)
 
-dnl Checks for typedefs, structures, and compiler characteristics.
-AC_C_CONST
-AC_C_INLINE
-AC_C_RESTRICT
-AC_TYPE_SIZE_T
-PA_WORKING_BOOL
-AC_C_BIGENDIAN(AC_DEFINE(WORDS_BIGENDIAN),AC_DEFINE(WORDS_LITTLEENDIAN))
-AH_TEMPLATE(WORDS_BIGENDIAN,
-[Define to 1 if your processor stores words with the most significant
-byte first (like Motorola and SPARC, unlike Intel and VAX).])
-AH_TEMPLATE(WORDS_LITTLEENDIAN,
-[Define to 1 if your processor stores words with the least significant
-byte first (like Intel and VAX, unlike Motorola and SPARC).])
+dnl These types are POSIX-specific, and Windows does it differently...
+AC_CHECK_TYPES([struct _stati64])
+AC_CHECK_TYPES([struct stat])
+AC_CHECK_FUNCS([stat _stati64])
+AC_CHECK_FUNCS([fstat _fstati64])
+
+dnl Windows file searching stuff
+AC_CHECK_FUNCS([_findfirst _findfirst64])
 
 dnl Search files
 AC_CHECK_FUNCS([popen])
-
-dnl See if we can find sdl-config
-AC_CHECK_TOOL([SDL_CONFIG], [sdl-config], [false])
-AS_IF(["$SDL_CONFIG" --cflags >/dev/null 2>&1],
-      [SDL_CFLAGS="`"$SDL_CONFIG" --cflags`"
-       SDL_LIBS="`"$SDL_CONFIG" --libs`"],
-      [AC_MSG_WARN([sdl-config not found or not functional, this is probably bad news])])
-AC_SUBST(SDL_CFLAGS)
-AC_SUBST(SDL_LIBS)
 
 dnl Checks for library functions.
 AC_SEARCH_LIBS([deflate], [z])
 AC_SEARCH_LIBS([png_write_png], [png])
 
 dnl
-dnl support cchace
+dnl Check for supported gcc attributes; some compilers (e.g. Sun CC)
+dnl support these, but don't define __GNUC__ as they don't support
+dnl some other features of gcc.
 dnl
-AC_ARG_WITH([ccache],
-            [AS_HELP_STRING([--with-ccache],[Compile with ccache])],
-          [CC="ccache $CC"],
-          [])
+PA_ADD_CFLAGS([-Werror=attributes])
+PA_FUNC_ATTRIBUTE(noreturn)
+PA_FUNC_ATTRIBUTE(returns_nonnull)
+PA_FUNC_ATTRIBUTE(malloc)
+PA_FUNC_ATTRIBUTE(alloc_size, (1))
+PA_FUNC_ATTRIBUTE(sentinel,,, [const char *, ...], ["a","b",NULL])
+PA_FUNC_ATTRIBUTE(format, [(printf,1,2)], int, [const char *, ...], ["%d",1])
+PA_FUNC_ATTRIBUTE(const)
+PA_FUNC_ATTRIBUTE(pure)
+PA_FUNC_ATTRIBUTE(cold)
+PA_FUNC_ATTRIBUTE_ERROR
+
+dnl
+dnl support function sections (if available)
+dnl
+PA_ARG_ENABLED([sections],
+ [compile with function/data section support],
+ [PA_ADD_CLDFLAGS([-ffunction-sections])
+  PA_ADD_CLDFLAGS([-fdata-sections])
+  PA_ADD_CLDFLAGS([-Wl,--gc-sections])],
+ [])
+
+dnl
+dnl support LTO
+dnl
+PA_ARG_ENABLED([lto],
+ [compile with gcc-style link time optimization],
+ [PA_ADD_CLDFLAGS([-flto])
+  dnl Note: we use _PROG rather than _TOOL since we are prepending the full
+  dnl CC name which ought to already contain the host triplet if needed
+  ccbase=`echo "$CC" | awk '{ print $1; }'`
+  AC_CHECK_PROGS(CC_AR, [${ccbase}-ar], [$ac_cv_prog_AR])
+  AR="$CC_AR"
+  AC_CHECK_PROGS(CC_RANLIB, [${ccbase}-ranlib], [$ac_cv_prog_RANLIB])
+  RANLIB="$CC_RANLIB"], [])
+
+dnl
+dnl support sanitizers (if available)
+dnl
+PA_ARG_ENABLED([sanitizer],
+ [compile with sanitizers enabled],
+ [PA_ADD_CFLAGS([-fno-omit-frame-pointer])
+  PA_ADD_CLDFLAGS([-fsanitize=address])
+  PA_ADD_CLDFLAGS([-fsanitize=undefined])])
+
+dnl
+dnl Don't make symbols visible, there is no point and it just
+dnl makes the code slower.
+dnl
+PA_ADD_CLDFLAGS([-fvisibility=hidden])
+
+dnl If we have gcc, add appropriate code cleanliness options
+PA_ADD_CFLAGS([-W])
+PA_ADD_CFLAGS([-Wall])
+PA_ADD_CFLAGS([-pedantic])
+dnl LLVM doesn't error out on invalid -W options unless this option is
+dnl specified first.  Enable this so this script can actually discover
+dnl which -W options are possible for this compiler.
+PA_ADD_CFLAGS([-Werror=unknown-warning-option])
+dnl Suppress format warning on Windows targets due to their <inttypes.h>
+PA_ADD_CFLAGS([-Wpedantic-ms-format],[-Wno-pedantic-ms-format])
+dnl This is needed because we intentionally expect strncpy() to fill
+dnl in a zero-padded (not zero-terminated) buffer in several backends
+PA_ADD_CFLAGS([-Wstringop-truncation],[-Wno-stringop-truncation])
+dnl PA_ADD_CFLAGS([-Wwrite-strings])
+PA_ARG_ENABLED([werror],
+ [compile with -Werror to error out on any warning],
+ [PA_ADD_CFLAGS([-Werror])],
+ [PA_ADD_CFLAGS([-Werror=implicit])
+  PA_ADD_CFLAGS([-Werror=missing-braces])
+  PA_ADD_CFLAGS([-Werror=return-type])
+  PA_ADD_CFLAGS([-Werror=trigraphs])
+  PA_ADD_CFLAGS([-Werror=pointer-arith])
+  PA_ADD_CFLAGS([-Werror=strict-prototypes])
+  PA_ADD_CFLAGS([-Werror=missing-prototypes])
+  PA_ADD_CFLAGS([-Werror=missing-declarations])
+  PA_ADD_CFLAGS([-Werror=comment])
+  PA_ADD_CFLAGS([-Werror=vla])]
+)
+
+dnl
+dnl On some versions of gcc, -Werror=missing-prototypes causes problems
+dnl with C99-style external inlines.  Test this *after* adding the -Werror
+dnl options.
+dnl
+PA_CHECK_BAD_STDC_INLINE
+
+dnl
+dnl support ccache
+dnl
+PA_ARG_ENABLED([ccache], [compile with ccache], [CC="ccache $CC"], [])
 
 AC_CONFIG_FILES([Makefile])
 AC_OUTPUT

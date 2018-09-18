@@ -2,15 +2,11 @@
  * Take a PNG screenshot of an SDL surface
  */
 
-#include "config.h"
+#include "compiler.h"
 
-#include <stdlib.h>
-#include <stdio.h>
-#include <inttypes.h>
-#include <string.h>
+#include "screenshot.h"
+
 #include <time.h>
-#include <stdbool.h>
-#include <errno.h>
 
 #ifdef HAVE_UNISTD_H
 # include <unistd.h>
@@ -28,13 +24,7 @@
 # include <sys/types.h>
 #endif
 
-#ifdef HAVE_PNG_H
-# include <png.h>
-#else
-# error "png.h not found"
-#endif
-
-#include "screenshot.h"
+#include <png.h>
 
 static inline void *pixel_row(const SDL_Surface *surf, size_t y)
 {

@@ -1341,7 +1341,7 @@ do_int(void)
         do_di();
         REG_SP -= 2;
         mem_write_word(REG_SP, REG_PC);
-        REG_PC = mem_read_word((z80_state.i << 8) | (z80_state.i_vector << 1));
+        REG_PC = mem_read_word((z80_state.i << 8) | (z80_state.i_vector & ~1));
         break;
 
       default: /* oops, unkown interrupt mode... */
@@ -3692,19 +3692,17 @@ z80_reset(void)
     z80_state.interrupt_mode = 0;
     z80_state.nmi_in_progress = false;
     z80_state.interrupt = false;
-
     /* z80_state.r = 0; */
-    srand(time(NULL));  /* Seed the RNG, for reading the refresh register */
 }
 
 #define WREG(U,L) \
-    if (z80_state.L.word != old_state.L.word) {	\
-	printf(" "#U"=%04X", z80_state.L.word);	\
-	old_state.L.word = z80_state.L.word;	\
+    if (z80_state.L.word != old_state.L.word) {		\
+	printf(" %s=%04X", #U, z80_state.L.word);	\
+	old_state.L.word = z80_state.L.word;		\
     }
-#define BREG(U,L) \
+#define BREG(U,L)				\
     if (z80_state.L != old_state.L) {		\
-	printf(" "#U"=%02X", z80_state.L);	\
+	printf(" %s=%02X", #U, z80_state.L);	\
 	old_state.L= z80_state.L;		\
     }						\
 
@@ -3722,7 +3720,7 @@ static void diffstate(void)
     WREG(IX,ix);
     WREG(IY,iy);
     WREG(SP,sp);
-    //WREG(PC,pc);
+    /* WREG(PC,pc); */
     BREG(F,af.byte.low);
     WREG(AFx,af_prime);
     WREG(BCx,bc_prime);

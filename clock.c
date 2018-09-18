@@ -1,5 +1,7 @@
 #include "z80.h"
 #include "screen.h"
+#include "abcio.h"
+#include "clock.h"
 
 /*
  * ABC80: Trig a non maskable interrupt in the Z80 on the clock signal.

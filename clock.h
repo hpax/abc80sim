@@ -1,6 +1,6 @@
-#ifndef _CLOCK_H
-#define _CLOCK_H
+#ifndef CLOCK_H
+#define CLOCK_H
 
 extern void clock_init(void);
 
-#endif /* _CLOCK_H */
+#endif /* CLOCK_H */

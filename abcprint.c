@@ -1,4 +1,5 @@
 #include "abcprintd.h"
+#include "abcio.h"
 
 void printer_reset(void)
 {

@@ -1,9 +1,7 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <malloc.h>
-
+#include "compiler.h"
 #include "screen.h"
 #include "z80.h"
+#include "abcio.h"
 #include "rom.h"
 
 #define MEMORY_SIZE	Z80_ADDRESS_LIMIT

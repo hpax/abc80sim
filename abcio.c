@@ -1,27 +1,19 @@
-#include <stdio.h>
+#include "compiler.h"
 
 #include "z80.h"
 #include "screen.h"
-
-static uint8_t inports[256];
+#include "abcio.h"
 
 #define READ_MODE   0
 #define WRITE_MODE  1
-
-/*
- * Set a port to a value which the z80 can read later.
- */
-void
-set_in_port(int port, uint8_t value)
-{
-    inports[port & 0x17] = value;
-}
 
 /* Select code for ABC/4680 bus */
 static int8_t abcbus_select = -1;
 
 /* Keyboard IRQ vector */
-uint8_t keyb_irq;
+static uint8_t keyb_irq = 0xff;	/* = no IRQ vector set */
+static uint8_t keyb_data;
+static bool keyb_new;
 
 extern void disk_reset(void);
 extern void disk_out(int, int, int);
@@ -74,13 +66,8 @@ static void abcbus_out(uint8_t port, uint8_t value)
   }
 }
 
-void abc80_out(uint8_t port, uint8_t value)
+static void abc80_out(uint8_t port, uint8_t value)
 {
-  if (tracing & TRACE_IO) {
-    printf("OUT: port 0x%02x (%3d) sel 0x%02x (%2d) data 0x%02x (%3d) PC=%04x\n",
-	   port, port, abcbus_select & 0xff, abcbus_select, value, value, REG_PC);
-  }
-
   port &= 0x17;			/* Only these bits decoded in ABC80 */
 
   switch (port) {
@@ -208,8 +195,8 @@ static uint8_t abc80_in(uint8_t port)
     break;
 
   case (56 & 0x17):
-    v = inports[port];
-    inports[port] &= ~0x80;
+    v = keyb_data;
+    keyb_data &= ~0x80;		/* Hack to avoid insanely fast repeat */
     break;
 
   default:
@@ -261,11 +248,39 @@ int z80_in(int port)
   return v;
 }
 
-void
-io_init(void)
+void keyboard_down(int sym)
 {
-    memset(inports, 0xff, sizeof inports);
+  switch (model) {
+  case MODEL_ABC80:
+    if (sym <= 127) {
+      keyb_data = sym | 0x80;
+      z80_interrupt(keyb_irq);
+    }
+    break;
 
+  case MODEL_ABC802:
+    keyb_data = sym;
+    keyb_new  = true;
+    z80_interrupt(keyb_irq);
+    break;
+  }
+}
+
+void keyboard_up(void)
+{
+  switch (model) {
+  case MODEL_ABC80:
+    keyb_data &= ~0x80;
+    break;
+
+  case MODEL_ABC802:
+    /* Do nothing? */
+    break;
+  }
+}
+
+void io_init(void)
+{
     switch (model) {
     case MODEL_ABC80:
       do_out = abc80_out;

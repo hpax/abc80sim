@@ -1,12 +1,12 @@
-#include <stdio.h>
-#include <string.h>
+#include "compiler.h"
 
-#define MAIN
 #include "clock.h"
 #include "screen.h"
 #include "z80.h"
-#include "rom.h"
+#include "abcio.h"
 #include "patchlevel.h"
+
+#include <SDL_main.h>
 
 static char __version_string[] = VERSION;
 
@@ -77,7 +77,7 @@ extern int   optind;
 extern char *optarg;
 extern int   getopt(int, char **, char *);
 
-int SDL_main(int argc, char **argv)
+int main(int argc, char **argv)
 {
     unsigned int memflags = 0;
     bool  width40   = false;
