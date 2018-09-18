@@ -31,4 +31,6 @@ extern void check_event(void);
 extern void keyboard_down(int sym);
 extern void keyboard_up(void);
 
+extern void abc802_vsync(void);
+
 #endif

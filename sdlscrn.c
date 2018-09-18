@@ -295,13 +295,19 @@ void write_screen(uint8_t *p, uint8_t v)
   update_screen();
 }
 
-void setmode40(bool m)
+static void do_set_mode40(bool m)
 {
   mode40 = m;
 
   refresh_screen();
   if (model == MODEL_ABC80)
     abc80_mem_mode40(m);
+}
+
+void setmode40(bool m)
+{
+  if (m != mode40)
+    do_set_mode40(m);
 }
 
 /*
@@ -405,8 +411,8 @@ void screen_init(bool width40)
   /* Enable keyboard repeat */
   SDL_EnableKeyRepeat(SDL_DEFAULT_REPEAT_DELAY, SDL_DEFAULT_REPEAT_INTERVAL);
 
-  /* Set the screen width and load the appropriate BASIC */
-  setmode40(width40);
+  /* Forcibly set the screen width and load the appropriate BASIC */
+  do_set_mode40(width40);
 }
 
 /*

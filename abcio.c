@@ -13,7 +13,7 @@ static int8_t abcbus_select = -1;
 /* Keyboard IRQ vector */
 static uint8_t keyb_irq = 0xff;	/* = no IRQ vector set */
 static uint8_t keyb_data;
-static bool keyb_new;
+static bool keyb_new, keyb_down;
 
 extern void disk_reset(void);
 extern void disk_out(int, int, int);
@@ -93,13 +93,109 @@ static void abc80_out(uint8_t port, uint8_t value)
 
   case (57 & 0x17):		/* Keyboard control port */
     if (!(value & 1)) {
-      keyb_irq = value >> 1;
+      keyb_irq = value;
     }
     break;
 
   default:
     break;
   }
+}
+
+static bool vsync;
+void abc802_vsync(void)
+{
+  vsync = true;
+}
+
+static uint8_t dart_keyb_ctl[8];
+static bool dart_keyb_vsync;
+
+static void dart_keyb_out(uint8_t port, uint8_t value)
+{
+  /* Keyboard DART control */
+  uint8_t reg;
+
+  if ((port & 1) == 0) {
+    return;			/* Data out - ignore for now */
+  }
+
+  reg = dart_keyb_ctl[0] & 7;
+  dart_keyb_ctl[0] &= ~7;	/* Restore register 0 */
+
+  dart_keyb_ctl[reg] = value;
+  switch (reg) {
+  case 0:
+    switch ((value >> 3) & 7) {
+    case 2:
+      dart_keyb_vsync = vsync;
+      vsync = false;
+      break;
+    case 3:
+      keyb_irq = -1;
+      memset(dart_keyb_ctl, 0, sizeof dart_keyb_ctl);
+      return;
+    case 4:
+      break;			/* Allow IRQ to be enabled */
+    default:
+      return;
+    }
+    break;
+  case 5:
+    setmode40(!!(value & 2));
+    break;
+  default:
+    break;
+  }
+
+  if ((dart_keyb_ctl[1] & 0x18) == 0) {
+    keyb_irq = 0;
+  } else {
+    if (dart_keyb_ctl[1] & 0x04) {
+      /* Status affects vector */
+      keyb_irq = (dart_keyb_ctl[2] & ~0x0f) | 0x04;
+    } else {
+      keyb_irq = (dart_keyb_ctl[1] & ~0x01);
+    }
+  }
+}
+
+static uint8_t dart_keyb_in(uint8_t port)
+{
+  uint8_t v, reg;
+
+  if ((port & 1) == 0) {
+    /* Data register */
+    keyb_new = false;
+    v = keyb_data;
+    return keyb_data;
+  }
+
+  /* Control register */
+
+  reg = dart_keyb_ctl[0] & 7;
+  dart_keyb_ctl[0] &= ~7;	/* Restore register 0 */
+
+  switch (reg) {
+  case 0:
+    v = ((keyb_new) << 0) +
+      (1 << 2) +		/* Transmit buffer empty */
+      (keyb_down << 3) +	/* DCD -> key down */
+      (dart_keyb_vsync << 4) +	/* RI -> vsync */
+      (1 << 5);			/* CTS -> 60 Hz */
+    break;
+  case 1:
+    v = (1 << 0);		/* All sent */
+    break;
+  case 2:
+    v = dart_keyb_ctl[2];
+    break;
+  default:
+    v = 0;
+    break;
+  }
+
+  return v;
 }
 
 static void abc802_out(uint8_t port, uint8_t value)
@@ -114,6 +210,11 @@ static void abc802_out(uint8_t port, uint8_t value)
   case 4:
   case 5:
     abcbus_out(port, value);
+    break;
+
+  case 34:
+  case 35:
+    dart_keyb_out(port, value);
     break;
 
   case 56:
@@ -220,6 +321,11 @@ static uint8_t abc802_in(uint8_t port)
     v = abcbus_in(port);
     break;
 
+  case 34:
+  case 35:
+    v = dart_keyb_in(port);
+    break;
+
   case 56:
   case 57:
     v = crtc_in(port);
@@ -250,6 +356,8 @@ int z80_in(int port)
 
 void keyboard_down(int sym)
 {
+  keyb_down = true;
+
   switch (model) {
   case MODEL_ABC80:
     if (sym <= 127) {
@@ -268,6 +376,8 @@ void keyboard_down(int sym)
 
 void keyboard_up(void)
 {
+  keyb_down = false;
+
   switch (model) {
   case MODEL_ABC80:
     keyb_data &= ~0x80;
@@ -289,5 +399,6 @@ void io_init(void)
     case MODEL_ABC802:
       do_out = abc802_out;
       do_in  = abc802_in;
+      keyb_data = 0xff;
     }
 }

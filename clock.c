@@ -30,7 +30,7 @@ struct abctimer {
   uint64_t last;
   uint64_t period;
 };
-static struct abctimer clock_timer, blink_timer;
+static struct abctimer clock_timer, vsync_timer, blink_timer;
 static void (*clock_tick)(void);
 
 void timer_init(void)
@@ -43,15 +43,17 @@ void timer_init(void)
   case MODEL_ABC802:
     clock_timer.period = 10666667;	/* 10.67 ms = 93.75 Hz */
     clock_tick = abc800_clock_tick;
+    vsync_timer.period = 20000000;
     break;
   }
 
   blink_timer.period = 400000000; /* 400 ms = 2.5 Hz */
-  clock_timer.last = blink_timer.last = nstime();
+  clock_timer.last = blink_timer.last = vsync_timer.last = nstime();
 }
 
 static inline bool trigger(uint64_t now, struct abctimer *tmr)
 {
+  /* This expression: a) will overflow safely, b) will never trigger for 0 */
   if (likely((now - tmr->last) < tmr->period))
     return false;
 
@@ -72,6 +74,9 @@ bool timer_poll(void)
 
   if (trigger(now, &clock_timer))
     clock_tick();
+
+  if (trigger(now, &vsync_timer))
+    abc802_vsync();
 
   if (trigger(now, &blink_timer))
     blink = !blink;
