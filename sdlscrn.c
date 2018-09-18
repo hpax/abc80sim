@@ -426,22 +426,23 @@ void check_event(void)
 {
   SDL_Event event;
   static int keyboard_scan = -1; /* No key currently down */
-  enum kmod {
-    MOD_SHIFT = 1,
-    MOD_CTRL  = 2,
-    MOD_ALT   = 4
-  } kmod;
+  enum kshift {
+    KSH_SHIFT = 1,
+    KSH_CTRL  = 2,
+    KSH_ALT   = 4
+  } kshift;
 
   set_blink(timer_poll());	/* Poll timer, change blink if needed */
 
   while ( SDL_PollEvent(&event) ) {
     switch ( event.type ) {
     case SDL_KEYDOWN:
-      kmod = ((event.key.keysym.mod & (KMOD_LALT|KMOD_RALT)) ? MOD_ALT : 0) |
-	((event.key.keysym.mod & (KMOD_LCTRL|KMOD_RCTRL)) ? MOD_CTRL : 0) |
-	((event.key.keysym.mod & (KMOD_LSHIFT|KMOD_RSHIFT)) ? MOD_SHIFT : 0);
+      kshift = \
+	((event.key.keysym.mod & (KMOD_LALT|KMOD_RALT)) ? KSH_ALT : 0) |
+	((event.key.keysym.mod & (KMOD_LCTRL|KMOD_RCTRL)) ? KSH_CTRL : 0) |
+	((event.key.keysym.mod & (KMOD_LSHIFT|KMOD_RSHIFT)) ? KSH_SHIFT : 0);
 
-      if (kmod & MOD_ALT) {
+      if (kshift & KSH_ALT) {
 	/* Alt+key are special functions */
 
 	switch (event.key.keysym.sym) {
@@ -481,7 +482,7 @@ void check_event(void)
 	case SDLK_F6:
 	case SDLK_F7:
 	case SDLK_F8:
-	  mysym = (event.key.keysym.sym - SDLK_F1 + 192) + ((int)kmod << 3);
+	  mysym = (event.key.keysym.sym - SDLK_F1 + 192) + ((int)kshift << 3);
 	  break;
 
 	case SDLK_ESCAPE:
@@ -489,7 +490,7 @@ void check_event(void)
 	  break;
 
 	case SDLK_SPACE:	/* Ctrl+Space -> NUL */
-	  mysym = (kmod^MOD_CTRL) << 4;
+	  mysym = (kshift^KSH_CTRL) << 4;
 	  break;
 
 	default:
@@ -563,7 +564,7 @@ void check_event(void)
 	    break;
 	  case L'<':
 	  case L'>':
-	    mysym = (kmod & MOD_CTRL) ? 127 : event.key.keysym.unicode;
+	    mysym = (kshift & KSH_CTRL) ? 127 : event.key.keysym.unicode;
 	    break;
 	  case L'§':
 	  case L'½':
@@ -574,7 +575,7 @@ void check_event(void)
 	  }
 	  if (!(mysym & ~0x1f)) {
 	    /* Shift+Ctrl -> invert bit 4 */
-	    if (kmod == (MOD_CTRL|MOD_SHIFT))
+	    if (kshift == (KSH_CTRL|KSH_SHIFT))
 	      mysym ^= 0x10;
 	  }
 	}

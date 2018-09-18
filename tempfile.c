@@ -79,7 +79,6 @@ struct temp_file *temp_file(enum temp_file_mode mode)
     struct temp_file *temp;
     char *filename = NULL;
     int fd;
-    int err;
     int attempts = TMP_MAX;
     size_t fnlen;
     const int openflags = O_RDWR|O_CREAT|O_EXCL|O_NOFOLLOW|O_SHORT_LIVED| \
@@ -97,7 +96,9 @@ struct temp_file *temp_file(enum temp_file_mode mode)
     } while (fd < 0 && errno == EEXIST && --attempts);
 
     if (fd < 0) {
+	int err = errno;
 	free(filename);
+	errno = err;
 	return NULL;
     }
 
