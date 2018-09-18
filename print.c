@@ -22,7 +22,7 @@
 #include "tempfile.h"
 
 #ifdef __WIN32__
-const char lpr_command[] = "powershell -command \"GetContent -raw -path $Env:PRINT_FILE | OutPrinter";
+const char lpr_command[] = "powershell -command \"GetContent -raw -path $Env:PRINT_FILE | OutPrinter\"";
 #else
 const char lpr_command[] = "lpr";
 #endif
