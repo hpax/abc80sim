@@ -90,6 +90,10 @@ static no_return help(void)
 	   "  -B, --basic        reverts the --no-basic option\n"
 	   "  -d, --no-device    no device driver ROMs\n"
 	   "  -D, --device       reverts the --no-device option\n"
+	   "      --old-basic    ABC80 only: run BASIC 1.0 (checksum 11273)\n"
+	   "      --11273        same as --old-basic\n"
+	   "      --new-basic    ABC80 only: run BASIC 1.2 (checksum 9913)\n"
+	   "      --9913         same as --new-basic\n"
 	   "  -t, --trace ...    trace various events (see \"--trace help\")\n"
 	   "  -v, --version      print the version string\n"
 	   "  -h, --help         print this help message\n"
@@ -156,6 +160,7 @@ static void parse_trace(char *arg)
 
 enum model model = MODEL_ABC80;
 unsigned int kilobytes = 64;
+bool old_basic = false;
 
 /* Helper functions that error out on a missing argument */
 static char *short_arg(char opt, char *arg)
@@ -218,6 +223,12 @@ int main(int argc, char **argv)
 		memflags |= MEMFL_NOBASIC;
 	    } else if (!strcmp(optstr, "basic")) {
 		memflags &= ~MEMFL_NOBASIC;
+	    } else if (!strcmp(optstr, "old-basic") ||
+		       !strcmp(optstr, "11273")) {
+		old_basic = true;
+	    } else if (!strcmp(optstr, "new-basic") ||
+		       !strcmp(optstr, "9913")) {
+		old_basic = false;
 	    } else if (!strcmp(optstr, "no-device")) {
 		memflags |= MEMFL_NODEV;
 	    } else if (!strcmp(optstr, "device")) {

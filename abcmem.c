@@ -301,8 +301,10 @@ void mem_init(unsigned int flags)
 
 	/* Map 0: default (for < 64K, the only available map) */
 	if (!(flags & MEMFL_NOBASIC)) {
-	    map_memory(0x01, 0, K(16), abc80_bas80, write_rom);
-	    map_memory(0x02, 0, K(16), abc80_bas40, write_rom);
+	    map_memory(0x01, 0, K(16),
+		       old_basic ? abc80bas80o : abc80bas80n, write_rom);
+	    map_memory(0x02, 0, K(16),
+		       old_basic ? abc80bas40o : abc80bas40n, write_rom);
 	}
 	if (!(flags & MEMFL_NODEV)) {
 	    /* Hack: allow device ROMs to be written to */

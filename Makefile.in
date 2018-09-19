@@ -65,4 +65,4 @@ abc80$(X): $(OBJS)
 
 clean:
 	$(RM_F) abc80$(X) *.$(O) *~ core *.lst *.i *.s *~
-	$(RM_F) $(GENC)
+	$(RM_F) roms/*.c

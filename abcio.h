@@ -12,6 +12,7 @@ enum model {
 
 extern enum model model;
 extern unsigned int kilobytes;
+extern bool old_basic;
 
 extern void abc80_mem_mode40(bool);
 extern void abc80_mem_setmap(unsigned int);
