@@ -465,6 +465,14 @@ void check_event(void)
 	  }
 	  break;
 
+	case SDLK_r:
+	  z80_reset();
+	  break;
+
+	case SDLK_n:
+	  z80_nmi();
+	  break;
+
 	default:
 	  break;
 	}

@@ -98,7 +98,11 @@ static no_return help(void)
 	   "      --filedir      set directory for file sharing (default abcdir)\n"
 	   "      --scrndir      set directory for screen shots (default null)\n"
 	   "\n"
-	   "Alt-q quits the simulator, Alt-s takes a screenshot\n",
+	   "The simulator supports the following hotkeys:\n"
+	   "  Alt-q              quit the simulator\n"
+	   "  Alt-s              take a screenshot\n"
+	   "  Alt-r              CPU reset\n"
+	   "  Alt-n              send NMI\n",
 	   program_name);
     exit(1);
 }
@@ -117,15 +121,6 @@ static void parse_trace(char *arg)
 	{ NULL, 0, NULL }
     };
     const struct trace_args *trp;
-
-
-    if (!arg) {
-	fprintf(stderr,
-		"%s: --trace option requires an event list "
-		"(see --trace help)\n",
-		program_name);
-	usage();
-    }
 
     if (!strcmp(arg, "help")) {
 	printf("Option: %s --trace [no-]event[,[no-]event...]\n"
@@ -160,6 +155,30 @@ static void parse_trace(char *arg)
 }
 
 enum model model = MODEL_ABC80;
+
+/* Helper functions that error out on a missing argument */
+static char *short_arg(char opt, char *arg)
+{
+    if (!arg) {
+	fprintf(stderr, "%s: the -%c option requires an argument\n",
+		program_name, opt);
+	usage();
+    }
+    return arg;
+}
+
+static char *long_arg(const char *opt, char *arg)
+{
+    if (!arg) {
+	fprintf(stderr, "%s: the --%s option requires an argument\n",
+		program_name, opt);
+	usage();
+    }
+    return arg;
+}
+
+#define SHORT_ARG()	short_arg(optchr, *option++)
+#define LONG_ARG()	long_arg(optstr,  *option++)
 
 int main(int argc, char **argv)
 {
@@ -207,13 +226,13 @@ int main(int argc, char **argv)
 	    } else if (!strcmp(optstr, "version")) {
 		show_version();
 	    } else if (!strcmp(optstr, "trace")) {
-		parse_trace(*option++);
+		parse_trace(LONG_ARG());
 	    } else if (!strcmp(optstr, "diskdir")) {
-		disk_path = *option++;
+		disk_path = LONG_ARG();
 	    } else if (!strcmp(optstr, "filedir")) {
-		fileop_path = *option++;
+		fileop_path = LONG_ARG();
 	    } else if (!strcmp(optstr, "scrndir")) {
-		screen_path = *option++;
+		screen_path = LONG_ARG();
 	    } else {
 		fprintf(stderr, "%s: unknown option: --%s\n",
 			program_name, optstr);
@@ -224,7 +243,7 @@ int main(int argc, char **argv)
 	    while (optchr) {
 		switch (optchr) {
 		case 't':
-		    parse_trace(*option++);
+		    parse_trace(SHORT_ARG());
 		    break;
 		case 'b':
 		    memflags |= MEMFL_NOBASIC;
