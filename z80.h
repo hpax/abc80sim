@@ -174,6 +174,7 @@ extern void z80_reset(void);
 extern int z80_run(bool,bool);
 extern uint8_t mem_read(uint16_t);
 extern uint8_t mem_fetch(uint16_t);
+extern uint8_t mem_fetch_m1(uint16_t);
 extern void mem_write(uint16_t, uint8_t);
 extern uint8_t *mem_rom_address(void);
 extern uint8_t *mem_get_addr(uint16_t);

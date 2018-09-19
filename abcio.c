@@ -143,6 +143,7 @@ static void dart_keyb_out(uint8_t port, uint8_t value)
     break;
   case 5:
     setmode40(!!(value & 2));
+    abc802_set_mem(!!(value & 0x80));
     break;
   default:
     break;
@@ -220,6 +221,13 @@ static void abc802_out(uint8_t port, uint8_t value)
   case 56:
   case 57:
     crtc_out(port, value);
+    break;
+
+  case 96:
+  case 97:
+  case 98:
+  case 99:
+    abc800_ctc_out(port, value);
     break;
 
   default:
@@ -329,6 +337,13 @@ static uint8_t abc802_in(uint8_t port)
   case 56:
   case 57:
     v = crtc_in(port);
+    break;
+
+  case 96:
+  case 97:
+  case 98:
+  case 99:
+    v = abc800_ctc_in(port);
     break;
 
   default:

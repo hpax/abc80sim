@@ -27,6 +27,9 @@ extern void write_screen(uint8_t *p, uint8_t v);
 #define MEM_MAPS 8
 static struct mem_page memmaps[MEM_MAPS][PAGE_COUNT];
 
+/* Latch the last M1 address fetched, like ABC800 does */
+static uint16_t last_m1_address;
+
 /*
  * Currently active memory map(s)
  *
@@ -37,7 +40,7 @@ static const struct mem_page *current_map[2];
 
 static inline const struct mem_page *get_page(uint16_t addr)
 {
-    size_t map = (REG_PC & 0xf800) == 0x7800;
+    size_t map = (last_m1_address & 0xf800) == 0x7800;
     return &current_map[map][addr >> PAGE_SHIFT];
 }
 
@@ -116,6 +119,14 @@ uint8_t mem_read(uint16_t address)
 uint8_t mem_fetch(uint16_t address)
 {
     /* Don't trace instruction fetches */
+    return do_mem_read(address);
+}
+
+/* This is called when fetching the first opcode byte, corresponding to M1# */
+uint8_t mem_fetch_m1(uint16_t address)
+{
+    /* Don't trace instruction fetches */
+    last_m1_address = address;
     return do_mem_read(address);
 }
 
@@ -236,11 +247,17 @@ void abc802_set_mem(bool opened)
 }
 
 
+#define K(x) ((x)*1024)
+#define ALL_MAPS ((1U << MEM_MAPS)-1)
+
 static void
 map_memory(unsigned int maps, size_t where, size_t size,
 	   void *what, write_func wfunc)
 {
     size_t m;
+
+    assert(((where|size) & PAGE_MASK) == 0);
+    assert((maps & ~ALL_MAPS) == 0);
 
     for (m = 0; maps; m++, maps >>=1) {
 	struct mem_page *mp;
@@ -263,9 +280,6 @@ map_memory(unsigned int maps, size_t where, size_t size,
 	}
     }
 }
-
-#define K(x) ((x)*1024)
-#define ALL_MAPS ((1U << MEM_MAPS)-1)
 
 void mem_init(unsigned int flags)
 {
@@ -302,17 +316,20 @@ void mem_init(unsigned int flags)
 	break;
 
     case MODEL_ABC802:
-	/* Map 0: normal execution, map 1: option ROM */
+	/* Map 0: normal execution */
 
 	if (!(flags & MEMFL_NOBASIC))
-	    map_memory(0x03, 0, K(24), abc802rom, write_rom);
+	    map_memory(0x01, 0, K(24), abc802rom, write_rom);
 
 	if (!(flags & MEMFL_NODEV))
-	    map_memory(0x03, K(24), K(8), &abc802rom[K(24)], write_rom);
+	    map_memory(0x01, K(24), K(8), &abc802rom[K(24)], write_rom);
 
 	map_memory(0x01, K(30), K(2), video_ram, write_screen);
 
-	/* Map 2: MEM area open = all RAM */
+	/* Map 1: execution in option ROM - RAM other than the ROM itself */
+	map_memory(0x02, K(30), K(2), &abc802rom[K(30)], write_rom);
+
+	/* Map 2: MEM area open in its entirety */
 
 	abc802_set_mem(false);	/* On start, MEM area closed */
 	break;

@@ -22,6 +22,9 @@ extern int disk_in(int sel, int port);
 
 extern int rtc_in(int sel, int port);
 
+extern void abc800_ctc_out(uint8_t, uint8_t);
+extern uint8_t abc800_ctc_in(uint8_t);
+
 extern void printer_reset(void);
 extern void printer_out(int sel, int port, int value);
 extern int printer_in(int sel, int port);

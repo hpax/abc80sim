@@ -2563,8 +2563,8 @@ int z80_run(bool continuous, bool halted)
 
 	  ix = &z80_state.hl;	/* Not an index instruction */
 
+	instruction = mem_fetch_m1(REG_PC++);
     indexed:
-	instruction = mem_fetch(REG_PC++);
 	inc_r();
 
 	switch(instruction)
@@ -2574,12 +2574,14 @@ int z80_run(bool continuous, bool halted)
 	    break;
 	  case 0xDD:	/* DD.. extended instruction */
 	    ix = &z80_state.ix;
+	    instruction = mem_fetch(REG_PC++);
 	    goto indexed;
 	  case 0xED:	/* ED.. extended instruction */
 	    do_ED_instruction(ix);
 	    break;
 	  case 0xFD:	/* FD.. extended instruction */
 	    ix = &z80_state.iy;
+	    instruction = mem_fetch(REG_PC++);
 	    goto indexed;
 
 	  case 0x8F:	/* adc a, a */

@@ -4,24 +4,8 @@
 #include "clock.h"
 #include "nstime.h"
 
-/*
- * ABC80: Trig a non maskable interrupt in the Z80 on the clock signal.
- */
-static void abc80_clock_tick(void)
-{
-  z80_nmi();
-}
-
-static uint8_t ctc_irq = -1;
-static uint8_t ctc_cmd[4]; /*ctc_div[4] */
-
-/*
- * ABC800: Clock interrupt through the CTC
- */
-static void abc800_clock_tick(void)
-{
-  z80_interrupt(ctc_irq);
-}
+static void abc80_clock_tick(void);
+static void abc800_clock_tick(void);
 
 /*
  * Initialize the time for next event
@@ -82,4 +66,73 @@ bool timer_poll(void)
     blink = !blink;
 
   return blink;
+}
+
+/*
+ * ABC80: Trig a non maskable interrupt in the Z80 on the clock signal.
+ */
+static void abc80_clock_tick(void)
+{
+  z80_nmi();
+}
+
+static uint8_t ctc_ctl[4], ctc_div[4], ctc_vector;
+
+/*
+ * ABC800: Clock interrupt through the CTC
+ */
+
+static uint8_t ctc_ctl[4], ctc_div[4], ctc_vector;
+
+static void abc800_clock_tick(void)
+{
+  if ((ctc_ctl[3] & 0xc0) == 0x80)
+    z80_interrupt(ctc_vector | (3 << 1)); /* 3 = channel */
+}
+
+/*
+ * CTC I/O
+ */
+void abc800_ctc_out(uint8_t port, uint8_t v)
+{
+  if ((v & 1) == 0) {
+    ctc_vector = v;
+    return;
+  }
+
+  port &= 3;			/* Get channel */
+
+  if (ctc_ctl[port] & 4) {
+    ctc_div[port] = v;
+    ctc_ctl[port] &= ~4;
+    return;
+  }
+
+  if (v & 2)
+    v = 1;			/* Reset channel */
+
+  ctc_ctl[port] = v;
+}
+
+uint8_t abc800_ctc_in(uint8_t port)
+{
+  uint8_t v;
+
+  switch (port & 3) {
+  case 0:
+  case 1:
+  case 2:
+    v = 0xff;
+    break;
+
+  case 3:
+    {
+      uint64_t now = nstime();
+      v = ((clock_timer.last + clock_timer.period - now) * ctc_div[3])
+	/ clock_timer.period;
+      break;
+    }
+  }
+
+  return v;
 }
