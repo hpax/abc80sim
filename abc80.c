@@ -96,7 +96,9 @@ static no_return help(void)
 	   "  -h, --help         print this help message\n"
 	   "      --diskdir      set directory for disk images (default abcdisk)\n"
 	   "      --filedir      set directory for file sharing (default abcdir)\n"
-	   "\n",
+	   "      --scrndir      set directory for screen shots (default null)\n"
+	   "\n"
+	   "Alt-q quits the simulator, Alt-s takes a screenshot\n",
 	   program_name);
     exit(1);
 }
@@ -210,6 +212,8 @@ int main(int argc, char **argv)
 		disk_path = *option++;
 	    } else if (!strcmp(optstr, "filedir")) {
 		fileop_path = *option++;
+	    } else if (!strcmp(optstr, "scrndir")) {
+		screen_path = *option++;
 	    } else {
 		fprintf(stderr, "%s: unknown option: --%s\n",
 			program_name, optstr);

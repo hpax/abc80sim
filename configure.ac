@@ -73,6 +73,7 @@ AC_CHECK_HEADERS(unistd.h)
 AC_CHECK_HEADERS(fcntl.h)
 AC_CHECK_HEADERS(io.h)
 AC_CHECK_HEADERS(windows.h)
+AC_CHECK_HEADERS(direct.h)
 
 dnl These types are POSIX-specific, and Windows does it differently...
 AC_CHECK_TYPES([struct _stat64])
@@ -80,7 +81,8 @@ AC_CHECK_TYPES([struct stat])
 AC_CHECK_FUNCS([stat _stat64])
 AC_CHECK_FUNCS([fstat _fstat64])
 
-dnl Windows file searching stuff (when dirent is unavailable)
+dnl Windows directory handling
+AC_CHECK_FUNCS(_mkdir)
 AC_CHECK_FUNCS([_findfirst _findfirst64])
 
 dnl Temporary file functions

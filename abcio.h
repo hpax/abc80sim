@@ -40,6 +40,6 @@ extern void abc802_vsync(void);
 extern char *make_path(const char *prefix, const char *filename);
 
 /* Directories */
-extern const char *fileop_path, *disk_path;
+extern const char *fileop_path, *disk_path, *screen_path;
 
 #endif
