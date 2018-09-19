@@ -57,13 +57,6 @@
 # include <direct.h>
 #endif
 
-#ifndef O_BINARY
-# define O_BINARY 0
-#endif
-#ifndef O_TEXT
-# define O_TEXT 0
-#endif
-
 #include <SDL.h>		/* This includes endian definitions */
 
 #define WORDS_LITTLEENDIAN	(SDL_BYTEORDER == SDL_LIL_ENDIAN)
@@ -77,6 +70,31 @@
    casting to the standard boolean type.  Always use !!, not (bool). */
 typedef enum bool { false, true } bool;
 # endif
+#endif
+
+/*
+ * mempcpy() replacement
+ */
+#ifndef HAVE_MEMPCPY
+static inline void *mempcpy(void *dest, const void *src, size_t n)
+{
+    memcpy(dest, src, n);
+    return dest + n;
+}
+#endif
+
+/*
+ * asprintf()
+ */
+#ifndef HAVE_ASPRINTF
+extern int asprintf(char **, const char *, ...);
+#endif
+
+/*
+ * mode_t
+ */
+#ifndef HAVE_MODE_T
+typedef int mode_t;
 #endif
 
 /*

@@ -19,7 +19,7 @@
 
 #include "compiler.h"
 #include "abcprintd.h"
-#include "tempfile.h"
+#include "hostfile.h"
 
 #ifdef __WIN32__
 const char *lpr_command = "powershell -command \"GetContent -raw -path '*' | OutPrinter\"";
@@ -27,7 +27,7 @@ const char *lpr_command = "powershell -command \"GetContent -raw -path '*' | Out
 const char *lpr_command = "lpr '*'";
 #endif
 
-static struct temp_file *temp;
+static struct host_file *hf;
 
 static void print_finish(void)
 {
@@ -35,12 +35,12 @@ static void print_finish(void)
   char *cmd, *q;
   size_t cmdlen, namelen;
 
-  if (!temp)
+  if (!hf)
     return;
 
-  fflush(temp->f);
+  fflush(hf->f);
 
-  namelen = temp->namelen;
+  namelen = hf->namelen;
   cmdlen = 0;
   for (p = lpr_command; *p; p++) {
     cmdlen += (*p == '*') ? namelen : 1;
@@ -50,7 +50,7 @@ static void print_finish(void)
   if (cmd) {
     for (p = lpr_command, q = cmd; *p; p++) {
       if (*p == '*') {
-	memcpy(q, temp->filename, namelen);
+	memcpy(q, hf->filename, namelen);
 	q += namelen;
       } else {
 	*q++ = *p;
@@ -61,11 +61,13 @@ static void print_finish(void)
     system(cmd);
     free(cmd);
   }
-  close_temp(&temp);
+  close_file(&hf);
 }
 
 static void output(unsigned char c)
 {
+  static const char temp_prefix[] = "abcprint_tmp_";
+  
   static const wchar_t abc_to_unicode[256] =
     L"\000\001\002\003\004\005\006\007\010\011\012\013\014\015\016\017"
     L"\020\021\022\023\024\025\026\027\030\031\032\033\034\035\036\037"
@@ -83,17 +85,17 @@ static void output(unsigned char c)
     L"\340\341\342\343{}\346\347\350`\352\353\354\355\356\357"
     L"\360\361\362\363\364\365|\367\370\371\372\373~\375\376\377";
 
-  if (!temp) {
+  if (!hf) {
     if (c < '\b' || (c > '\r' && c < 31))
-      temp = temp_file(TF_BINARY);
+      hf = temp_file(HF_BINARY, temp_prefix);
     else
-      temp = temp_file(TF_UNICODE);
+      hf = temp_file(HF_UNICODE, temp_prefix);
   }
 
-  if (temp->mode == TF_BINARY)
-    putc(c, temp->f);
+  if (hf->mode == HF_BINARY)
+    putc(c, hf->f);
   else if (c != '\r')
-    putwc(abc_to_unicode[c], temp->f);
+    putwc(abc_to_unicode[c], hf->f);
 }
 
 enum input_state {
@@ -103,16 +105,9 @@ enum input_state {
 };
 static enum input_state is;
 
-static void cleanup_temp(void)
-{
-  /* Print job still active on exit, just delete it */
-  close_temp(&temp);
-}
-
 void abcprint_init(void)
 {
   is = is_normal;
-  atexit(cleanup_temp);
 }
 
 void abcprint(const void *data, size_t len)

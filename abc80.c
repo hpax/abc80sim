@@ -5,6 +5,7 @@
 #include "z80.h"
 #include "abcio.h"
 #include "patchlevel.h"
+#include "hostfile.h"
 
 #include <SDL_main.h>
 
@@ -296,6 +297,8 @@ int main(int argc, char **argv)
 	    }
 	}
     }
+
+    hostfile_init();
 
     screen_init(width40);
     mem_init(memflags);

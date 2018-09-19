@@ -5,6 +5,7 @@
 #include "compiler.h"
 #include "z80.h"
 #include "abcio.h"
+#include "hostfile.h"
 
 const char *disk_path = "abcdisk";
 
@@ -36,7 +37,7 @@ struct ctl_state {
   int status;			/* Primary status */
   int aux_status;		/* Auxilliary status */
   int notready_ctr;		/* How many times are we not ready? */
-  FILE *files[8];		/* File for this unit */
+  struct host_file *files[8];	/* File for this unit */
   unsigned char buf[4][256];	/* 4 buffers @ 256 bytes */
 };
 
@@ -114,9 +115,10 @@ static void disk_reset_state(struct ctl_state *state)
 
 static void disk_init(struct ctl_state *state)
 {
-  char *filename;
+  struct host_file *hf;
   char devname[4];
   int i;
+  int openflags, o_flags;
 
   /* If any of these don't exist we simply report device not ready */
   if (disk_path) {
@@ -125,11 +127,15 @@ static void disk_init(struct ctl_state *state)
     devname[3] = '\0';
     for (i = 0; i < 8; i++) {
       devname[2] = i + '0';
-      filename = make_path(disk_path, devname);
-      state->files[i] = fopen(filename, "r+b");
-      if (!state->files[i])
-	state->files[i] = fopen(filename, "rb"); /* Try open readonly */
-      free(filename);
+      hf = NULL;
+      /* Try open RDWR first, then RDONLY, but don't create */
+      openflags = O_RDWR;
+      do {
+	o_flags = openflags;
+	openflags = O_RDONLY;
+	hf = open_host_file(HF_BINARY, disk_path, devname, o_flags, 0);
+      } while (!hf && o_flags != O_RDONLY);
+      state->files[i] = hf;
     }
   }
   disk_reset_state(state);
@@ -137,7 +143,7 @@ static void disk_init(struct ctl_state *state)
 
 static void do_next_command(struct ctl_state *state)
 {
-  FILE *file = state->files[state->k[1] & 7];
+  FILE *file = state->files[state->k[1] & 7]->f;
 
   if ( state->k[0] & 0x01 ) {
     /* READ SECTOR */

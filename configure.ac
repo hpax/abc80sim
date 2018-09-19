@@ -75,11 +75,18 @@ AC_CHECK_HEADERS(io.h)
 AC_CHECK_HEADERS(windows.h)
 AC_CHECK_HEADERS(direct.h)
 
+dnl Useful functions which we may lack
+AC_CHECK_FUNCS([mempcpy])
+AC_CHECK_FUNCS([asprintf])
+
 dnl These types are POSIX-specific, and Windows does it differently...
 AC_CHECK_TYPES([struct _stat64])
 AC_CHECK_TYPES([struct stat])
 AC_CHECK_FUNCS([stat _stat64])
 AC_CHECK_FUNCS([fstat _fstat64])
+
+dnl Newer versions of POSIX have this
+AC_CHECK_TYPES(mode_t)
 
 dnl Windows directory handling
 AC_CHECK_FUNCS(_mkdir)

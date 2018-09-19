@@ -5,16 +5,11 @@
 #include "compiler.h"
 #include "screenshot.h"
 #include "abcio.h"
+#include "hostfile.h"
 
 #include <png.h>
 
 const char *screen_path = "";
-
-#ifdef HAVE__MKDIR
-# define make_dir(x) _mkdir(x)
-#else
-# define make_dir(x) mkdir((x), 0777);
-#endif
 
 static inline void *pixel_row(const SDL_Surface *surf, size_t y)
 {
@@ -157,55 +152,6 @@ err:
     goto common_exit;
 }
 
-/*
- * Open a screenshot file for writing
- */
-static FILE *open_screenshot(char **namebuf)
-{
-    int err, fd;
-    unsigned int n;
-    FILE *f;
-    char filename[16];
-    char *pathname;
-
-    *namebuf = NULL;
-
-    if (screen_path[0])
-	make_dir(screen_path);	/* If a directory, create it if needed */
-
-    for (n = 1; n <= 9999; n++) {
-	sprintf(filename, "scrn%04u.png", n);
-	pathname = make_path(screen_path, filename);
-	fd = open(pathname, O_CREAT|O_EXCL|O_WRONLY|O_BINARY,
-		  S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP|S_IROTH|S_IWOTH);
-	err = errno;
-
-	if (fd >= 0)
-	    break;
-
-	free(pathname);
-	if (err != EEXIST)
-	    break;
-    }
-
-    if (fd < 0) {
-	errno = err;
-	return NULL;
-    }
-
-    f = fdopen(fd, "w");
-    if (!f) {
-	err = errno;
-	close(fd);
-	free(pathname);
-	errno = err;
-	return NULL;
-    }
-
-    *namebuf = pathname;
-    return f;
-}
-
 static void my_png_error(png_structp png, png_const_charp errmsg)
 {
     (void)errmsg;
@@ -258,8 +204,7 @@ struct allocable {
     png_color *palette;		/* Palette data */
     png_structp png;		/* PNG write structure */
     png_infop png_info;		/* PNG info structure */
-    FILE *f;			/* File pointer to screenshot file */
-    char *filename;		/* Filename (to remove on failure) */
+    struct host_file *hf;	/* Host file structure */
 };
 
 static int do_screenshot(SDL_Surface *surf, struct allocable *a)
@@ -329,10 +274,10 @@ static int do_screenshot(SDL_Surface *surf, struct allocable *a)
 	return -1;
 
     /* Open screenshot file */
-    a->f = open_screenshot(&a->filename);
-    if (!a->f)
+    a->hf = dump_file(HF_BINARY, screen_path, "scrn%04u.png");
+    if (!a->hf)
 	return -1;
-    png_init_io(a->png, a->f);
+    png_init_io(a->png, a->hf->f);
 
     /* IHDR configuration */
     png_set_IHDR(a->png, a->png_info, surf->w, surf->h, depth,
@@ -350,6 +295,8 @@ static int do_screenshot(SDL_Surface *surf, struct allocable *a)
     png_write_png(a->png, a->png_info,
 		  (depth < 8) ? PNG_TRANSFORM_PACKING : PNG_TRANSFORM_IDENTITY,
 		  NULL);
+
+    keep_file(a->hf);		/* We did it! */
     return 0;
 }
 
@@ -363,27 +310,22 @@ int screenshot(SDL_Surface *surf)
 
     memset(&a, 0, sizeof a);
     rv = do_screenshot(surf, &a);
-
     err = errno;
+    
     if (a.rgbsurf) {
 	SDL_UnlockSurface(a.rgbsurf);
 	SDL_FreeSurface(a.rgbsurf);
     }
     if (a.png)
 	png_destroy_write_struct(&a.png, &a.png_info);
-    if (a.f)
-	fclose(a.f);
-    if (a.filename) {
-	if (rv)
-	    remove(a.filename);
-	free(a.filename);
-    }
     if (a.palette)
 	free(a.palette);
     if (a.img)
 	free(a.img);
     if (a.rowptrs)
 	free(a.rowptrs);
+
+    close_file(&a.hf);
 
     errno = err;
     return rv;

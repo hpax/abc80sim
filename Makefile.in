@@ -12,7 +12,7 @@ mandir          = @mandir@
 datarootdir     = @datarootdir@
 
 CC		= @CC@
-CPPFLAGS	= @CPPFLAGS@ @DEFS@
+CPPFLAGS	= @CPPFLAGS@ @DEFS@ -I.
 CFLAGS		= $(CPPFLAGS) @CFLAGS@
 LDFLAGS		= $(CFLAGS) @LDFLAGS@
 LIBS		= @LIBS@
@@ -31,10 +31,10 @@ X		= @EXEEXT@
 GENC = $(patsubst %.rom,%.c,$(wildcard roms/*.rom))
 SRCS = abc80.c clock.c sdlscrn.c screenshot.c z80.c abcmem.c abcio.c \
        abcfont.c disk.c rtc.c abcprint.c print.c fileop.c z80dis.c \
-       nstime.c tempfile.c $(GENC)
+       nstime.c hostfile.c clib/asprintf.c $(GENC)
 HDRS = clock.h screen.h z80.h patchlevel.h screenshot.h abcio.h \
-       abcprintd.h rom.h nstime.h tempfile.h \
-       compiler.h config/config.h
+       abcprintd.h rom.h nstime.h hostfile.h \
+       compiler.h clib/inttypes.h config/config.h
 
 OBJS = $(patsubst %.c,%.$(O),$(SRCS))
 
