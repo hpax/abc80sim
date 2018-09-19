@@ -1,0 +1,28 @@
+Usage: abc80 [options] [ihex_files...]
+Simulate a microcomputer from the Luxor ABC series.
+
+      --abc80        simulate an ABC80 (default)
+      --abc802       simulate an ABC802
+  -4, --40           start in 40-column mode
+  -8, --80           start in 80-column mode
+  -b, --no-basic     no BASIC ROM (uninitialized RAM instead)
+  -B, --basic        reverts the --no-basic option
+  -d, --no-device    no device driver ROMs
+  -D, --device       reverts the --no-device option
+      --old-basic    ABC80 only: run BASIC 1.0 (checksum 11273)
+      --11273        same as --old-basic
+      --new-basic    ABC80 only: run BASIC 1.2 (checksum 9913)
+      --9913         same as --new-basic
+  -t, --trace ...    trace various events (see "--trace help")
+  -v, --version      print the version string
+  -h, --help         print this help message
+  -k, --kb           set the memory size in K (ABC80: 1-32 or 64)
+      --diskdir      set directory for disk images (default abcdisk)
+      --filedir      set directory for file sharing (default abcdir)
+      --scrndir      set directory for screen shots (default null)
+
+The simulator supports the following hotkeys:
+  Alt-q              quit the simulator
+  Alt-s              take a screenshot
+  Alt-r              CPU reset
+  Alt-n              send NMI
