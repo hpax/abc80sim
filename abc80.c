@@ -9,7 +9,7 @@
 #include <SDL_main.h>
 
 static const char version_string[] = VERSION;
-static const char *program_name;
+const char *program_name;
 
 int events_in_queue = 1;
 volatile int event_pending = 1;
@@ -24,7 +24,6 @@ static uint8_t gethex(char *p)
     return (uint8_t)(((strchr(hexstring, *p) - hexstring) << 4)
           + (strchr(hexstring, *(p + 1)) - hexstring));
 }
-
 
 /*
  * Load in Intel-hex file into memory.
@@ -94,6 +93,7 @@ static no_return help(void)
 	   "  -t, --trace ...    trace various events (see \"--trace help\")\n"
 	   "  -v, --version      print the version string\n"
 	   "  -h, --help         print this help message\n"
+	   "  -k, --kb           set the memory size in K (ABC80: 1-32 or 64)\n"
 	   "      --diskdir      set directory for disk images (default abcdisk)\n"
 	   "      --filedir      set directory for file sharing (default abcdir)\n"
 	   "      --scrndir      set directory for screen shots (default null)\n"
@@ -155,6 +155,7 @@ static void parse_trace(char *arg)
 }
 
 enum model model = MODEL_ABC80;
+unsigned int kilobytes = 64;
 
 /* Helper functions that error out on a missing argument */
 static char *short_arg(char opt, char *arg)
@@ -221,6 +222,8 @@ int main(int argc, char **argv)
 		memflags |= MEMFL_NODEV;
 	    } else if (!strcmp(optstr, "device")) {
 		memflags &= ~MEMFL_NODEV;
+	    } else if (!strcmp(optstr, "kb")) {
+		kilobytes = strtoul(LONG_ARG(), NULL, 0);
 	    } else if (!strcmp(optstr, "help")) {
 		help();
 	    } else if (!strcmp(optstr, "version")) {
@@ -262,6 +265,9 @@ int main(int argc, char **argv)
 		    break;
 		case '8':
 		    width40 = false;
+		    break;
+		case 'k':
+		    kilobytes = strtoul(SHORT_ARG(), NULL, 0);
 		    break;
 		case 'v':
 		    show_version();

@@ -233,6 +233,9 @@ void abc80_mem_mode40(bool mode40)
 }
 void abc80_mem_setmap(unsigned int map)
 {
+    if (kilobytes < 64)
+	return;			/* Only 64K models can remap memory */
+
     abc80_map = ((map & 3) << 1) | (abc80_map & ~6);
     current_map[0] = current_map[1] = memmaps[abc80_map];
 }
@@ -290,7 +293,13 @@ void mem_init(unsigned int flags)
     case MODEL_ABC80:
 	/* 4 maps * 2 (40/80) */
 
-	/* Map 0: default */
+	if ((kilobytes < 1 || kilobytes > 32) && kilobytes != 64) {
+	    fprintf(stderr, "%s: invalid ABC80 memory size %uK, using 64K\n",
+		    program_name, kilobytes);
+	    kilobytes = 64;
+	}
+
+	/* Map 0: default (for < 64K, the only available map) */
 	if (!(flags & MEMFL_NOBASIC)) {
 	    map_memory(0x01, 0, K(16), abc80_bas80, write_rom);
 	    map_memory(0x02, 0, K(16), abc80_bas40, write_rom);
@@ -301,6 +310,16 @@ void mem_init(unsigned int flags)
 	}
 	map_memory(0x01, K(29), K(1), &video_ram[K(0)], write_screen);
 	map_memory(0x03, K(31), K(1), &video_ram[K(1)], write_screen);
+
+	if (kilobytes < 32) {
+	    /*
+	     * Simulate non-existing memory by filling it with FF
+	     * and changing it to readonly.  ABC80 RAM grows from
+	     * top of memory downward toward 32K.
+	     */
+	    memset(ram + K(32), 0xff, K(32-kilobytes));
+	    map_memory(0x03, K(32), K(32-kilobytes), &ram[K(32)], write_rom);
+	}
 
 	/* Map 1: RAM over ROM areas */
 	map_memory(0x04, K(30), K(2), &video_ram[K(0)], write_screen);

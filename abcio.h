@@ -11,6 +11,7 @@ enum model {
 };
 
 extern enum model model;
+extern unsigned int kilobytes;
 
 extern void abc80_mem_mode40(bool);
 extern void abc80_mem_setmap(unsigned int);
@@ -41,5 +42,8 @@ extern char *make_path(const char *prefix, const char *filename);
 
 /* Directories */
 extern const char *fileop_path, *disk_path, *screen_path;
+
+/* Program name for error messages */
+extern const char *program_name;
 
 #endif
