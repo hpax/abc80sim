@@ -6,6 +6,8 @@
 #include "z80.h"
 #include "abcio.h"
 
+const char *disk_path = "abcdisk";
+
 #define NOTTHERE 0
 #define READONLY 0
 #define INTERLEAVE 0
@@ -112,15 +114,23 @@ static void disk_reset_state(struct ctl_state *state)
 
 static void disk_init(struct ctl_state *state)
 {
-  char filename[64];
+  char *filename;
+  char devname[4];
   int i;
 
   /* If any of these don't exist we simply report device not ready */
-  for (i = 0; i < 8; i++) {
-    snprintf(filename, sizeof filename, "abcdisk/%s%d", state->name, i);
-    state->files[i] = fopen(filename, "r+b");
-    if (!state->files[i])
-      state->files[i] = fopen(filename, "rb"); /* Try open readonly */
+  if (disk_path) {
+    devname[0] = state->name[0];
+    devname[1] = state->name[1];
+    devname[3] = '\0';
+    for (i = 0; i < 8; i++) {
+      devname[2] = i + '0';
+      filename = make_path(disk_path, devname);
+      state->files[i] = fopen(filename, "r+b");
+      if (!state->files[i])
+	state->files[i] = fopen(filename, "rb"); /* Try open readonly */
+      free(filename);
+    }
   }
   disk_reset_state(state);
 }

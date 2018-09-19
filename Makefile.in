@@ -33,7 +33,8 @@ SRCS = abc80.c clock.c sdlscrn.c screenshot.c z80.c abcmem.c abcio.c \
        abcfont.c disk.c rtc.c abcprint.c print.c fileop.c z80dis.c \
        nstime.c tempfile.c $(GENC)
 HDRS = clock.h screen.h z80.h patchlevel.h screenshot.h abcio.h \
-       abcprintd.h rom.h nstime.h
+       abcprintd.h rom.h nstime.h tempfile.h \
+       compiler.h config/config.h
 
 OBJS = $(patsubst %.c,%.$(O),$(SRCS))
 
@@ -53,19 +54,14 @@ abc80$(X): $(OBJS)
 	$(PERL) bin2c.pl $< > $@ || ( rm -f $@ ; false )
 
 .PRECIOUS: %.o
-%.o: %.c
+%.o: %.c $(HDRS)
 	$(CC) $(CFLAGS) -c -o $@ $<
 
-%.i: %.c
+%.i: %.c $(HDRS)
 	$(CC) $(CFLAGS) -E -o $@ $<
 
-%.s: %.c
+%.s: %.c $(HDRS)
 	$(CC) $(CFLAGS) -S -o $@ $<
-
-abc80.$(O):        clock.h screen.h z80.h patchlevel.h
-clock.$(O):        clock.h z80.h
-sdlscrn.$(O):       screen.h z80.h
-z80.$(O):          z80.h
 
 clean:
 	$(RM_F) abc80$(X) *.$(O) *~ core *.lst *.i *.s *~

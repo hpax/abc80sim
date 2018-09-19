@@ -8,7 +8,8 @@
 
 #include <SDL_main.h>
 
-static char __version_string[] = VERSION;
+static const char version_string[] = VERSION;
+static const char *program_name;
 
 int events_in_queue = 1;
 volatile int event_pending = 1;
@@ -64,73 +65,196 @@ load_sysfile(FILE *sysfile)
 /*
  * Print usage message
  */
-static void
-usage(void)
+
+static no_return usage(void)
 {
-    fprintf(stderr, "Usage: abc80 [-v] [-b] [-d] [hexfile...]\n");
+    fprintf(stderr, "Type \"%s --help\" for help\n", program_name);
     exit(1);
 }
 
-enum model model = MODEL_ABC802;
+static no_return show_version(void)
+{
+    printf("abc80sim %s\n", version_string);
+    exit(0);
+}
 
-extern int   optind;
-extern char *optarg;
-extern int   getopt(int, char * const *, const char *);
+static no_return help(void)
+{
+    printf("Usage: %s [options] [ihex_files...]\n"
+	   "Simulate a microcomputer from the Luxor ABC series.\n"
+	   "\n"
+	   "      --abc80        simulate an ABC80 (default)\n"
+	   "      --abc802       simulate an ABC802\n"
+	   "  -4, --40           start in 40-column mode\n"
+	   "  -8, --80           start in 80-column mode\n"
+	   "  -b, --no-basic     no BASIC ROM (uninitialized RAM instead)\n"
+	   "  -B, --basic        reverts the --no-basic option\n"
+	   "  -d, --no-device    no device driver ROMs\n"
+	   "  -D, --device       reverts the --no-device option\n"
+	   "  -t, --trace ...    trace various events (see \"--trace help\")\n"
+	   "  -v, --version      print the version string\n"
+	   "  -h, --help         print this help message\n"
+	   "      --diskdir      set directory for disk images (default abcdisk)\n"
+	   "      --filedir      set directory for file sharing (default abcdir)\n"
+	   "\n",
+	   program_name);
+    exit(1);
+}
+
+static void parse_trace(char *arg)
+{
+    static const struct trace_args {
+	const char *name;
+	unsigned int mask;
+	const char *help;
+    } trace_args[] = {
+	{ "all", ~0U,         "all traceable events" },
+	{ "cpu", TRACE_CPU,   "cpu execution and memory accesses" },
+	{ "io", TRACE_IO,     "port I/O"},
+	{ "disk", TRACE_DISK, "disk commands" },
+	{ NULL, 0, NULL }
+    };
+    const struct trace_args *trp;
+
+
+    if (!arg) {
+	fprintf(stderr,
+		"%s: --trace option requires an event list "
+		"(see --trace help)\n",
+		program_name);
+	usage();
+    }
+
+    if (!strcmp(arg, "help")) {
+	printf("Option: %s --trace [no-]event[,[no-]event...]\n"
+	       "    The \"no-\" prefix disables a trace event.\n"
+	       "    The following trace events are currently implemented:\n",
+	       program_name);
+	for (trp = trace_args; trp->name; trp++)
+	    printf("        %-7s %s\n", trp->name, trp->help);
+	exit(0);
+    }
+
+
+    for (arg = strtok(arg, ","); arg; arg = strtok(NULL, ",")) {
+	bool invert = false;
+	if (!strcmp(arg, "none")) {
+	    tracing = 0;
+	    continue;
+	}
+	if (!strncmp(arg, "no-", 3)) {
+	    arg += 3;
+	    invert = true;
+	}
+	for (trp = trace_args; trp->name; trp++) {
+	    if (!strcmp(arg, trp->name)) {
+		if (invert)
+		    tracing &= ~trp->mask;
+		else
+		    tracing |= trp->mask;
+	    }
+	}
+    }
+}
+
+enum model model = MODEL_ABC80;
 
 int main(int argc, char **argv)
 {
     unsigned int memflags = 0;
     bool  width40   = false;
-    int   c;
+    char **option;
+    const char *optstr;
+    char optchr;
 
-    while ((c = getopt(argc, argv, "bdvt:48")) != EOF) {
-        switch (c) {
+    (void)argc;
+    program_name = argv[0];
 
-	case 'v':
-            printf("ABC80 emulator version %s\n", __version_string);
-            exit(0);
-            break;
+    option = &argv[1];
+    while ((optstr = *option) != NULL) {
+	if (*optstr++ != '-')
+	    break;		/* Not an option */
 
-	case 'b':
-            memflags |= MEMFL_NOBASIC;
-            break;
+	option++;
 
-	case 'd':
-            memflags |= MEMFL_NODEV;
-            break;
+	optchr = *optstr++;
+	if (optchr == '-') {
+	    /* Long option */
 
-	case 't':
-	{
-	    const char *tok;
-	    tok = strtok(optarg, ",");
-	    while (tok) {
-		if (!strcasecmp(tok, "cpu"))
-		    tracing |= TRACE_CPU;
-		else if (!strcasecmp(tok, "io"))
-		    tracing |= TRACE_IO;
-		else if (!strcasecmp(tok, "disk"))
-		    tracing |= TRACE_DISK;
-		else if (!strcasecmp(tok, "all"))
-		    tracing = -1;
+	    if (!optstr[0])
+		break;		/* -- means end of options */
 
-		tok = strtok(NULL, ",");
+	    if (!strcmp(optstr, "abc80")) {
+		model = MODEL_ABC80;
+	    } else if (!strcmp(optstr, "abc802")) {
+		model = MODEL_ABC802;
+	    } else if (!strcmp(optstr, "40")) {
+		width40 = true;
+	    } else if (!strcmp(optstr, "80")) {
+		width40 = false;
+	    } else if (!strcmp(optstr, "no-basic")) {
+		memflags |= MEMFL_NOBASIC;
+	    } else if (!strcmp(optstr, "basic")) {
+		memflags &= ~MEMFL_NOBASIC;
+	    } else if (!strcmp(optstr, "no-device")) {
+		memflags |= MEMFL_NODEV;
+	    } else if (!strcmp(optstr, "device")) {
+		memflags &= ~MEMFL_NODEV;
+	    } else if (!strcmp(optstr, "help")) {
+		help();
+	    } else if (!strcmp(optstr, "version")) {
+		show_version();
+	    } else if (!strcmp(optstr, "trace")) {
+		parse_trace(*option++);
+	    } else if (!strcmp(optstr, "diskdir")) {
+		disk_path = *option++;
+	    } else if (!strcmp(optstr, "filedir")) {
+		fileop_path = *option++;
+	    } else {
+		fprintf(stderr, "%s: unknown option: --%s\n",
+			program_name, optstr);
+		usage();
 	    }
-	    break;
+	} else {
+	    /* Short option */
+	    while (optchr) {
+		switch (optchr) {
+		case 't':
+		    parse_trace(*option++);
+		    break;
+		case 'b':
+		    memflags |= MEMFL_NOBASIC;
+		    break;
+		case 'B':
+		    memflags &= ~MEMFL_NOBASIC;
+		    break;
+		case 'd':
+		    memflags |= MEMFL_NODEV;
+		    break;
+		case 'D':
+		    memflags &= ~MEMFL_NODEV;
+		    break;
+		case '4':
+		    width40 = true;
+		    break;
+		case '8':
+		    width40 = false;
+		    break;
+		case 'v':
+		    show_version();
+		    break;
+		case 'h':
+		    help();
+		    break;
+		default:
+		    fprintf(stderr, "%s: unknown option: -%c\n",
+			    program_name, optchr);
+		    usage();
+		    break;
+		}
+		optchr = *optstr++;
+	    }
 	}
-
-	case '4':
-	    width40 = true;
-	    break;
-
-	case '8':
-	    width40 = false;
-	    break;
-
-	default:
-            usage();
-            exit(1);
-            break;
-        }
     }
 
     screen_init(width40);
@@ -141,16 +265,16 @@ int main(int argc, char **argv)
      * Load any other program files the
      * user gave on the command line.
      */
-    while (optind < argc) {
-	const char *sysfile_name = argv[optind];
+    while (*option) {
+	const char *sysfile_name = *option++;
 	FILE *sysfile;
 	if ((sysfile = fopen(sysfile_name, "r")) == NULL) {
-	    fprintf(stderr, "ABC80: Can't open file: %s\n", sysfile_name);
+	    fprintf(stderr, "%s: Can't open file: %s: %s\n",
+		    argv[0], sysfile_name, strerror(errno));
 	    exit(1);
 	}
 	load_sysfile(sysfile);
 	fclose(sysfile);
-	optind++;
     }
 
     /*

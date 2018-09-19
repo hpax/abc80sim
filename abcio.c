@@ -286,7 +286,7 @@ static uint8_t abc80_in(uint8_t port)
 {
   uint8_t v = 0xff;
 
-  port &= 0x1f;
+  port &= 0x17;
 
   switch (port) {
   case 0:

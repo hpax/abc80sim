@@ -3,10 +3,10 @@
 
 void printer_reset(void)
 {
-  static int init = 0;
+  static bool init = false;
 
   if (!init) {
-    fileop_prefix = "abcdir/";
+    init = true;
     abcprint_init();
   }
 }

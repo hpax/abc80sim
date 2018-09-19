@@ -38,7 +38,7 @@ void timer_init(void)
 static inline bool trigger(uint64_t now, struct abctimer *tmr)
 {
   /* This expression: a) will overflow safely, b) will never trigger for 0 */
-  if (likely((now - tmr->last) < tmr->period))
+  if (likely((now - tmr->last) <= (tmr->period - 1)))
     return false;
 
   tmr->last += tmr->period;

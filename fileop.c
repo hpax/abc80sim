@@ -1,16 +1,17 @@
 #include "abcprintd.h"
+#include "abcio.h"
 
-const char *fileop_prefix;
+const char *fileop_path = "abcdir";
 
 #define BUF_SIZE 512
 
 static unsigned char output_buf[BUF_SIZE];
 static int output_head, output_tail;
 
-static char *make_path(const char *filename)
+char *make_path(const char *prefix, const char *filename)
 {
   char *p;
-  int pl = strlen(fileop_prefix);
+  int pl = strlen(prefix);
   int fl = strlen(filename);
 
   p = malloc(pl + fl + 2);
@@ -19,13 +20,13 @@ static char *make_path(const char *filename)
     exit(1);
   }
 
-  sprintf(p, "%s%s%s", fileop_prefix,
+  sprintf(p, "%s%s%s", prefix,
 	  (pl > 0 &&
 #ifdef WIN32
-	   fileop_prefix[pl-1] != ':' &&
-	   fileop_prefix[pl-1] != '\\' &&
+	   prefix[pl-1] != ':' &&
+	   prefix[pl-1] != '\\' &&
 #endif
-	   fileop_prefix[pl-1] != ':') ? "/" : "",
+	   prefix[pl-1] != ':') ? "/" : "",
 	  filename);
 
   return p;
@@ -168,7 +169,7 @@ static void do_open(uint16_t ix, char *name)
   char path_buf[64];
   char *path;
 
-  if (!fileop_prefix) {
+  if (!fileop_path) {
     send_reply(128+42);		/* Skivan ej klar */
     return;
   }
@@ -176,7 +177,7 @@ static void do_open(uint16_t ix, char *name)
   do_close(ix);
 
   unmangle_filename(path_buf, name);
-  path = make_path(path_buf[0] ? path_buf : ".");
+  path = make_path(fileop_path, path_buf[0] ? path_buf : ".");
   if (!path) {
     send_reply(128+42);
     return;
@@ -414,7 +415,7 @@ static void do_input(uint16_t ix)
 	if (de->d_name[0] != '.' &&
 	    (dlen = mangle_for_readdir(data1+2, de->d_name))) {
 	  bool ok;
-	  path = make_path(de->d_name);
+	  path = make_path(fileop_path, de->d_name);
 	  if (!path) {
 	    err = 128+42;
 	    goto err;

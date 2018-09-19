@@ -22,9 +22,9 @@
 #include "tempfile.h"
 
 #ifdef __WIN32__
-const char lpr_command[] = "powershell -command \"GetContent -raw -path '*' | OutPrinter\"";
+const char *lpr_command = "powershell -command \"GetContent -raw -path '*' | OutPrinter\"";
 #else
-const char lpr_command[] = "lpr '*'";
+const char *lpr_command = "lpr '*'";
 #endif
 
 static struct temp_file *temp;
