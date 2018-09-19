@@ -1,7 +1,7 @@
 /*
  * sdlscrn.c
  *
- * ABC80 screen emulation (40x24/80x24)
+ * ABC80/802 screen emulation (40x24/80x24)
  */
 
 #include <stdarg.h>
