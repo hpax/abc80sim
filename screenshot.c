@@ -8,7 +8,7 @@
 
 #include <png.h>
 
-const char *screen_path;
+const char *screen_path = "";
 
 #ifdef HAVE__MKDIR
 # define make_dir(x) _mkdir(x)
@@ -170,7 +170,7 @@ static FILE *open_screenshot(char **namebuf)
 
     *namebuf = NULL;
 
-    if (screen_path)
+    if (screen_path[0])
 	make_dir(screen_path);	/* If a directory, create it if needed */
 
     for (n = 1; n <= 9999; n++) {
@@ -357,6 +357,9 @@ int screenshot(SDL_Surface *surf)
 {
     struct allocable a;
     int rv, err;
+
+    if (!screen_path)
+      return 0;			/* Screenshots disabled? */
 
     memset(&a, 0, sizeof a);
     rv = do_screenshot(surf, &a);
