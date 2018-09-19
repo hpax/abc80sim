@@ -53,6 +53,9 @@
 #ifdef HAVE_WINDOWS_H
 # include <windows.h>
 #endif
+#ifdef HAVE_DIRECT_H
+# include <direct.h>
+#endif
 
 #ifndef O_BINARY
 # define O_BINARY 0
