@@ -8,22 +8,23 @@
 
 #if defined(HAVE_ATTACHCONSOLE) || !defined(HAVE_DAEMON)
 
-static int redirect_stdio(const char *whereto)
+static int redirect_stdio(const char *from, const char *to)
 {
-    int fd = open(whereto, O_RDWR);
-    if (fd < 0)
-	return -1;
+    bool err = false;
 
     fflush(NULL);
 
-    dup2(fd, STDERR_FILENO);
-    dup2(fd, STDOUT_FILENO);
-    dup2(fd, STDIN_FILENO);
+    if (!freopen(from, "r+t", stdin))
+	err = !freopen(from, "r+t", stdin);
 
-    if (fd > STDERR_FILENO)
-	close(fd);
+    if (!freopen(to, "w+t", stdout))
+	err |= !freopen(to, "wt", stdout);
 
-    return 0;
+    if (!freopen(to, "w+t", stderr))
+	err |= !freopen(to, "wt", stderr);
+    setvbuf(stderr, NULL, _IONBF, 0);
+
+    return -err;
 }
 
 #endif
@@ -38,13 +39,16 @@ void attach_console(void)
     if (!AttachConsole(ATTACH_PARENT_PROCESS))
 	return;			/* Attach failed */
 
-    if (redirect_stdio("\\\\?\\CON:"))
+    if (redirect_stdio("CONIN$", "CONOUT$"))
 	detach_console();
+
+    /* We are probably displaying a command prompt, so start with a newline */
+    putchar('\n');
 }
 
 void detach_console(void)
 {
-    redirect_stdio("\\\\?\\NUL:");
+    redirect_stdio("\\Device\\Null", "\\Device\\Null");
     FreeConsole();
 }
 
