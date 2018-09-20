@@ -5,10 +5,19 @@
 #include "compiler.h"
 #include "hostfile.h"
 
+static inline enum host_file_mode mode_type(enum host_file_mode mode)
+{
+    return mode & HF_TYPE_MASK;
+}
+
+#define PRIV_MODE	(S_IRUSR|S_IWUSR)
+#define FILE_MODE	(S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP|S_IROTH|S_IWOTH)
+#define DIR_MODE	(FILE_MODE|S_IXUSR|S_IXGRP|S_IXOTH)
+
 #ifdef HAVE__MKDIR
 # define make_dir(x) _mkdir(x)
 #else
-# define make_dir(x) mkdir((x), 0777);
+# define make_dir(x) mkdir((x), DIR_MODE)
 #endif
 
 #ifndef O_BINARY
@@ -23,6 +32,20 @@
 # define UNICODE_O_FLAGS O_TEXT
 #endif
 
+#ifndef O_ACCMODE
+# define O_ACCMODE (O_RDONLY|O_WRONLY|O_RDWR) /* Hope this works */
+#endif
+
+#ifndef O_NOFOLLOW
+# define O_NOFOLLOW 0
+#endif
+#ifndef O_SHORT_LIVED
+# define O_SHORT_LIVED 0
+#endif
+#ifndef O_DIRECTORY
+# define O_DIRECTORY 0
+#endif
+
 /* List of all host files */
 static struct host_file *list;
 
@@ -31,13 +54,15 @@ static struct host_file *finish_host_file(struct host_file *hf);
 
 static inline int mode_openflags(enum host_file_mode mode)
 {
-    switch (mode) {
+    switch (mode_type(mode)) {
     case HF_BINARY:
 	return O_BINARY;
     case HF_TEXT:
 	return O_TEXT;
     case HF_UNICODE:
 	return UNICODE_O_FLAGS;
+    case HF_DIRECTORY:
+	return O_DIRECTORY;
     default:
 	return 0;
     }
@@ -61,13 +86,36 @@ static inline bool is_path_separator(char c)
   }
 }
 
+int stat_file(const char *dir, const char *filename, struct stat *st)
+{
+    size_t dl;
+    char *path;
+    int rv, err;
+
+    if (!dir)
+	dir = "";
+
+    dl = strlen(dir);
+    asprintf(&path, "%s%s%s", dir,
+	     (dl && !is_path_separator(dir[dl-1])) ? "/" : "",
+	     filename ? filename : ".");
+    if (!path)
+	return -1;
+
+    rv = stat(path, st);
+    err = errno;
+    free(path);
+    errno = err;
+
+    return rv;
+}
+
 /*
  * Common routine for opening a host file formed from a directory
  * and a file name
  */
 struct host_file *open_host_file(enum host_file_mode mode, const char *dir,
-				 const char *filename, int openflags,
-				 mode_t filemode)
+				 const char *filename, int openflags)
 {
     size_t dl, fl;
     char *p;
@@ -76,20 +124,25 @@ struct host_file *open_host_file(enum host_file_mode mode, const char *dir,
     if (!dir)
 	dir = "";
 
+    if (!filename) {
+	filename = ".";
+	if (mode_type(mode) != HF_DIRECTORY)
+	    mode = HF_FAIL;
+    }
+
+    if (mode & HF_FAIL) {
+	errno = ENOENT;
+	return NULL;
+    }
+
     dl = strlen(dir);
     fl = strlen(filename);
 
-    hf = malloc(sizeof *hf + dl + fl + 1);
+    hf = calloc(sizeof *hf + dl + fl + 1, 1);
     if (!hf)
 	return NULL;
 
-    /* If a creation mode argument is passed, we are trying to create */
-    if (filemode)
-      openflags |= O_CREAT;
-    else
-      assert((openflags & (O_CREAT|O_EXCL)) == 0);
-
-    hf->f         = NULL;
+    hf->fd        = -1;
     hf->mode      = mode;
     hf->openflags = openflags | mode_openflags(mode);
     hf->nuke      = !!(openflags & O_EXCL);
@@ -102,7 +155,21 @@ struct host_file *open_host_file(enum host_file_mode mode, const char *dir,
     }
     p = mempcpy(p, filename, fl+1);
     hf->namelen = p - hf->filename;
-    hf->fd = open(hf->filename, hf->openflags, filemode);
+
+    if (mode_type(mode) == HF_DIRECTORY) {
+	hf->d = opendir(hf->filename);
+    } else {
+	mode_t filemode = (mode & HF_PRIVATE) ? PRIV_MODE : FILE_MODE;
+	for (;;) {
+	    hf->fd = open(hf->filename, hf->openflags, filemode);
+	    if (hf->fd >= 0 || !(mode & HF_RETRY))
+		break;
+
+	    hf->openflags = (hf->openflags & ~O_ACCMODE) | O_RDONLY;
+	    hf->openflags &= ~(O_CREAT|O_EXCL|O_APPEND);
+	    mode &= ~HF_RETRY;
+	}
+    }
 
     return finish_host_file(hf);
 }
@@ -127,7 +194,7 @@ dump_file(enum host_file_mode mode, const char *dir, const char *pattern)
 	asprintf(&filename, pattern, n);
 	if (!filename)
 	    return NULL;
-	hf = open_host_file(mode, dir, filename, openflags, FILE_MODE);
+	hf = open_host_file(mode, dir, filename, openflags);
 	err = errno;
 	free(filename);
 	errno = err;
@@ -146,17 +213,19 @@ struct host_file *temp_file(enum host_file_mode mode, const char *prefix)
     struct host_file *hf = NULL;
     size_t pfxlen;
 
+    mode |= HF_PRIVATE;
+
     if (!prefix)
 	prefix = "";
 
     pfxlen = strlen(prefix);
 
-    hf = malloc(sizeof *hf + pfxlen + 6);
+    hf = calloc(sizeof *hf + pfxlen + 6, 1);
     if (!hf)
 	return NULL;
 
     hf->mode = mode;
-    hf->openflags = O_RDWR|O_CREAT|O_EXCL;
+    hf->openflags = O_RDWR|O_CREAT|O_EXCL|O_NOFOLLOW|O_SHORT_LIVED;
     hf->nuke = true;
     hf->namelen = pfxlen + 6;
     memcpy(hf->filename, prefix, pfxlen);
@@ -179,12 +248,6 @@ struct host_file *temp_file(enum host_file_mode mode, const char *prefix)
 #ifndef TMP_MAX
 # define TMP_MAX 65536
 #endif
-#ifndef O_NOFOLLOW
-# define O_NOFOLLOW 0
-#endif
-#ifndef O_SHORT_LIVED
-# define O_SHORT_LIVED 0
-#endif
 
 struct host_file *temp_file(enum host_file_mode mode)
 {
@@ -194,12 +257,14 @@ struct host_file *temp_file(enum host_file_mode mode)
     size_t namelen;
     const int openflags = O_RDWR|O_CREAT|O_EXCL|O_NOFOLLOW|O_SHORT_LIVED;
 
+    mode |= HF_PRIVATE;
+
     do {
 	filename = tempnam(NULL, TEMPFILE_PREFIX);
 	if (!filename)
 	    return NULL;
 
-	hf = open_host_file(NULL, filename, openflags, PVT_MODE);
+	hf = open_host_file(mode, NULL, filename, openflags);
 	err = errno;
 	free(filename);
     } while (!hf && err == EEXIST && --attempts);
@@ -212,10 +277,6 @@ struct host_file *temp_file(enum host_file_mode mode)
 
 /* Common routine to finish the job once we have a name and fd */
 
-#ifndef O_ACCMODE
-# define O_ACCMODE (O_RDONLY|O_WRONLY|O_RDWR) /* Hope this works */
-#endif
-
 static struct host_file *finish_host_file(struct host_file *hf)
 {
     const char *opt;
@@ -223,24 +284,30 @@ static struct host_file *finish_host_file(struct host_file *hf)
     if (!hf)
 	return NULL;
 
-    if (hf->fd < 0)
-	goto err;
+    if (hf->mode == HF_DIRECTORY) {
+	if (!hf->d)
+	    goto err;
+    } else {
+	if (hf->fd < 0)
+	    goto err;
 
-    switch (hf->openflags & O_ACCMODE) {
-    case O_RDONLY:
-	opt = "r";
-	break;
-    case O_WRONLY:
-	opt = "w";
-	break;
-    default:
-	opt = (hf->openflags & O_CREAT) ? "w+" : "r+";
-	break;
+	switch (hf->openflags & O_ACCMODE) {
+	case O_RDONLY:
+	    opt = "r";
+	    break;
+	case O_WRONLY:
+	    opt = (hf->openflags & O_APPEND) ? "a" : "w";
+	    break;
+	default:
+	    opt = (hf->openflags & O_APPEND) ? "a+" :
+		(hf->openflags & (O_CREAT|O_TRUNC)) ? "w+" : "r+";
+	    break;
+	}
+
+	hf->f = fdopen(hf->fd, opt);
+	if (!hf->f)
+	    goto err;
     }
-
-    hf->f = fdopen(hf->fd, opt);
-    if (!hf->f)
-	goto err;
 
     hf->next  = list;
     hf->prevp = &list;
@@ -249,9 +316,10 @@ static struct host_file *finish_host_file(struct host_file *hf)
     list = hf;
 
     return hf;
-    err:
-	close_file(&hf);
-	return NULL;
+
+err:
+    close_file(&hf);
+    return NULL;
 }
 
 /* This function returns errno on failure, the errno variable is preserved */
@@ -267,21 +335,26 @@ int close_file(struct host_file **filep)
     if (file->prevp)
       *file->prevp = file->next; /* Remove from linked list */
 
-    if (file->f) {
-	if (fclose(file->f))
-	    err = errno;
-	else
-	    file->fd = -1;	/* fclose() closes the file descriptor too */
-    }
-
-    if (file->fd >= 0) {
-	if (close(file->fd))
+    if (file->d) {
+	if (closedir(file->d))
 	    err = err ? err : errno;
-    }
+    } else {
+	if (file->f) {
+	    if (fclose(file->f))
+		err = err ? err : errno;
+	    else
+		file->fd = -1;	/* fclose() closes the file descriptor too */
+	}
 
-    if (file->nuke && file->filename[0]) {
-	if (remove(file->filename))
-	    err = err ? err : errno;
+	if (file->fd >= 0) {
+	    if (close(file->fd))
+		err = err ? err : errno;
+	}
+
+	if (file->nuke && file->filename[0]) {
+	    if (remove(file->filename))
+		err = err ? err : errno;
+	}
     }
 
     free(file);

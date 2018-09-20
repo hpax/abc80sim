@@ -6,15 +6,18 @@
 enum host_file_mode {
     HF_BINARY    = 0,		/* Raw binary */
     HF_TEXT      = 1,		/* Text mode compatible with ASCII */
-    HF_UNICODE   = 2		/* Platform preferred Unicode encoding */
-};
+    HF_UNICODE   = 2,		/* Platform preferred Unicode encoding */
+    HF_DIRECTORY = 3,		/* opendir() on a directory */
+    HF_TYPE_MASK = 0x0f,
 
-#define TMPFILE_MODE	(S_IRUSR|S_IWUSR)
-#define FILE_MODE	(S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP|S_IROTH|S_IWOTH)
-#define DIR_MODE	(FILE_MODE|S_IXUSR|S_IGXGRP|S_IXOTH)
+    HF_PRIVATE	 = 0x10,	/* Only user permissions */
+    HF_RETRY     = 0x20,	/* If O_RDWR retry with O_RDONLY on failure */
+    HF_FAIL      = 0x40		/* Don't actually try to open, return ENOENT */
+};
 
 struct host_file {
     FILE *f;
+    DIR *d;
     struct host_file **prevp, *next;
     size_t namelen;
     int fd;
@@ -33,7 +36,7 @@ static inline void keep_file(struct host_file *file)
 /* Open a host filesystem file */
 extern struct host_file *
 open_host_file(enum host_file_mode mode, const char *dir,
-	       const char *filename, int openflags, mode_t filemode);
+	       const char *filename, int openflags);
 
 /* Create a numbered dump file */
 extern struct host_file *
@@ -46,7 +49,10 @@ temp_file(enum host_file_mode mode, const char *prefix);
 /* Close and optionally delete a host file */
 extern int close_file(struct host_file **temp);
 
+/* Stat a combined path in the filesystem */
+extern int stat_file(const char *dir, const char *filename, struct stat *st);
+
 /* Initialize the hostfile subsystem */
-void hostfile_init(void);
+extern void hostfile_init(void);
 
 #endif /* HOSTFILE_H */

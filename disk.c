@@ -115,10 +115,8 @@ static void disk_reset_state(struct ctl_state *state)
 
 static void disk_init(struct ctl_state *state)
 {
-  struct host_file *hf;
   char devname[4];
   int i;
-  int openflags, o_flags;
 
   /* If any of these don't exist we simply report device not ready */
   if (disk_path) {
@@ -127,15 +125,9 @@ static void disk_init(struct ctl_state *state)
     devname[3] = '\0';
     for (i = 0; i < 8; i++) {
       devname[2] = i + '0';
-      hf = NULL;
       /* Try open RDWR first, then RDONLY, but don't create */
-      openflags = O_RDWR;
-      do {
-	o_flags = openflags;
-	openflags = O_RDONLY;
-	hf = open_host_file(HF_BINARY, disk_path, devname, o_flags, 0);
-      } while (!hf && o_flags != O_RDONLY);
-      state->files[i] = hf;
+      state->files[i] =
+	open_host_file(HF_BINARY|HF_RETRY, disk_path, devname, O_RDWR);
     }
   }
   disk_reset_state(state);

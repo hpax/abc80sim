@@ -1,5 +1,6 @@
 #include "abcprintd.h"
 #include "abcio.h"
+#include "hostfile.h"
 
 const char *fileop_path = "abcdir";
 
@@ -7,30 +8,6 @@ const char *fileop_path = "abcdir";
 
 static unsigned char output_buf[BUF_SIZE];
 static int output_head, output_tail;
-
-char *make_path(const char *prefix, const char *filename)
-{
-  char *p;
-  int pl = strlen(prefix);
-  int fl = strlen(filename);
-
-  p = malloc(pl + fl + 2);
-  if (!p) {
-    perror("malloc");
-    exit(1);
-  }
-
-  sprintf(p, "%s%s%s", prefix,
-	  (pl > 0 &&
-#ifdef WIN32
-	   prefix[pl-1] != ':' &&
-	   prefix[pl-1] != '\\' &&
-#endif
-	   prefix[pl-1] != ':') ? "/" : "",
-	  filename);
-
-  return p;
-}
 
 int abcprint_read(void)
 {
@@ -74,12 +51,7 @@ static enum {
 static int byte_count = 4;
 static unsigned char cmd[4];
 static unsigned char *bytep = cmd;
-static struct file_data *filemap[65536];
-
-struct file_data {
-  FILE *f;
-  DIR *d;
-};
+static struct host_file *filemap[65536];
 
 static void send_reply(int status)
 {
@@ -96,15 +68,8 @@ static void send_reply(int status)
 /* Returns the status code, use send_reply(do_close(ix)) if reply desired */
 static int do_close(uint16_t ix)
 {
-  struct file_data *fm = filemap[ix];
-
-  if (fm) {
-    if (fm->f)
-      fclose(fm->f);
-    if (fm->d)
-      closedir(fm->d);
-    free(fm);
-    filemap[ix] = NULL;
+  if (filemap[ix]) {
+    close_file(&filemap[ix]);
     return 0;
   } else {
     return 128+45;		/* "Fel logiskt filnummer" */
@@ -164,10 +129,10 @@ static void unmangle_filename(char *out, const char *in)
 static void do_open(uint16_t ix, char *name)
 {
   int err;
-  struct file_data *fm;
-  static const char *modes[6] = {"r+t", "r+b", "w+t", "w+b", "rt", "rb" };
   char path_buf[64];
-  char *path;
+  int openflags;
+  enum host_file_mode mode;
+  struct host_file *hf;
 
   if (!fileop_path) {
     send_reply(128+42);		/* Skivan ej klar */
@@ -177,74 +142,52 @@ static void do_open(uint16_t ix, char *name)
   do_close(ix);
 
   unmangle_filename(path_buf, name);
-  path = make_path(fileop_path, path_buf[0] ? path_buf : ".");
-  if (!path) {
-    send_reply(128+42);
-    return;
-  }
-
-  fm = calloc(1, sizeof(struct file_info *));
-  if (!fm) {
-    free(path);
-    send_reply(128+42);
-    return;
-  }
 
   if (!path_buf[0]) {
     /* Empty filename (readdir) */
 
-    if ((cmd[0] & 3) == 0) {
-      fm->d = opendir(path);
-    } else {
-      errno = ENOENT;	/* File not found */
-    }
+    mode = ((cmd[0] & 3) == 0) ? HF_DIRECTORY : HF_FAIL;
+    openflags = 0;
   } else {
     /* Actual filename */
 
-    fm->f = fopen(path, modes[cmd[0] & 3]);
-    if (!fm->f && errno == EACCES && !(cmd[0] & 2)) {
-      fm->f = fopen(path, modes[(cmd[0] & 1)+4]);
-    }
+    mode  = (cmd[0] & 1) ? HF_BINARY : HF_TEXT;
+    mode |= (cmd[0] & 2) ? 0 : HF_RETRY;
+    openflags = (cmd[0] & 2) ? (O_RDWR|O_TRUNC|O_CREAT) : O_RDWR;
   }
 
-  free(path);
+  hf = open_host_file(mode, fileop_path, path_buf, openflags);
+  filemap[ix] = hf;
 
-  if (!fm->f && !fm->d) {
-    free(fm);
-    switch (errno) {
+  switch (errno) {
 #if 0				/* Enable this? */
-    case EACCES:
+  case EACCES:
       err = 128+39;
       break;
-    case EROFS:
-      err = 128+43;
-      break;
-    case EIO:
-    case ENOTDIR:
-      err = 128+48;
-      break;
+  case EROFS:
+    err = 128+43;
+    break;
+  case EIO:
+  case ENOTDIR:
+    err = 128+48;
+    break;
 #endif
-    default:
-      err = 128+21;
-      break;
-    }
-    send_reply(err);
-    return;
+  default:
+    err = 128+21;
+    break;
   }
 
-  filemap[ix] = fm;
-
-  send_reply(0);
+  send_reply(hf ? 0 : err);
 }
 
 static void do_read_block(uint16_t ix, uint16_t len)
 {
-  struct file_data *fm = filemap[ix];
+  struct host_file *hf = filemap[ix];
   int err;
   unsigned char *data;
   int dlen;
 
-  if (!fm || !fm->f) {
+  if (!hf || !hf->f) {
     send_reply(128+45);
     return;
   }
@@ -255,10 +198,10 @@ static void do_read_block(uint16_t ix, uint16_t len)
     return;
   }
 
-  clearerr(fm->f);
-  dlen = fread(data+2, 1, len, fm->f);
+  clearerr(hf->f);
+  dlen = fread(data+2, 1, len, hf->f);
   if (dlen == 0) {
-    if (ferror(fm->f)) {
+    if (ferror(hf->f)) {
       switch (errno) {
       case EBADF:
 	err = 128+44;		/* Logisk fil ej öppen */
@@ -360,24 +303,23 @@ static int mangle_for_readdir(char *dst, const char *src)
 
 static void do_input(uint16_t ix)
 {
-  struct file_data *fm = filemap[ix];
+  struct host_file *hf = filemap[ix];
   int err;
   char data[BUF_SIZE], data1[2*BUF_SIZE];
-  char *path;
   char *p, *q, c;
   int dlen;
   struct dirent *de;
   struct stat st;
 
-  if (!fm) {
+  if (!hf) {
     send_reply(128+45);
     return;
   }
 
-  if (fm->f) {
-    clearerr(fm->f);
-    if (!fgets(data, sizeof data, fm->f)) {
-      if (ferror(fm->f)) {
+  if (hf->f) {
+    clearerr(hf->f);
+    if (!fgets(data, sizeof data, hf->f)) {
+      if (ferror(hf->f)) {
 	switch (errno) {
 	case EBADF:
 	  err = 128+44;		/* Logisk fil ej öppen */
@@ -410,19 +352,12 @@ static void do_input(uint16_t ix)
       dlen = q - (data1+2);
       err = 0;
     }
-  } else if (fm->d) {
-      while ( (de = readdir(fm->d)) ) {
+  } else if (hf->d) {
+      while ( (de = readdir(hf->d)) ) {
 	if (de->d_name[0] != '.' &&
 	    (dlen = mangle_for_readdir(data1+2, de->d_name))) {
-	  bool ok;
-	  path = make_path(fileop_path, de->d_name);
-	  if (!path) {
-	    err = 128+42;
-	    goto err;
-	  }
-	  ok = !stat(path, &st) && S_ISREG(st.st_mode);
-	  free(path);
-	  if (ok)
+	  if (!stat_file(fileop_path, de->d_name, &st) &&
+	      S_ISREG(st.st_mode))
 	    break;
 	}
       }
@@ -439,7 +374,6 @@ static void do_input(uint16_t ix)
     err = 128+44;
   }
 
- err:
   send_reply(err);
   if (!err) {
     data1[0] = dlen;
@@ -450,16 +384,14 @@ static void do_input(uint16_t ix)
 
 static void do_print(uint16_t ix, uint16_t len, void *data)
 {
-  struct file_data *fm = filemap[ix];
+  struct host_file *hf = filemap[ix];
   int err;
 
-  if (!fm || !fm->f) {
-    send_reply(128+45);
-    return;
-  }
-
-  err = 0;
-  if (fwrite(data, 1, len, fm->f) != len || fflush(fm->f)) {
+  if (!hf) {
+    err = 128+45;
+  } else if (!hf->f) {
+    err = 128+39;		/* Directories are readonly */
+  } else if (fwrite(data, 1, len, hf->f) != len || fflush(hf->f)) {
     switch (errno) {
     case EACCES:
       err = 128+39;		/* Filen skrivskyddad */
@@ -481,6 +413,8 @@ static void do_print(uint16_t ix, uint16_t len, void *data)
       err = 128+48;		/* Fel i biblioteket */
       break;
     }
+  } else {
+    err = 0;
   }
   send_reply(err);
 }

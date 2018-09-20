@@ -2,7 +2,7 @@ dnl Process this file with autoconf 2.69 or later to produce
 dnl a configure script.
 AC_PREREQ([2.69])
 
-AC_CONFIG_MACRO_DIR(autoconf)
+AC_CONFIG_MACRO_DIRS(autoconf)
 
 AC_INIT(abc80.c)
 AC_CONFIG_HEADERS(config/config.h)
