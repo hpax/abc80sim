@@ -5,6 +5,7 @@
 #include "z80.h"
 #include "abcio.h"
 #include "patchlevel.h"
+#include "abcprintd.h"
 #include "hostfile.h"
 
 #include <SDL_main.h>
@@ -83,32 +84,34 @@ static no_return help(void)
     printf("Usage: %s [options] [ihex_files...]\n"
 	   "Simulate a microcomputer from the Luxor ABC series.\n"
 	   "\n"
-	   "      --abc80        simulate an ABC80 (default)\n"
-	   "      --abc802       simulate an ABC802\n"
-	   "  -4, --40           start in 40-column mode\n"
-	   "  -8, --80           start in 80-column mode\n"
-	   "  -b, --no-basic     no BASIC ROM (uninitialized RAM instead)\n"
-	   "  -B, --basic        reverts the --no-basic option\n"
-	   "  -d, --no-device    no device driver ROMs\n"
-	   "  -D, --device       reverts the --no-device option\n"
-	   "      --old-basic    ABC80 only: run BASIC 1.0 (checksum 11273)\n"
-	   "      --11273        same as --old-basic\n"
-	   "      --new-basic    ABC80 only: run BASIC 1.2 (checksum 9913)\n"
-	   "      --9913         same as --new-basic\n"
-	   "  -t, --trace ...    trace various events (see \"--trace help\")\n"
-	   "  -v, --version      print the version string\n"
-	   "  -h, --help         print this help message\n"
-	   "  -k, --kb           set the memory size in K (ABC80: 1-32 or 64)\n"
-	   "      --diskdir      set directory for disk images (default abcdisk)\n"
-	   "      --filedir      set directory for file sharing (default abcdir)\n"
-	   "      --scrndir      set directory for screen shots (default null)\n"
+	   "      --abc80          simulate an ABC80 (default)\n"
+	   "      --abc802         simulate an ABC802\n"
+	   "  -4, --40             start in 40-column mode\n"
+	   "  -8, --80             start in 80-column mode\n"
+	   "  -b, --no-basic       no BASIC ROM (uninitialized RAM instead)\n"
+	   "  -B, --basic          reverts the --no-basic option\n"
+	   "  -d, --no-device      no device driver ROMs\n"
+	   "  -D, --device         reverts the --no-device option\n"
+	   "      --old-basic      ABC80 only: run BASIC 1.0 (checksum 11273)\n"
+	   "      --11273          same as --old-basic\n"
+	   "      --new-basic      ABC80 only: run BASIC 1.2 (checksum 9913)\n"
+	   "      --9913           same as --new-basic\n"
+	   "  -t, --trace ...      trace various events (see \"--trace help\")\n"
+	   "  -T, --tracefile ...  redirect trace output to a file\n"
+	   "  -v, --version        print the version string\n"
+	   "  -h, --help           print this help message\n"
+	   "  -k, --kb #           set the memory size in K (ABC80: 1-32 or 64)\n"
+	   "      --diskdir ...    set directory for disk images (default abcdisk)\n"
+	   "      --filedir ...    set directory for file sharing (default abcdir)\n"
+	   "      --scrndir ...    set directory for screen shots (default null)\n"
+	   "      --printcmd ...   set command to launch a print job (* = filename)\n"
 	   "\n"
 	   "The simulator supports the following hotkeys:\n"
-	   "  Alt-q              quit the simulator\n"
-	   "  Alt-s              take a screenshot\n"
-	   "  Alt-r              CPU reset\n"
-	   "  Alt-n              send NMI\n",
-	   program_name);
+	   "  Alt-q                quit the simulator\n"
+	   "  Alt-s                take a screenshot\n"
+	   "  Alt-r                CPU reset\n"
+	   "  Alt-n                send NMI\n"
+	   , program_name);
     exit(1);
 }
 
@@ -194,6 +197,7 @@ int main(int argc, char **argv)
     char **option;
     const char *optstr;
     char optchr;
+    const char *tracefile = NULL;
 
     (void)argc;
     program_name = argv[0];
@@ -242,12 +246,16 @@ int main(int argc, char **argv)
 		show_version();
 	    } else if (!strcmp(optstr, "trace")) {
 		parse_trace(LONG_ARG());
+	    } else if (!strcmp(optstr, "tracefile")) {
+		tracefile = LONG_ARG();
 	    } else if (!strcmp(optstr, "diskdir")) {
 		disk_path = LONG_ARG();
 	    } else if (!strcmp(optstr, "filedir")) {
 		fileop_path = LONG_ARG();
 	    } else if (!strcmp(optstr, "scrndir")) {
 		screen_path = LONG_ARG();
+	    } else if (!strcmp(optstr, "printcmd")) {
+		lpr_command = LONG_ARG();
 	    } else {
 		fprintf(stderr, "%s: unknown option: --%s\n",
 			program_name, optstr);
@@ -259,6 +267,9 @@ int main(int argc, char **argv)
 		switch (optchr) {
 		case 't':
 		    parse_trace(SHORT_ARG());
+		    break;
+		case 'T':
+		    tracefile = SHORT_ARG();
 		    break;
 		case 'b':
 		    memflags |= MEMFL_NOBASIC;
@@ -294,6 +305,20 @@ int main(int argc, char **argv)
 		    break;
 		}
 		optchr = *optstr++;
+	    }
+	}
+    }
+
+    if (tracing) {
+	if (!tracefile || !tracefile[0] ||
+	    (tracefile[0] == '-' && !tracefile[1])) {
+	    tracef = stdout;
+	} else {
+	    tracef = fopen(tracefile, "wt");
+	    if (!tracef) {
+		fprintf(stderr, "%s: Unable to open trace file %s: %s\n",
+			program_name, tracefile, strerror(errno));
+		tracing = 0;
 	    }
 	}
     }

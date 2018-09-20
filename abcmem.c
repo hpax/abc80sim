@@ -89,16 +89,16 @@ void tracemem(void)
     }
 
     for (mtp = mem_traces; mtp < mem_trace_tail; mtp++) {
-	putchar(' ');
+	fputc(' ', tracef);
 	if (mtp->addr != last_addr || mtp->written != last_written)
-	    printf("(%04X)%c", mtp->addr, mtp->written ? '=' : ':');
-	printf("%0*X", mtp->size*2, mtp->data);
+	    fprintf(tracef, "(%04X)%c", mtp->addr, mtp->written ? '=' : ':');
+	fprintf(tracef, "%0*X", mtp->size*2, mtp->data);
 	last_addr = mtp->addr + mtp->size;
 	last_written = mtp->written;
     }
 
     if (overflow)
-	printf(" ...");
+	fputs(" ...", tracef);
 
     mem_trace_tail = mem_traces;
 }

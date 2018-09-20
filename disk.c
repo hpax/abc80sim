@@ -208,11 +208,11 @@ void disk_out(int sel, int port, int value)
       state->state = disk_k0;
 
       if (tracing & TRACE_DISK) {
-	printf("%s%d: command %02X %02X %02X %02X\n",
-	       state->name, state->k[1] & 7,
-	       state->k[0], state->k[1], state->k[2], state->k[3]);
-	printf("PC = %04X  BC = %04X  DE = %04X  HL = %04X\n",
-	       REG_PC, REG_BC, REG_DE, REG_HL);
+	fprintf(tracef, "%s%d: command %02X %02X %02X %02X\n",
+		state->name, state->k[1] & 7,
+		state->k[0], state->k[1], state->k[2], state->k[3]);
+	fprintf(tracef, "PC = %04X  BC = %04X  DE = %04X  HL = %04X\n",
+		REG_PC, REG_BC, REG_DE, REG_HL);
       }
 
       /* Bad drive/sector? */
@@ -229,11 +229,11 @@ void disk_out(int sel, int port, int value)
     case disk_upload:
       state->buf[state->k[1] >> 6][state->out_ptr++] = value;
       if (tracing & TRACE_DISK)
-	printf("%02X", value);
+	fprintf(tracef, "%02X", value);
       if ( state->out_ptr >= 256 ) {
 	if (tracing & TRACE_DISK)
-	  printf("\nPC = %04X  BC = %04X  DE = %04X  HL = %04X\n",
-		 REG_PC, REG_BC, REG_DE, REG_HL);
+	  fprintf(tracef, "\nPC = %04X  BC = %04X  DE = %04X  HL = %04X\n",
+		  REG_PC, REG_BC, REG_DE, REG_HL);
 	do_next_command(state);
       }
       break;
@@ -248,8 +248,8 @@ void disk_out(int sel, int port, int value)
   case 2:			/* Start command */
   case 4:			/* Reset */
     if (tracing & TRACE_DISK) {
-      printf("OUT %d/%d : ", sel, port);
-      printf("PC = %04X  BC = %04X  DE = %04X  HL = %04X\n",
+      fprintf(tracef, "OUT %d/%d : ", sel, port);
+      fprintf(tracef, "PC = %04X  BC = %04X  DE = %04X  HL = %04X\n",
 	     REG_PC, REG_BC, REG_DE, REG_HL);
     }
     disk_reset();
@@ -299,8 +299,8 @@ int disk_in(int sel, int port)
   }
 
   if (tracing & TRACE_DISK) {
-    printf("IN %d/%d: %02X : ", sel, port, v);
-    printf("PC = %04X  BC = %04X  DE = %04X  HL = %04X\n",
+    fprintf(tracef, "IN %d/%d: %02X : ", sel, port, v);
+    fprintf(tracef, "PC = %04X  BC = %04X  DE = %04X  HL = %04X\n",
 	   REG_PC, REG_BC, REG_DE, REG_HL);
   }
   return v;

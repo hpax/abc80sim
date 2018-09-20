@@ -189,6 +189,7 @@ extern int disassemble(int);
 extern int DAsm(uint16_t pc, char *T, int *target);
 
 extern unsigned int tracing;
+extern FILE *tracef;
 
 #define TRACE_CPU	1
 #define TRACE_IO	2

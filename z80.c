@@ -31,6 +31,7 @@
 #include <setjmp.h>
 
 unsigned int tracing;
+FILE *tracef;
 
 /*
  * The state of our Z-80 registers is kept in this structure:
@@ -1304,7 +1305,7 @@ static void do_nmi(void)
 {
     /* handle a non-maskable interrupt */
     if (tracing & (TRACE_IO|TRACE_CPU)) {
-	printf("NMI: PC=%02x\n", REG_PC);
+	fprintf(tracef, "NMI: PC=%02x\n", REG_PC);
     }
 
     REG_SP -= 2;
@@ -1320,9 +1321,9 @@ static void
 do_int(void)
 {
     if (tracing & (TRACE_CPU | TRACE_IO)) {
-	printf("INT: vector %02x (%3d) I=%02x PC=%04x\n",
-	       z80_state.i_vector, z80_state.i_vector,
-	       z80_state.i, REG_PC);
+	fprintf(tracef, "INT: vector %02x (%3d) I=%02x PC=%04x\n",
+		z80_state.i_vector, z80_state.i_vector,
+		z80_state.i, REG_PC);
     }
 
     switch (z80_state.interrupt_mode) {
@@ -2556,8 +2557,7 @@ int z80_run(bool continuous, bool halted)
 	  if (tracing & TRACE_CPU) {
 	      diffstate();
 	      tracemem();
-	      putchar('\n');
-	      printf("PC=%04X ", z80_state.pc.word);
+	      fprintf(tracef, "\nPC=%04X ", z80_state.pc.word);
 	      disassemble(z80_state.pc.word);
 	  }
 
@@ -3698,15 +3698,15 @@ z80_reset(void)
 }
 
 #define WREG(U,L) \
-    if (z80_state.L.word != old_state.L.word) {		\
-	printf(" %s=%04X", #U, z80_state.L.word);	\
-	old_state.L.word = z80_state.L.word;		\
+    if (z80_state.L.word != old_state.L.word) {			\
+	fprintf(tracef, " %s=%04X", #U, z80_state.L.word);	\
+	old_state.L.word = z80_state.L.word;			\
     }
-#define BREG(U,L)				\
-    if (z80_state.L != old_state.L) {		\
-	printf(" %s=%02X", #U, z80_state.L);	\
-	old_state.L= z80_state.L;		\
-    }						\
+#define BREG(U,L)					\
+    if (z80_state.L != old_state.L) {			\
+	fprintf(tracef, " %s=%02X", #U, z80_state.L);	\
+	old_state.L= z80_state.L;			\
+    }							\
 
 static void diffstate(void)
 {
