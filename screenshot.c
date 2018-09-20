@@ -8,6 +8,7 @@
 #include "hostfile.h"
 
 #include <png.h>
+#include <zlib.h>
 
 const char *screen_path;
 
@@ -286,6 +287,9 @@ static int do_screenshot(SDL_Surface *surf, struct allocable *a)
 		 PNG_FILTER_TYPE_DEFAULT);
 
     png_set_tIME(a->png, a->png_info, &png_now);
+
+    png_set_compression_level(a->png, Z_BEST_COMPRESSION);
+    png_set_compression_strategy(a->png, Z_FILTERED);
 
     if (npalette > 0)
 	png_set_PLTE(a->png, a->png_info, a->palette, npalette);
