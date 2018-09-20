@@ -305,9 +305,6 @@ int screenshot(SDL_Surface *surf)
     struct allocable a;
     int rv, err;
 
-    if (!screen_path)
-      return 0;			/* Screenshots disabled? */
-
     memset(&a, 0, sizeof a);
     rv = do_screenshot(surf, &a);
     err = errno;
