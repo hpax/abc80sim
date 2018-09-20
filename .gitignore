@@ -7,9 +7,8 @@
 abc*/
 /roms/*.c
 /autoconf/aclocal.m4
-/autoconf/compile
-/autoconf/config.*
-/autoconf/install-sh
+/autoconf/m4.old/
+/autoconf/aux/
 /abc80
 /config/config.h
 /config/config.h.in
