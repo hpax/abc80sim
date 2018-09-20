@@ -357,7 +357,7 @@ int close_file(struct host_file **filep)
 		err = err ? err : errno;
 	}
 
-	if (file->nuke && file->filename[0]) {
+	if (file->nuke && file->fd >= 0 && file->filename[0]) {
 	    if (remove(file->filename))
 		err = err ? err : errno;
 	}
