@@ -7,6 +7,7 @@
 #include "patchlevel.h"
 #include "abcprintd.h"
 #include "hostfile.h"
+#include "console.h"
 
 #include <SDL_main.h>
 
@@ -107,6 +108,7 @@ static no_return help(void)
 	   "      --dumpdir ...    set directory for memory dumps (default .)\n"
 	   "      --printcmd ...   set command to launch a print job (* = filename)\n"
 	   "      --memfile ...    load a file into the ABC802 MEM: device\n"
+	   "      --detach         detach from console if run from a command line\n"
 	   "\n"
 	   "The simulator supports the following hotkeys:\n"
 	   "  Alt-q                quit the simulator\n"
@@ -181,8 +183,13 @@ static char *short_arg(char opt, char *arg)
     return arg;
 }
 
-static char *long_arg(const char *opt, char *arg)
+static char *long_arg(bool enable, const char *opt, char *arg)
 {
+    if (!enable) {
+	fprintf(stderr, "%s: unknown option: --no-%s\n",
+		program_name, opt);
+	usage();
+    }
     if (!arg) {
 	fprintf(stderr, "%s: the --%s option requires an argument\n",
 		program_name, opt);
@@ -192,7 +199,7 @@ static char *long_arg(const char *opt, char *arg)
 }
 
 #define SHORT_ARG()	short_arg(optchr, *option++)
-#define LONG_ARG()	long_arg(optstr,  *option++)
+#define LONG_ARG()	long_arg(enable, optstr,  *option++)
 
 int main(int argc, char **argv)
 {
@@ -203,6 +210,9 @@ int main(int argc, char **argv)
     char optchr;
     const char *tracefile = NULL;
     const char *memfile = NULL;
+    bool detach = false;
+
+    attach_console();
 
     (void)argc;
     program_name = argv[0];
@@ -216,39 +226,45 @@ int main(int argc, char **argv)
 
 	optchr = *optstr++;
 	if (optchr == '-') {
+	    bool enable = true;
+
 	    /* Long option */
 
 	    if (!optstr[0])
 		break;		/* -- means end of options */
 
+	    if (!strncmp(optstr, "no-", 3)) {
+		enable = false;
+		optstr += 3;
+	    }
 	    if (!strcmp(optstr, "abc80")) {
 		model = MODEL_ABC80;
 	    } else if (!strcmp(optstr, "abc802")) {
 		model = MODEL_ABC802;
 	    } else if (!strcmp(optstr, "40")) {
-		width40 = true;
+		width40 = enable;
 	    } else if (!strcmp(optstr, "80")) {
-		width40 = false;
-	    } else if (!strcmp(optstr, "no-basic")) {
-		memflags |= MEMFL_NOBASIC;
+		width40 = !enable;
 	    } else if (!strcmp(optstr, "basic")) {
 		memflags &= ~MEMFL_NOBASIC;
+		memflags |= (enable ? 0 : MEMFL_NOBASIC);
 	    } else if (!strcmp(optstr, "old-basic") ||
 		       !strcmp(optstr, "11273")) {
-		old_basic = true;
+		old_basic = enable;
 	    } else if (!strcmp(optstr, "new-basic") ||
 		       !strcmp(optstr, "9913")) {
-		old_basic = false;
-	    } else if (!strcmp(optstr, "no-device")) {
-		memflags |= MEMFL_NODEV;
+		old_basic = !enable;
 	    } else if (!strcmp(optstr, "device")) {
 		memflags &= ~MEMFL_NODEV;
+		memflags |= enable ? 0 : MEMFL_NODEV;
 	    } else if (!strcmp(optstr, "kb")) {
 		kilobytes = strtoul(LONG_ARG(), NULL, 0);
 	    } else if (!strcmp(optstr, "help")) {
-		help();
+		if (enable)
+		    help();
 	    } else if (!strcmp(optstr, "version")) {
-		show_version();
+		if (enable)
+		    show_version();
 	    } else if (!strcmp(optstr, "trace")) {
 		parse_trace(LONG_ARG());
 	    } else if (!strcmp(optstr, "tracefile")) {
@@ -263,6 +279,8 @@ int main(int argc, char **argv)
 		lpr_command = LONG_ARG();
 	    } else if (!strcmp(optstr, "memfile")) {
 		memfile = LONG_ARG();
+	    } else if (!strcmp(optstr, "detach")) {
+		detach = enable;
 	    } else {
 		fprintf(stderr, "%s: unknown option: --%s\n",
 			program_name, optstr);
@@ -333,6 +351,10 @@ int main(int argc, char **argv)
     hostfile_init();
 
     screen_init(width40);
+
+    if (detach)
+	detach_console();
+
     mem_init(memflags, memfile);
     io_init();
 

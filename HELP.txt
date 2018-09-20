@@ -24,6 +24,7 @@ Simulate a microcomputer from the Luxor ABC series.
       --dumpdir ...    set directory for memory dumps (default .)
       --printcmd ...   set command to launch a print job (* = filename)
       --memfile ...    load a file into the ABC802 MEM: device
+      --detach         detach from console if run from a command line
 
 The simulator supports the following hotkeys:
   Alt-q                quit the simulator

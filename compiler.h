@@ -46,6 +46,12 @@
 #ifdef HAVE_DIRENT_H
 # include <dirent.h>
 #endif
+#ifdef HAVE_VFORK_H
+# include <vfork.h>
+#endif
+#ifdef HAVE_PATHS_H
+# include <paths.h>
+#endif
 
 #ifdef HAVE_IO_H
 # include <io.h>

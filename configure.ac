@@ -72,6 +72,7 @@ AC_CHECK_HEADERS(sys/stat.h)
 AC_CHECK_HEADERS(sys/time.h)
 AC_CHECK_HEADERS(unistd.h)
 AC_CHECK_HEADERS(fcntl.h)
+AC_CHECK_HEADERS(paths.h)
 AC_CHECK_HEADERS(io.h)
 AC_CHECK_HEADERS(windows.h)
 AC_CHECK_HEADERS(direct.h)
@@ -102,6 +103,12 @@ AC_CHECK_FUNCS([_setmode])
 dnl Timekeeping...
 AC_CHECK_FUNCS(clock_gettime)
 AC_CHECK_FUNCS(gettimeofday)
+
+dnl Console handling
+AC_CHECK_FUNCS(AttachConsole)
+AC_CHECK_FUNCS(daemon)
+AC_CHECK_FUNCS(setsid)
+AC_FUNC_FORK
 
 dnl Checks for library functions.
 AC_SEARCH_LIBS([deflate], [z])
