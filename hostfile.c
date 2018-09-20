@@ -186,6 +186,9 @@ dump_file(enum host_file_mode mode, const char *dir, const char *pattern)
     char *filename;
     const int openflags = O_WRONLY|O_CREAT|O_EXCL|O_NOFOLLOW;
 
+    if (!dir)
+	dir = "";
+
     /* If it is a directory name, try to create it if it doesn't exist */
     if (dir[0])
 	make_dir(dir);
@@ -332,8 +335,11 @@ int close_file(struct host_file **filep)
     if (!filep || !(file = *filep))
 	return 0;
 
-    if (file->prevp)
+    if (file->prevp) {
       *file->prevp = file->next; /* Remove from linked list */
+      if (file->next)
+	  file->next->prevp = file->prevp;
+    }
 
     if (file->d) {
 	if (closedir(file->d))

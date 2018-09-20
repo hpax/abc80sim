@@ -38,11 +38,10 @@ extern void keyboard_up(void);
 
 extern void abc802_vsync(void);
 
-/* Helper in fileop.c */
-extern char *make_path(const char *prefix, const char *filename);
+extern void dump_memory(bool ramonly);
 
 /* Directories */
-extern const char *fileop_path, *disk_path, *screen_path;
+extern const char *fileop_path, *disk_path, *screen_path, *memdump_path;
 
 /* Program name for error messages */
 extern const char *program_name;

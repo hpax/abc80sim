@@ -473,6 +473,14 @@ void check_event(void)
 	  z80_nmi();
 	  break;
 
+	case SDLK_m:
+	  dump_memory(false);
+	  break;
+
+	case SDLK_u:
+	  dump_memory(true);
+	  break;
+
 	default:
 	  break;
 	}

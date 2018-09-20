@@ -3,6 +3,7 @@
 #include "z80.h"
 #include "abcio.h"
 #include "rom.h"
+#include "hostfile.h"
 
 #define MEMORY_SIZE	Z80_ADDRESS_LIMIT
 
@@ -21,7 +22,7 @@ extern void write_screen(uint8_t *p, uint8_t v);
 #define PAGE_SHIFT	10
 #define PAGE_SIZE	(1U << PAGE_SHIFT)
 #define PAGE_MASK	(PAGE_SIZE-1)
-#define PAGE_COUNT	(65536U/PAGE_SIZE)
+#define PAGE_COUNT	(Z80_ADDRESS_LIMIT/PAGE_SIZE)
 
 /* Up to 8 memory maps */
 #define MEM_MAPS 8
@@ -284,7 +285,47 @@ map_memory(unsigned int maps, size_t where, size_t size,
     }
 }
 
-void mem_init(unsigned int flags)
+/*
+ * Load a binary file into low (< 30K) RAM, in the format used by
+ * the ABC802 MEM: device.
+ */
+static void load_memfile(const char *memfile)
+{
+    struct host_file *hf;
+    uint8_t *rp;
+    size_t bytes, blk;
+
+    if (!memfile)
+	return;
+
+    hf = open_host_file(HF_BINARY, NULL, memfile, O_RDONLY);
+    if (!hf)
+	return;
+
+    rp = ram;
+    blk = 0;
+    for (blk = 0; blk < K(30)/256; blk++) {
+	bytes = fread(rp+3, 1, 253, hf->f);
+	if (!bytes)
+	    break;		/* Nothing left at all */
+	rp[0] = 0x53;
+	rp[1] = 0;
+	rp[2] = blk;
+	rp += 256;
+	if (bytes < 253)
+	    break;		/* Partial read = last block */
+    }
+
+    close_file(&hf);
+}
+
+/*
+ * Set up memory maps.  Note: dump_memory() currently relies on
+ * map 7 being all RAM, regardless of if there is an actual
+ * map 7 or not.  If this isn't reliable, change this to have a
+ * map set up specifically for Alt-u dumps.
+ */
+void mem_init(unsigned int flags, const char *memfile)
 {
     /* Start by initializing all memory maps to all RAM */
     map_memory(ALL_MAPS, 0, K(64), ram, write_ram);
@@ -355,4 +396,32 @@ void mem_init(unsigned int flags)
 	abc802_set_mem(false);	/* On start, MEM area closed */
 	break;
     }
+
+    load_memfile(memfile);
+}
+
+/*
+ * Dump memory to a file
+ */
+const char *memdump_path;
+
+void dump_memory(bool ramonly)
+{
+    const struct mem_page *map =
+	ramonly ? memmaps[7] : current_map[0];
+    struct host_file *hf;
+    size_t i;
+
+    hf = dump_file(HF_BINARY, memdump_path,
+		   ramonly ? "ram%04u.bin" : "mem%04u.bin");
+    if (!hf)
+	return;
+
+    for (i = 0; i < PAGE_COUNT; i++)
+	fwrite(map[i].data, 1, PAGE_SIZE, hf->f);
+
+    if (!ferror(hf->f))
+	keep_file(hf);		/* It's good */
+
+    close_file(&hf);
 }

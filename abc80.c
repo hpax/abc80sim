@@ -103,14 +103,18 @@ static no_return help(void)
 	   "  -k, --kb #           set the memory size in K (ABC80: 1-32 or 64)\n"
 	   "      --diskdir ...    set directory for disk images (default abcdisk)\n"
 	   "      --filedir ...    set directory for file sharing (default abcdir)\n"
-	   "      --scrndir ...    set directory for screen shots (default null)\n"
+	   "      --scrndir ...    set directory for screen shots (default .)\n"
+	   "      --dumpdir ...    set directory for memory dumps (default .)\n"
 	   "      --printcmd ...   set command to launch a print job (* = filename)\n"
+	   "      --memfile ...    load a file into the ABC802 MEM: device\n"
 	   "\n"
 	   "The simulator supports the following hotkeys:\n"
 	   "  Alt-q                quit the simulator\n"
 	   "  Alt-s                take a screenshot\n"
 	   "  Alt-r                CPU reset\n"
 	   "  Alt-n                send NMI\n"
+	   "  Alt-m                dump memory as currently seen from the CPU\n"
+	   "  Alt-u                dump underlying RAM only (even nonexistent)\n"
 	   , program_name);
     exit(1);
 }
@@ -198,6 +202,7 @@ int main(int argc, char **argv)
     const char *optstr;
     char optchr;
     const char *tracefile = NULL;
+    const char *memfile = NULL;
 
     (void)argc;
     program_name = argv[0];
@@ -256,6 +261,8 @@ int main(int argc, char **argv)
 		screen_path = LONG_ARG();
 	    } else if (!strcmp(optstr, "printcmd")) {
 		lpr_command = LONG_ARG();
+	    } else if (!strcmp(optstr, "memfile")) {
+		memfile = LONG_ARG();
 	    } else {
 		fprintf(stderr, "%s: unknown option: --%s\n",
 			program_name, optstr);
@@ -326,7 +333,7 @@ int main(int argc, char **argv)
     hostfile_init();
 
     screen_init(width40);
-    mem_init(memflags);
+    mem_init(memflags, memfile);
     io_init();
 
     /*

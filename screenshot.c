@@ -9,7 +9,7 @@
 
 #include <png.h>
 
-const char *screen_path = "";
+const char *screen_path;
 
 static inline void *pixel_row(const SDL_Surface *surf, size_t y)
 {
@@ -311,7 +311,7 @@ int screenshot(SDL_Surface *surf)
     memset(&a, 0, sizeof a);
     rv = do_screenshot(surf, &a);
     err = errno;
-    
+
     if (a.rgbsurf) {
 	SDL_UnlockSurface(a.rgbsurf);
 	SDL_FreeSurface(a.rgbsurf);
