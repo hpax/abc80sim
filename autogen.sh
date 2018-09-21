@@ -2,7 +2,7 @@
 #
 # Run this script to regenerate autoconf files
 #
-mkdir -p autoconf autoconf/aux
+mkdir -p autoconf autoconf/aux config
 autolib="`automake --print-libdir`"
 for prg in install-sh compile config.guess config.sub; do
     cp -u "$autolib"/"$prg" autoconf/aux
