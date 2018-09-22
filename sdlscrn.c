@@ -33,8 +33,6 @@ extern const unsigned char abc_font[256][FONT_YSIZE];
 
 #define NCOLORS 8
 
-static uint32_t colors[NCOLORS];
-
 static struct argb { uint8_t a, r, g, b; } rgbcolors[NCOLORS] = {
   {0x00,0x00,0x00,0x00},	/* black */
   {0x00,0xff,0x00,0x00},	/* red */
@@ -83,8 +81,16 @@ struct do_event {
   void (*func)(void);
 };
 
-static SDL_Surface *rscreen;
-static volatile uint8_t inverse_mask = 0x80; /* 0x80 for inverse enable */
+/* A local abstraction of a drawing surface */
+struct surface {
+    SDL_Surface *surf;		/* SDL_Surface object */
+    Uint32 colors[NCOLORS];
+    /* Keep track of what the dirty rectangle is */
+    unsigned int upd_x0, upd_y0, upd_x1, upd_y1;
+    int lock_count;		/* Lock nesting count */
+};
+
+static struct surface rscreen;
 static bool blink_on = true;
 static bool mode40;
 
@@ -135,9 +141,10 @@ static inline uint8_t screendata(uint8_t y, uint8_t x)
 /*
  * Prepare screen for modification
  */
-static void lock_screen(void)
+static void lock_screen(struct surface *s)
 {
-  SDL_LockSurface(rscreen);
+    if (s->lock_count++ == 0)
+	SDL_LockSurface(s->surf);
 }
 
 /*
@@ -146,10 +153,9 @@ static void lock_screen(void)
  * yet...
  */
 
-/* This keeps track of the rectangle we need to update */
-static unsigned int upd_x0, upd_y0, upd_x1, upd_y1;
 
-static void put_screen(unsigned int tx, unsigned int ty)
+static void
+put_screen(struct surface *s, unsigned int tx, unsigned int ty, bool blink)
 {
   const unsigned char *fontp;
   unsigned int voffs;
@@ -158,7 +164,7 @@ static void put_screen(unsigned int tx, unsigned int ty)
   unsigned int x, xx, y, yy, gx;
   uint32_t curmask;
   unsigned char gmode, fg, bg;
-  unsigned char cc, invmask = inverse_mask;
+  unsigned char cc, invmask;
   unsigned int xdup = FONT_XDUP << mode40;
 
   if (tx >= (unsigned int)(TS_WIDTH >> mode40) ||
@@ -180,31 +186,26 @@ static void put_screen(unsigned int tx, unsigned int ty)
   voffs = screenoffs(ty,tx);
   cc = video_ram[voffs & VRAM_MASK];
   fontp = abc_font[(cc & 0x7f) + gmode];
+  invmask = (blink || model != MODEL_ABC80) ? 0x80 : 0;
+  invmask = (cc & invmask) ? 7 : 0;
+  bg ^= invmask;
+  fg ^= invmask;
 
-  if ( cc & invmask ) {
-    bgp = colors[bg ^ 7];
-    fgp = colors[fg ^ 7];
-  } else {
-    bgp = colors[bg];
-    fgp = colors[fg];
-  }
+  bgp = s->colors[bg];
+  fgp = s->colors[fg];
 
-  if (tx < upd_x0)
-    upd_x0 = tx;
-  if (tx > upd_x1)
-    upd_x1 = tx;
-  if (ty < upd_y0)
-    upd_y0 = ty;
-  if (ty > upd_y1)
-    upd_y1 = ty;
+  if (tx < s->upd_x0) s->upd_x0 = tx;
+  if (tx > s->upd_x1) s->upd_x1 = tx;
+  if (ty < s->upd_y0) s->upd_y0 = ty;
+  if (ty > s->upd_y1) s->upd_y1 = ty;
 
-  pixelp = ((uint32_t *) rscreen->pixels) +
+  pixelp = ((uint32_t *) s->surf->pixels) +
     ty*PX_WIDTH*FONT_YSIZE*FONT_YDUP +
     ((tx*FONT_XSIZE*FONT_XDUP) << mode40);
 
   curmask = 0;
-  if (voffs == curaddr) {
-    if (blink_on | (crtc.r.curstart & 0x40)) {
+  if (unlikely(voffs == curaddr)) {
+    if (blink | (crtc.r.curstart & 0x40)) {
       curmask = (~0U << (crtc.r.curstart & 0x1f));
       curmask &= (2U << (crtc.r.curend & 0x1f))-1;
     }
@@ -232,38 +233,46 @@ static void put_screen(unsigned int tx, unsigned int ty)
 /*
  * Refresh rectangle and unlock screen
  */
-static void update_screen(void)
+static void update_screen(struct surface *s)
 {
-  SDL_UnlockSurface(rscreen);
-
-  if (upd_x0 == UINT_MAX)
+  if (--s->lock_count > 0)
     return;
 
-  if (rscreen->flags & SDL_DOUBLEBUF)
-    SDL_Flip(rscreen);
-  else
-    SDL_UpdateRect(rscreen, (upd_x0*FONT_XSIZE*FONT_XDUP) << mode40,
-		   upd_y0*FONT_YSIZE*FONT_YDUP,
-		   ((upd_x1-upd_x0+1)*FONT_XSIZE*FONT_XDUP) << mode40,
-		   (upd_y1-upd_y0+1)*FONT_YSIZE*FONT_YDUP);
+  SDL_UnlockSurface(s->surf);
 
-  upd_x0 = upd_y0 = UINT_MAX;
-  upd_x1 = upd_y1 = 0;
+  if (s->upd_x0 == UINT_MAX)
+    return;
+
+  if (s->surf->flags & SDL_DOUBLEBUF)
+    SDL_Flip(s->surf);
+  else
+    SDL_UpdateRect(s->surf,
+		   (s->upd_x0*FONT_XSIZE*FONT_XDUP) << mode40,
+		   s->upd_y0*FONT_YSIZE*FONT_YDUP,
+		   ((s->upd_x1-s->upd_x0+1)*FONT_XSIZE*FONT_XDUP) << mode40,
+		   (s->upd_y1-s->upd_y0+1)*FONT_YSIZE*FONT_YDUP);
+
+  s->upd_x0 = s->upd_y0 = UINT_MAX;
+  s->upd_x1 = s->upd_y1 = 0;
 }
 
-/* Refresh the entire screen */
-static void refresh_screen(void)
+/* Refresh the entire screen or recreate the screen on another surface */
+static void refresh_screen(struct surface *s, bool blink)
 {
   unsigned int x, y;
   unsigned int width = TS_WIDTH >> mode40;
 
-  lock_screen();
+  s->upd_x0 = s->upd_y0 = 0;
+  s->upd_x1 = width-1;
+  s->upd_y1 = TS_HEIGHT-1;
+
+  lock_screen(s);
 
   for (y = 0; y < TS_HEIGHT; y++)
     for (x = 0; x < width; x++)
-      put_screen(x, y);
+      put_screen(s, x, y, blink);
 
-  update_screen();
+  update_screen(s);
 }
 
 /*
@@ -285,24 +294,24 @@ void write_screen(uint8_t *p, uint8_t v)
   if ( xy.y >= TS_HEIGHT )
     return;			/* Nothing to do */
 
-  lock_screen();
+  lock_screen(&rscreen);
 
-  put_screen(xy.x,xy.y);
+  put_screen(&rscreen, xy.x, xy.y, blink_on);
 
   if ( (oldv & 0x68) == 0 || (v & 0x68) == 0 ) {
     /* Graphics control character change */
     for ( ; xy.x < width ; xy.x++ )
-      put_screen(xy.x,xy.y);
+      put_screen(&rscreen, xy.x, xy.y, blink_on);
   }
 
-  update_screen();
+  update_screen(&rscreen);
 }
 
 static void do_set_mode40(bool m)
 {
   mode40 = m;
 
-  refresh_screen();
+  refresh_screen(&rscreen, blink_on);
   if (model == MODEL_ABC80)
     abc80_mem_mode40(m);
 }
@@ -329,16 +338,14 @@ static bool set_blink(bool to_what)
 
   blink_on = to_what;
 
-  SDL_LockSurface(rscreen);
+  lock_screen(&rscreen);
 
   switch (model) {
   case MODEL_ABC80:
-    inverse_mask = blink_on << 7;
-
     for ( y = 0 ; y < TS_HEIGHT ; y++ ) {
       for ( x = 0 ; x < width ; x++ ) {
 	if ( screendata(y,x) & 0x80 )
-	  put_screen(x,y);
+	  put_screen(&rscreen, x, y, blink_on);
       }
     }
     break;
@@ -346,14 +353,58 @@ static bool set_blink(bool to_what)
   case MODEL_ABC802:
     if (!(crtc.r.curstart & 0x40)) {
       xy = addr_to_xy(curaddr + video_ram);
-      put_screen(xy.x, xy.y);
+      put_screen(&rscreen, xy.x, xy.y, blink_on);
     }
     break;
   }
 
-  update_screen();
+  update_screen(&rscreen);
 
   return !to_what;		/* We just flipped it... */
+}
+
+/*
+ * Wrap an SDL_Surface in our local stuff
+ */
+static struct surface *init_surface(struct surface *s)
+{
+  int i;
+
+  if (unlikely(!s || !s->surf))
+    return NULL;
+
+  /* The whole surface is dirty right now */
+  s->upd_x0 = s->upd_y0 = 0;
+  s->upd_x1 = (TS_WIDTH-1) >> mode40;
+  s->upd_y1 = TS_HEIGHT-1;
+
+  /* Convert colors to preferred machine representation */
+  for ( i = 0 ; i < NCOLORS ; i++ ) {
+    s->colors[i] = SDL_MapRGB(s->surf->format,
+			      rgbcolors[i].r, rgbcolors[i].g, rgbcolors[i].b);
+  }
+
+  /* Surface is not locked */
+  s->lock_count = 0;
+
+  return s;
+}
+
+/*
+ * Screenshot setup
+ */
+static void abc_screenshot(void)
+{
+  struct surface s;
+
+  s.surf = SDL_CreateRGBSurface(SDL_SWSURFACE, PX_WIDTH, PX_HEIGHT, 32,
+				0x00ff0000, 0x0000ff00, 0x000000ff, 0);
+  if (!init_surface(&s))
+    return;
+  refresh_screen(&s, true);	/* Always snapshot with blink on */
+  screenshot(s.surf);
+
+  SDL_FreeSurface(s.surf);
 }
 
 /*
@@ -371,22 +422,15 @@ void screen_init(bool width40)
 
   atexit(SDL_Quit);
 
-  rscreen = SDL_SetVideoMode(PX_WIDTH, PX_HEIGHT, 32,
+  rscreen.surf = SDL_SetVideoMode(PX_WIDTH, PX_HEIGHT, 32,
 			     SDL_HWSURFACE | SDL_DOUBLEBUF |
 			     (window ? 0 : SDL_FULLSCREEN));
-
-  if (!rscreen)
+  if (!init_surface(&rscreen))
     return;
 
   /* No mouse cursor, please */
   if ( !window )
     SDL_ShowCursor(SDL_DISABLE);
-
-  /* Convert colors to preferred machine representation */
-  for ( i = 0 ; i < NCOLORS ; i++ ) {
-    colors[i] = SDL_MapRGB(rscreen->format,
-			   rgbcolors[i].r, rgbcolors[i].g, rgbcolors[i].b);
-  }
 
   /* Initialize CRTC values to something sensible (also applies for ABC80) */
   memset(&crtc, 0, sizeof crtc);
@@ -462,12 +506,7 @@ void check_event(void)
 	  exit(0);
 
 	case SDLK_s:
-	  {
-	    /* Always screenshot with anything blinking turned on */
-	    bool old_blink = set_blink(true);
-	    screenshot(rscreen);
-	    set_blink(old_blink);
-	  }
+	  abc_screenshot();
 	  break;
 
 	case SDLK_r:
@@ -639,9 +678,9 @@ void crtc_out(uint8_t port, uint8_t data)
   crtc.regs[crtc_addr] = data;
 
   startaddr = ((crtc.r.starth & 0x3f) << 8) + crtc.r.startl;
-  curaddr   = ((crtc.r.curh & 0x3f) << 8) + crtc.r.curl;
+  curaddr   = ((crtc.r.curh & 0x3f) << 8)   + crtc.r.curl;
 
-  refresh_screen();
+  refresh_screen(&rscreen, blink_on);
 }
 
 uint8_t crtc_in(uint8_t port)
