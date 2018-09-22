@@ -239,10 +239,13 @@ static void update_screen(void)
   if (upd_x0 == UINT_MAX)
     return;
 
-  SDL_UpdateRect(rscreen, (upd_x0*FONT_XSIZE*FONT_XDUP) << mode40,
-		 upd_y0*FONT_YSIZE*FONT_YDUP,
-		 ((upd_x1-upd_x0+1)*FONT_XSIZE*FONT_XDUP) << mode40,
-		 (upd_y1-upd_y0+1)*FONT_YSIZE*FONT_YDUP);
+  if (rscreen->flags & SDL_DOUBLEBUF)
+    SDL_Flip(rscreen);
+  else
+    SDL_UpdateRect(rscreen, (upd_x0*FONT_XSIZE*FONT_XDUP) << mode40,
+		   upd_y0*FONT_YSIZE*FONT_YDUP,
+		   ((upd_x1-upd_x0+1)*FONT_XSIZE*FONT_XDUP) << mode40,
+		   (upd_y1-upd_y0+1)*FONT_YSIZE*FONT_YDUP);
 
   upd_x0 = upd_y0 = UINT_MAX;
   upd_x1 = upd_y1 = 0;
@@ -368,10 +371,12 @@ void screen_init(bool width40)
 
   atexit(SDL_Quit);
 
-  if ( !(rscreen = SDL_SetVideoMode(PX_WIDTH, PX_HEIGHT, 32,
-		SDL_SWSURFACE | (window ? 0 : SDL_FULLSCREEN))) ) {
+  rscreen = SDL_SetVideoMode(PX_WIDTH, PX_HEIGHT, 32,
+			     SDL_HWSURFACE | SDL_DOUBLEBUF |
+			     (window ? 0 : SDL_FULLSCREEN));
+
+  if (!rscreen)
     return;
-  }
 
   /* No mouse cursor, please */
   if ( !window )
