@@ -31,19 +31,20 @@ static int sort_by_pixel(const void *vp1, const void *vp2)
     return -(pix1 < pix2) | (pix1 > pix2);
 }
 
-static inline void get_pixels(SDL_Surface *surf, struct sort_pixel *ppp)
+static inline bool get_pixels(SDL_Surface *surf, struct sort_pixel *ppp)
 {
     uint8_t *pvp;
     int x, y;
     uint32_t pos = 0;
     const size_t bytes = surf->format->BytesPerPixel;
+    Uint32 andbits = -1;
 
     switch (bytes) {
     case 1:
 	for (y = 0; y < surf->h; y++) {
 	    pvp = pixel_row(surf, y);
 	    for (x = 0; x < surf->w; x++) {
-		ppp->pix = *(uint8_t *)pvp;
+		andbits &= ppp->pix = *(uint8_t *)pvp;
 		pvp += bytes;
 		ppp->pos = pos++;
 		ppp++;
@@ -54,7 +55,7 @@ static inline void get_pixels(SDL_Surface *surf, struct sort_pixel *ppp)
 	for (y = 0; y < surf->h; y++) {
 	    pvp = pixel_row(surf, y);
 	    for (x = 0; x < surf->w; x++) {
-		ppp->pix = *(uint16_t *)pvp;
+		andbits &= ppp->pix = *(uint16_t *)pvp;
 		pvp += bytes;
 		ppp->pos = pos++;
 		ppp++;
@@ -66,9 +67,9 @@ static inline void get_pixels(SDL_Surface *surf, struct sort_pixel *ppp)
 	    pvp = pixel_row(surf, y);
 	    for (x = 0; x < surf->w; x++) {
 #if SDL_BYTEORDER == SDL_LIL_ENDIAN
-		ppp->pix = pvp[0] | (pvp[1] << 8) | (pvp[2] << 16);
+		andbits &= ppp->pix = pvp[0] | (pvp[1] << 8) | (pvp[2] << 16);
 #else
-		ppp->pix = pvp[2] | (pvp[1] << 8) | (pvp[0] << 16);
+		andbits &= ppp->pix = pvp[2] | (pvp[1] << 8) | (pvp[0] << 16);
 #endif
 		pvp += bytes;
 		ppp->pos = pos++;
@@ -81,7 +82,7 @@ static inline void get_pixels(SDL_Surface *surf, struct sort_pixel *ppp)
 	for (y = 0; y < surf->h; y++) {
 	    pvp = pixel_row(surf, y);
 	    for (x = 0; x < surf->w; x++) {
-		ppp->pix = *(uint32_t *)pvp;
+		andbits &= ppp->pix = *(uint32_t *)pvp;
 		pvp += bytes;
 		ppp->pos = pos++;
 		ppp++;
@@ -93,6 +94,9 @@ static inline void get_pixels(SDL_Surface *surf, struct sort_pixel *ppp)
 	abort();
 	break;
     }
+
+    /* Return true if we have a nontrivial alpha channel */
+    return (andbits & surf->format->Amask) != surf->format->Amask;
 }
 
 #define MAX_PALETTE 256
@@ -110,6 +114,7 @@ make_indexed(SDL_Surface *surf, uint8_t **data, png_color **palettep)
     bool surface_copy = false;		/* We copied the surface */
     uint8_t *iimg = NULL;		/* Actual indexed image */
     png_color *palette = NULL;
+    bool hasalpha = false;
 
     /* This is kind of an idiotic algorithm, but it works and is kind of fun */
 
@@ -128,7 +133,7 @@ make_indexed(SDL_Surface *surf, uint8_t **data, png_color **palettep)
 
     SDL_LockSurface(surf);
     fmt = surf->format;
-    get_pixels(surf, pixp);
+    hasalpha = get_pixels(surf, pixp);
     SDL_UnlockSurface(surf);
 
     /* 2. Sort by pixel value */
@@ -173,7 +178,7 @@ err:
 	free(iimg);
 	iimg = NULL;
     }
-    last_index = -1;		/* Return -1 */
+    last_index = hasalpha ? -2 : -1;
     goto common_exit;
 }
 
@@ -189,32 +194,64 @@ static void my_png_warning(png_structp png, png_const_charp warnmsg)
     (void)warnmsg;
 }
 
-/* This is the pixel format that PNG uses in 8-bit RGB mode */
-static const SDL_PixelFormat rgbfmt = {
-    NULL,			/* palette */
-    24,				/* bits per pixel */
-    3,				/* bytes per pixel */
-    0, 0, 0, 8,			/* precision loss (8 = all alpha lost) */
+/* This is the pixel format that PNG uses in 8-bit RGB and RGBA modes */
+static SDL_PixelFormat pngfmts[2] = {
+    {
+	/* RGB format */
+
+	NULL,			/* palette */
+	24,			/* bits per pixel */
+	3,			/* bytes per pixel */
+	0, 0, 0, 8,		/* precision loss (8 = all alpha lost) */
 #if SDL_BYTEORDER == SDL_LIL_ENDIAN
-    0,				/* Rshift */
+	0,			/* Rshift */
     8,				/* Gshift */
-    16,				/* Bshift */
-    0,				/* Ashift */
-    0x000000ff,			/* Rmask */
-    0x0000ff00,			/* Gmask */
-    0x00ff0000,			/* Bmask */
+	16,			/* Bshift */
+	0,			/* Ashift */
+	0x000000ff,		/* Rmask */
+	0x0000ff00,		/* Gmask */
+	0x00ff0000,		/* Bmask */
 #else
-    16,				/* Rshift */
-    8,				/* Gshift */
-    0,				/* Bshift */
-    0,				/* Ashift */
-    0x00ff0000,			/* Rmask */
-    0x0000ff00,			/* Gmask */
-    0x000000ff,			/* Bmask */
+	16,			/* Rshift */
+	8,			/* Gshift */
+	0,			/* Bshift */
+	0,			/* Ashift */
+	0x00ff0000,		/* Rmask */
+	0x0000ff00,		/* Gmask */
+	0x000000ff,		/* Bmask */
 #endif
-    0x00000000,			/* Amask */
-    0,				/* No actual color key */
-    255				/* Completely opaque */
+	0x00000000,		/* Amask */
+	0,			/* No actual color key */
+	255			/* Completely opaque */
+    }, {
+	/* RGBA format */
+
+	NULL,			/* palette */
+	32,			/* bits per pixel */
+	4,			/* bytes per pixel */
+	0, 0, 0, 0,		/* precision loss (none) */
+#if SDL_BYTEORDER == SDL_LIL_ENDIAN
+	0,			/* Rshift */
+	8,			/* Gshift */
+	16,			/* Bshift */
+	24,			/* Ashift */
+	0x000000ff,		/* Rmask */
+	0x0000ff00,		/* Gmask */
+	0x00ff0000,		/* Bmask */
+	0xff000000,		/* Amask */
+#else
+	24,			/* Rshift */
+	16,			/* Gshift */
+	8,			/* Bshift */
+	0,			/* Ashift */
+	0xff000000,		/* Rmask */
+	0x00ff0000,		/* Gmask */
+	0x0000ff00,		/* Bmask */
+	0x000000ff,		/* Amask */
+#endif
+	0,			/* No actual color key */
+	255			/* Completely opaque */
+    }
 };
 
 /*
@@ -240,8 +277,8 @@ static int do_screenshot(SDL_Surface *surf, struct allocable *a)
     int npalette, depth;
     time_t now;
     png_time png_now;
-    SDL_PixelFormat fmt;
     png_bytepp rowptr;
+    int color_type;
 
     /* Get current time for timestamp */
     time(&now);
@@ -255,6 +292,7 @@ static int do_screenshot(SDL_Surface *surf, struct allocable *a)
     /* First, try an indexed image */
     npalette = make_indexed(surf, &a->img, &a->palette);
     if (npalette > 0) {
+	color_type = PNG_COLOR_TYPE_PALETTE;
 	if (npalette <= 2)
 	    depth = 1;
 	else if (npalette <= 4)
@@ -267,11 +305,14 @@ static int do_screenshot(SDL_Surface *surf, struct allocable *a)
 	bytes_per_row = surf->w;
 	row = a->img;
     } else {
-	/* Otherwise create an RGB image */
-	fmt = rgbfmt; /* Is this really needed? */
+	bool is_rgba = npalette == -2;
+	SDL_PixelFormat fmt = pngfmts[is_rgba];
+	color_type = is_rgba ? PNG_COLOR_TYPE_RGBA : PNG_COLOR_TYPE_RGB;
+
 	a->rgbsurf = SDL_ConvertSurface(surf, &fmt, SDL_SWSURFACE);
 	if (!a->rgbsurf)
 	    return -1;
+
 	SDL_LockSurface(a->rgbsurf);
 	depth = 8;
 	bytes_per_row = a->rgbsurf->pitch;
@@ -305,8 +346,7 @@ static int do_screenshot(SDL_Surface *surf, struct allocable *a)
     png_init_io(a->png, a->hf->f);
 
     /* IHDR configuration */
-    png_set_IHDR(a->png, a->png_info, surf->w, surf->h, depth,
-		 (npalette > 0) ? PNG_COLOR_TYPE_PALETTE : PNG_COLOR_TYPE_RGB,
+    png_set_IHDR(a->png, a->png_info, surf->w, surf->h, depth, color_type,
 		 PNG_INTERLACE_NONE, PNG_COMPRESSION_TYPE_DEFAULT,
 		 PNG_FILTER_TYPE_DEFAULT);
 
