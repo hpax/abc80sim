@@ -96,7 +96,8 @@ static inline bool get_pixels(SDL_Surface *surf, struct sort_pixel *ppp)
     }
 
     /* Return true if we have a nontrivial alpha channel */
-    return (andbits & surf->format->Amask) != surf->format->Amask;
+    return !surf->format->palette &&
+	(andbits & surf->format->Amask) != surf->format->Amask;
 }
 
 #define MAX_PALETTE 256
