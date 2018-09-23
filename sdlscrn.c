@@ -147,6 +147,12 @@ static void lock_screen(struct surface *s)
 	SDL_LockSurface(s->surf);
 }
 
+static void unlock_screen(struct surface *s)
+{
+  if (--s->lock_count == 0)
+    SDL_UnlockSurface(s->surf);
+}
+
 /*
  * Update the on-screen structure to match the screendata[]
  * for character (tx,ty), but don't refresh the rectangle just
@@ -231,14 +237,12 @@ put_screen(struct surface *s, unsigned int tx, unsigned int ty, bool blink)
 }
 
 /*
- * Refresh rectangle and unlock screen
+ * Actually update the screen or another surface
  */
 static void update_screen(struct surface *s)
 {
-  if (--s->lock_count > 0)
+  if (s->lock_count)
     return;
-
-  SDL_UnlockSurface(s->surf);
 
   if (s->upd_x0 == UINT_MAX)
     return;
@@ -262,8 +266,9 @@ static void refresh_screen(struct surface *s, bool blink)
   unsigned int x, y;
   unsigned int width = TS_WIDTH >> mode40;
 
+  /* Mark the whole screen, but only the screen(!), as dirty */
   s->upd_x0 = s->upd_y0 = 0;
-  s->upd_x1 = width-1;
+  s->upd_x1 = (TS_WIDTH-1) >> mode40;
   s->upd_y1 = TS_HEIGHT-1;
 
   lock_screen(s);
@@ -272,7 +277,7 @@ static void refresh_screen(struct surface *s, bool blink)
     for (x = 0; x < width; x++)
       put_screen(s, x, y, blink);
 
-  update_screen(s);
+  unlock_screen(s);
 }
 
 /*
@@ -304,7 +309,7 @@ void write_screen(uint8_t *p, uint8_t v)
       put_screen(&rscreen, xy.x, xy.y, blink_on);
   }
 
-  update_screen(&rscreen);
+  unlock_screen(&rscreen);
 }
 
 static void do_set_mode40(bool m)
@@ -358,9 +363,23 @@ static bool set_blink(bool to_what)
     break;
   }
 
-  update_screen(&rscreen);
+  unlock_screen(&rscreen);
 
   return !to_what;		/* We just flipped it... */
+}
+
+/* Called from the timer that corresponds to the simulated vsync */
+void vsync_screen(void)
+{
+  const int blink_rate = 400/20; /* 400 ms/20 ms = 2.5 Hz */
+  static int blink_ctr;
+
+  if (!blink_ctr--) {
+    set_blink(!blink_on);
+    blink_ctr += blink_rate;
+  }
+
+  update_screen(&rscreen);
 }
 
 /*
@@ -402,6 +421,7 @@ static void abc_screenshot(void)
   if (!init_surface(&s))
     return;
   refresh_screen(&s, true);	/* Always snapshot with blink on */
+  update_screen(&s);
   screenshot(s.surf);
 
   SDL_FreeSurface(s.surf);
@@ -487,7 +507,7 @@ void check_event(void)
     KSH_ALT   = 4
   } kshift;
 
-  set_blink(timer_poll());	/* Poll timer, change blink if needed */
+  timer_poll();
 
   while ( SDL_PollEvent(&event) ) {
     switch ( event.type ) {

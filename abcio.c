@@ -3,6 +3,7 @@
 #include "z80.h"
 #include "screen.h"
 #include "abcio.h"
+#include "clock.h"
 
 #define READ_MODE   0
 #define WRITE_MODE  1
@@ -105,6 +106,7 @@ static void abc80_out(uint8_t port, uint8_t value)
 static bool vsync;
 void abc802_vsync(void)
 {
+  vsync_screen();
   vsync = true;
 }
 

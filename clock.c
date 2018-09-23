@@ -14,7 +14,7 @@ struct abctimer {
   uint64_t last;
   uint64_t period;
 };
-static struct abctimer clock_timer, vsync_timer, blink_timer;
+static struct abctimer clock_timer, vsync_timer;
 static void (*clock_tick)(void);
 
 void timer_init(void)
@@ -31,8 +31,7 @@ void timer_init(void)
     break;
   }
 
-  blink_timer.period = 400000000; /* 400 ms = 2.5 Hz */
-  clock_timer.last = blink_timer.last = vsync_timer.last = nstime();
+  clock_timer.last = vsync_timer.last = nstime();
 }
 
 static inline bool trigger(uint64_t now, struct abctimer *tmr)
@@ -50,10 +49,8 @@ static inline bool trigger(uint64_t now, struct abctimer *tmr)
   return true;
 }
 
-/* This returns the desired blink status */
-bool timer_poll(void)
+void timer_poll(void)
 {
-  static bool blink = true;
   uint64_t now = nstime();
 
   if (trigger(now, &clock_timer))
@@ -61,11 +58,6 @@ bool timer_poll(void)
 
   if (trigger(now, &vsync_timer))
     abc802_vsync();
-
-  if (trigger(now, &blink_timer))
-    blink = !blink;
-
-  return blink;
 }
 
 /*
@@ -73,6 +65,7 @@ bool timer_poll(void)
  */
 static void abc80_clock_tick(void)
 {
+  vsync_screen();		/* Also vertical retrace */
   z80_nmi();
 }
 
