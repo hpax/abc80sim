@@ -31,23 +31,69 @@ static int sort_by_pixel(const void *vp1, const void *vp2)
     return -(pix1 < pix2) | (pix1 > pix2);
 }
 
-/* 32-bit pixel format; the exact aspects of which are arbitrary */
-static const SDL_PixelFormat argbfmt = {
-    NULL,			/* palette */
-    32,				/* bits per pixel */
-    4,				/* bytes per pixel */
-    0, 0, 0, 0,			/* precision loss (8 = all alpha lost) */
-    16,				/* Rshift */
-    8,				/* Gshift */
-    0,				/* Bshift */
-    24,				/* Ashift */
-    0x00ff0000,			/* Rmask */
-    0x0000ff00,			/* Gmask */
-    0x000000ff,			/* Bmask */
-    0xff000000,			/* Amask */
-    0,				/* No actual color key */
-    255				/* Completely opaque */
-};
+static inline void get_pixels(SDL_Surface *surf, struct sort_pixel *ppp)
+{
+    uint8_t *pvp;
+    int x, y;
+    uint32_t pos = 0;
+    const size_t bytes = surf->format->BytesPerPixel;
+
+    switch (bytes) {
+    case 1:
+	for (y = 0; y < surf->h; y++) {
+	    pvp = pixel_row(surf, y);
+	    for (x = 0; x < surf->w; x++) {
+		ppp->pix = *(uint8_t *)pvp;
+		pvp += bytes;
+		ppp->pos = pos++;
+		ppp++;
+	    }
+	}
+	break;
+    case 2:
+	for (y = 0; y < surf->h; y++) {
+	    pvp = pixel_row(surf, y);
+	    for (x = 0; x < surf->w; x++) {
+		ppp->pix = *(uint16_t *)pvp;
+		pvp += bytes;
+		ppp->pos = pos++;
+		ppp++;
+	    }
+	}
+	break;
+    case 3:
+	for (y = 0; y < surf->h; y++) {
+	    pvp = pixel_row(surf, y);
+	    for (x = 0; x < surf->w; x++) {
+#if SDL_BYTEORDER == SDL_LIL_ENDIAN
+		ppp->pix = pvp[0] | (pvp[1] << 8) | (pvp[2] << 16);
+#else
+		ppp->pix = pvp[2] | (pvp[1] << 8) | (pvp[0] << 16);
+#endif
+		pvp += bytes;
+		ppp->pos = pos++;
+		ppp++;
+	    }
+	}
+	break;
+
+    case 4:
+	for (y = 0; y < surf->h; y++) {
+	    pvp = pixel_row(surf, y);
+	    for (x = 0; x < surf->w; x++) {
+		ppp->pix = *(uint32_t *)pvp;
+		pvp += bytes;
+		ppp->pos = pos++;
+		ppp++;
+	    }
+	}
+	break;
+
+    default:
+	abort();
+	break;
+    }
+}
 
 #define MAX_PALETTE 256
 /* Returns the number of indicies, or -1 on failure */
@@ -56,29 +102,16 @@ make_indexed(SDL_Surface *surf, uint8_t **data, png_color **palettep)
 {
     struct sort_pixel *pixp = NULL;	/* Pixel pointers */
     struct sort_pixel *ppp;		/* Pixel pointer pointer */
-    const uint32_t *pvp;		/* Pixel value pointer */
-    uint32_t pos;			/* Current position index */
     size_t np;				/* Total number of pixels */
     size_t i;
-    int x, y;
     int last_index;			/* Last allocated index */
     uint32_t last_pixel;		/* Last equivalent pixel */
     SDL_PixelFormat *fmt;		/* Cached for speed */
-    SDL_PixelFormat cfmt;
     bool surface_copy = false;		/* We copied the surface */
     uint8_t *iimg = NULL;		/* Actual indexed image */
     png_color *palette = NULL;
 
     /* This is kind of an idiotic algorithm, but it works and is kind of fun */
-
-    /* If this not a 32-bit surface, make it one */
-    if (surf->format->BytesPerPixel != 4) {
-      cfmt = argbfmt;
-      surface_copy = true;	/* We created a new surface, need to free it */
-      surf = SDL_ConvertSurface(surf, &cfmt, SDL_SWSURFACE);
-      if (!surf)
-	goto err;
-    }
 
     /* 1. Allocate arrays and initialize the position array */
     np = surf->w * surf->h;	/* Total pixels */
@@ -94,23 +127,14 @@ make_indexed(SDL_Surface *surf, uint8_t **data, png_color **palettep)
 	goto err;
 
     SDL_LockSurface(surf);
-    ppp = pixp;
-    pos = 0;
-    for (y = 0; y < surf->h; y++) {
-	pvp = pixel_row(surf, y);
-	for (x = 0; x < surf->w; x++) {
-	    ppp->pix = *pvp++;
-	    ppp->pos = pos++;
-	    ppp++;
-	}
-    }
+    fmt = surf->format;
+    get_pixels(surf, pixp);
     SDL_UnlockSurface(surf);
 
     /* 2. Sort by pixel value */
     qsort(pixp, np, sizeof *pixp, sort_by_pixel);
 
     /* 3. Create palette and index values */
-    fmt = surf->format;
     ppp = pixp;
     last_pixel = ~ppp->pix;	/* Make sure we don't match on the first */
     last_index = -1;
