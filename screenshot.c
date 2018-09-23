@@ -103,7 +103,8 @@ static inline bool get_pixels(SDL_Surface *surf, struct sort_pixel *ppp)
 #define MAX_PALETTE 256
 /* Returns the number of indicies, or -1 on failure */
 static int
-make_indexed(SDL_Surface *surf, uint8_t **data, png_color **palettep)
+make_indexed(SDL_Surface *surf, uint8_t **data, png_color **palettep,
+    uint8_t **apalettep)
 {
     struct sort_pixel *pixp = NULL;	/* Pixel pointers */
     struct sort_pixel *ppp;		/* Pixel pointer pointer */
@@ -114,7 +115,8 @@ make_indexed(SDL_Surface *surf, uint8_t **data, png_color **palettep)
     SDL_PixelFormat *fmt;		/* Cached for speed */
     bool surface_copy = false;		/* We copied the surface */
     uint8_t *iimg = NULL;		/* Actual indexed image */
-    png_color *palette = NULL;
+    png_color *palette = NULL;		/* Primary palette */
+    uint8_t *apalette;			/* Alpha palette */
     bool hasalpha = false;
 
     /* This is kind of an idiotic algorithm, but it works and is kind of fun */
@@ -128,7 +130,7 @@ make_indexed(SDL_Surface *surf, uint8_t **data, png_color **palettep)
     pixp = malloc(np * sizeof *pixp);
     if (!pixp)
 	goto err;
-    palette = calloc(MAX_PALETTE, sizeof *palette);
+    palette = calloc(MAX_PALETTE, (sizeof *palette + sizeof *apalette));
     if (!palette)
 	goto err;
 
@@ -144,16 +146,20 @@ make_indexed(SDL_Surface *surf, uint8_t **data, png_color **palettep)
     ppp = pixp;
     last_pixel = ~ppp->pix;	/* Make sure we don't match on the first */
     last_index = -1;
+    apalette = (uint8_t *)&palette[MAX_PALETTE];
     for (i = 0; i < np; i++) {
 	if (ppp->pix != last_pixel) {
 	    last_pixel = ppp->pix;
 	    last_index++;
 	    if (last_index >= MAX_PALETTE)
 		goto err;
-	    SDL_GetRGB(last_pixel, fmt,
-		       &palette[last_index].red,
-		       &palette[last_index].green,
-		       &palette[last_index].blue);
+	    SDL_GetRGBA(last_pixel, fmt,
+			&palette[last_index].red,
+			&palette[last_index].green,
+			&palette[last_index].blue,
+			&apalette[last_index]);
+
+	    hasalpha |= apalette[last_index] != 0xff;
 	}
 	iimg[ppp->pos] = last_index;
 	ppp++;
@@ -164,6 +170,7 @@ make_indexed(SDL_Surface *surf, uint8_t **data, png_color **palettep)
 common_exit:
     *data = iimg;
     *palettep = palette;
+    *apalettep = hasalpha ? apalette : NULL;
     if (pixp)
 	free(pixp);
     if (surface_copy && surf)
@@ -265,6 +272,7 @@ struct allocable {
     SDL_Surface *rgbsurf;	/* RGB converted surface */
     png_bytepp rowptrs;		/* Array of row pointers */
     png_color *palette;		/* Palette data */
+    uint8_t *apalette;		/* Alpha palette data (does not need freeing) */
     png_structp png;		/* PNG write structure */
     png_infop png_info;		/* PNG info structure */
     struct host_file *hf;	/* Host file structure */
@@ -291,7 +299,7 @@ static int do_screenshot(SDL_Surface *surf, struct allocable *a)
 	return -1;
 
     /* First, try an indexed image */
-    npalette = make_indexed(surf, &a->img, &a->palette);
+    npalette = make_indexed(surf, &a->img, &a->palette, &a->apalette);
     if (npalette > 0) {
 	color_type = PNG_COLOR_TYPE_PALETTE;
 	if (npalette <= 2)
@@ -356,8 +364,19 @@ static int do_screenshot(SDL_Surface *surf, struct allocable *a)
     png_set_compression_level(a->png, Z_BEST_COMPRESSION);
     png_set_compression_strategy(a->png, Z_FILTERED);
 
-    if (npalette > 0)
+    if (npalette > 0) {
 	png_set_PLTE(a->png, a->png_info, a->palette, npalette);
+	if (a->apalette) {
+	    int napalette = npalette;
+	    while (napalette > 0) {
+		if (a->apalette[napalette-1] < 0xff)
+		    break;
+		napalette--;
+	    }
+	    if (napalette)
+		png_set_tRNS(a->png, a->png_info, a->apalette, napalette, NULL);
+	}
+    }
 
     png_set_rows(a->png, a->png_info, a->rowptrs);
 
