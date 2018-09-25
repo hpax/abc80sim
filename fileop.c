@@ -490,7 +490,7 @@ static inline uint64_t get_qword(const argbuf *v)
 #ifdef WORDS_LITTLEENDIAN
   return v->q;
 #else
-  return v.b[0] +
+  return v->b[0] +
     ((uint64_t)v->b[1] << 8) +
     ((uint64_t)v->b[2] << 16) +
     ((uint64_t)v->b[3] << 24) +
