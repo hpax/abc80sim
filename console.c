@@ -6,28 +6,46 @@
 
 #include "console.h"
 
-#if defined(HAVE_ATTACHCONSOLE) || !defined(HAVE_DAEMON)
+#ifndef O_TEXT
+# define O_TEXT 0
+#endif
 
-static int redirect_stdio(const char *from, const char *to)
+static int redirect_stdio(const char *to)
 {
-    bool err = false;
+    int err = 0;
+    int infd, outfd;
 
     fflush(NULL);
 
-    if (!freopen(from, "r+t", stdin))
-	err = !freopen(from, "r+t", stdin);
+    infd = open(to, O_RDWR|O_TEXT);
+    if (infd >= 0) {
+	outfd = infd;
+    } else {
+	infd = open(to, O_RDONLY|O_TEXT);
+	outfd = open(to, O_WRONLY|O_TEXT);
+    }
 
-    if (!freopen(to, "w+t", stdout))
-	err |= !freopen(to, "wt", stdout);
+    if (infd < 0) {
+	err = -1;
+    } else {
+	dup2(infd, STDIN_FILENO);
+    }
 
-    if (!freopen(to, "w+t", stderr))
-	err |= !freopen(to, "wt", stderr);
-    setvbuf(stderr, NULL, _IONBF, 0);
+    if (outfd < 0) {
+	err = -1;
+    } else {
+	dup2(outfd, STDOUT_FILENO);
+	dup2(outfd, STDERR_FILENO);
+    }
 
-    return -err;
+    if (infd > STDERR_FILENO)
+	close(infd);
+
+    if (outfd != infd && outfd > STDERR_FILENO)
+	close(outfd);
+
+    return err;
 }
-
-#endif
 
 #ifdef HAVE_ATTACHCONSOLE
 
@@ -48,8 +66,8 @@ void attach_console(void)
 
 void detach_console(void)
 {
-    redirect_stdio("\\Device\\Null", "\\Device\\Null");
-    FreeConsole();
+    redirect_stdio("\\Device\\Null");
+    console();
 }
 
 #else
@@ -59,22 +77,13 @@ void attach_console(void)
     /* Do nothing */
 }
 
-# ifdef HAVE_DAEMON
+# ifndef _PATH_DEVNULL
+#  define _PATH_DEVNULL "/dev/null"
+# endif
 
-void detach_console(void)
-{
-    daemon(true, false);
-}
-
-# elif defined(HAVE_FORK) || defined(HAVE_VFORK)
-
-#  ifndef _PATH_DEVNULL
-#   define _PATH_DEVNULL "/dev/null"
-#  endif
-
-#  ifndef HAVE_SETSID
-#   define setsid() ((void)0)
-#  endif
+# ifndef HAVE_SETSID
+#  define setsid() ((void)0)
+# endif
 
 void detach_console(void)
 {
@@ -82,7 +91,7 @@ void detach_console(void)
 
     redirect_stdio(_PATH_DEVNULL);
 
-    pid = vfork();
+    pid = fork();
 
     if (pid < 0)
 	return;
@@ -92,5 +101,4 @@ void detach_console(void)
     setsid();
 }
 
-# endif
 #endif

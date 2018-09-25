@@ -348,12 +348,12 @@ int main(int argc, char **argv)
 	}
     }
 
+    if (detach)
+	detach_console();
+
     hostfile_init();
 
     screen_init(width40);
-
-    if (detach)
-	detach_console();
 
     mem_init(memflags, memfile);
     io_init();
