@@ -110,7 +110,7 @@ void abcprint_init(void)
   is = is_normal;
 }
 
-void abcprint(const void *data, size_t len)
+void abcprint_recv(const void *data, size_t len)
 {
   const unsigned char *dp = data;
   unsigned char c;

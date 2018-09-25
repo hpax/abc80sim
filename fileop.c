@@ -1,46 +1,9 @@
 #include "abcprintd.h"
-#include "abcio.h"
 #include "hostfile.h"
 
 const char *fileop_path = "abcdir";
 
 #define BUF_SIZE 512
-
-static unsigned char output_buf[BUF_SIZE];
-static int output_head, output_tail;
-
-int abcprint_read(void)
-{
-  int c;
-
-  if (output_head == output_tail) {
-    return -1;
-  } else {
-    c = output_buf[output_head];
-    output_head = (output_head + 1) % BUF_SIZE;
-    return c;
-  }
-}
-
-int abcprint_poll(void)
-{
-  return output_head != output_tail;
-}
-
-static void output_bytes(const void *buf, size_t count)
-{
-  const unsigned char *bp = buf;
-
-  while (count--) {
-    int nt = (output_tail + 1) % BUF_SIZE;
-
-    if (nt == output_head)
-      return;			/* Output buffer full - data lost */
-
-    output_buf[output_tail] = *bp++;
-    output_tail = nt;
-  }
-}
 
 static enum {
   st_op,
@@ -62,7 +25,7 @@ static void send_reply(int status)
   reply[2] = cmd[1];
   reply[3] = status;
 
-  output_bytes(reply, 4);
+  abcprint_send(reply, 4);
 }
 
 /* Returns the status code, use send_reply(do_close(ix)) if reply desired */
@@ -226,7 +189,7 @@ static void do_read_block(uint16_t ix, uint16_t len)
 
   data[0] = len;
   data[1] = len >> 8;
-  output_bytes(data, len+2);
+  abcprint_send(data, len+2);
   free(data);
 }
 
@@ -378,7 +341,7 @@ static void do_input(uint16_t ix)
   if (!err) {
     data1[0] = dlen;
     data1[1] = dlen >> 8;
-    output_bytes(data1, dlen+2);
+    abcprint_send(data1, dlen+2);
   }
 }
 
