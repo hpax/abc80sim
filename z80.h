@@ -187,6 +187,7 @@ extern void z80_out(int, uint8_t);
 extern int z80_in(int);
 extern int disassemble(int);
 extern int DAsm(uint16_t pc, char *T, int *target);
+extern void z80_poll_external(void);
 
 extern unsigned int tracing;
 extern FILE *tracef;

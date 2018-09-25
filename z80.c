@@ -2524,20 +2524,9 @@ int z80_run(bool continuous, bool halted)
 
     /* loop to do a z80 instruction */
     do {
-         /*
-          * Special hack for ABC80
-          */
-
-	  extern volatile int event_pending;
-	  void check_event(void);
-
 	  do {
-	    if ( event_pending )
-	      check_event();
-
-	    /*
-	     * End of special hack.
-	     */
+	    /* Poll for external event */
+	    z80_poll_external();
 
 	    /* Check for an interrupt */
 	    if (z80_state.nminterrupt) {

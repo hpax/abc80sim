@@ -31,8 +31,6 @@ extern void printer_reset(void);
 extern void printer_out(int sel, int port, int value);
 extern int printer_in(int sel, int port);
 
-extern void check_event(void);
-
 extern void keyboard_down(int sym);
 extern void keyboard_up(void);
 

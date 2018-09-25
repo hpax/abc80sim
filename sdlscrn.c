@@ -32,6 +32,8 @@
 
 extern const unsigned char abc_font[256][FONT_YSIZE];
 
+static void check_event(void);
+
 #define NCOLORS 8
 
 static struct argb { uint8_t a, r, g, b; } rgbcolors[NCOLORS] = {
@@ -141,12 +143,22 @@ static inline uint8_t screendata(uint8_t y, uint8_t x)
 }
 
 /*
- * Prepare screen for modification
+ * Prevent/allow screen refresh
  */
 static void lock_screen(struct surface *s)
 {
-    if (s->lock_count++ == 0)
-	SDL_LockSurface(s->surf);
+  if (!s->lock_count++)
+    SDL_LockSurface(s->surf);
+}
+
+static void unlock_screen(struct surface *s)
+{
+  if (s->lock_count > 0)
+    SDL_UnlockSurface(s->surf);
+  else if (s->lock_count < 0)
+    abort();			/* SHOULD NEVER HAPPEN */
+
+  s->lock_count--;
 }
 
 /*
@@ -237,21 +249,17 @@ put_screen(struct surface *s, unsigned int tx, unsigned int ty, bool blink)
  */
 #define MIN_UPDATE_INTERVAL (10000000) /* 10 ms */
 
-static void update_screen(struct surface *s, bool force)
+static void update_screen(struct surface *s)
 {
   uint64_t now;
 
-  if (--s->lock_count > 0)
+  if (s->lock_count > 0)
     return;
-
-  SDL_UnlockSurface(s->surf);
 
   if (s->upd_x0 == UINT_MAX)
-    return;
+    return;			/* Screen unchanged */
 
   now = nstime();
-  if (!force && (now - s->updated) < MIN_UPDATE_INTERVAL)
-    return;
 
   if (s->surf->flags & SDL_DOUBLEBUF)
     SDL_Flip(s->surf);
@@ -267,15 +275,21 @@ static void update_screen(struct surface *s, bool force)
   s->upd_x1 = s->upd_y1 = 0;
 }
 
+/* Mark the whole screen dirty */
+static void screen_dirty(struct surface *s)
+{
+  s->upd_x0 = s->upd_y0 = 0;
+  s->upd_x1 = (TS_WIDTH-1) >> mode40;
+  s->upd_y1 = TS_HEIGHT-1;
+}
+
 /* Refresh the entire screen or recreate the screen on another surface */
 static void refresh_screen(struct surface *s, bool blink)
 {
   unsigned int x, y;
   unsigned int width = TS_WIDTH >> mode40;
 
-  s->upd_x0 = s->upd_y0 = 0;
-  s->upd_x1 = width-1;
-  s->upd_y1 = TS_HEIGHT-1;
+  screen_dirty(s);
 
   lock_screen(s);
 
@@ -283,7 +297,8 @@ static void refresh_screen(struct surface *s, bool blink)
     for (x = 0; x < width; x++)
       put_screen(s, x, y, blink);
 
-  update_screen(s, true);
+  unlock_screen(s);
+  update_screen(s);
 }
 
 /*
@@ -315,7 +330,7 @@ void write_screen(uint8_t *p, uint8_t v)
       put_screen(&rscreen, xy.x, xy.y, blink_on);
   }
 
-  update_screen(&rscreen, false);
+  unlock_screen(&rscreen);
 }
 
 static void do_set_mode40(bool m)
@@ -369,9 +384,25 @@ static bool set_blink(bool to_what)
     break;
   }
 
-  update_screen(&rscreen, true);
+  unlock_screen(&rscreen);
 
   return !to_what;		/* We just flipped it... */
+}
+
+/* Called from the timer that corresponds to the simulated vsync */
+void vsync_screen(void)
+{
+  const int blink_rate = 400/20; /* 400 ms/20 ms = 2.5 Hz */
+  static int blink_ctr;
+
+  check_event();		/* Poll for an SDL event */
+
+  if (!blink_ctr--) {
+    set_blink(!blink_on);
+    blink_ctr += blink_rate;
+  }
+
+  update_screen(&rscreen);
 }
 
 /*
@@ -395,7 +426,7 @@ static struct surface *init_surface(struct surface *s)
 			      rgbcolors[i].r, rgbcolors[i].g, rgbcolors[i].b);
   }
 
-  /* Surface is not locked */
+  /* Surface is unlocked */
   s->lock_count = 0;
 
   return s;
@@ -413,8 +444,8 @@ static void abc_screenshot(void)
   if (!init_surface(&s))
     return;
   refresh_screen(&s, true);	/* Always snapshot with blink on */
-  screenshot(s.surf);
 
+  screenshot(s.surf);
   SDL_FreeSurface(s.surf);
 }
 
@@ -436,10 +467,8 @@ void screen_init(bool width40)
   rscreen.surf = SDL_SetVideoMode(PX_WIDTH, PX_HEIGHT, 32,
 			     SDL_HWSURFACE | SDL_DOUBLEBUF |
 			     (window ? 0 : SDL_FULLSCREEN));
-  if (!init_surface(&rscreen))
-    return;
 
-  /* No mouse cursor, please */
+  /* No mouse cursor in full screen mode */
   if ( !window )
     SDL_ShowCursor(SDL_DISABLE);
 
@@ -471,6 +500,9 @@ void screen_init(bool width40)
   /* Enable keyboard repeat */
   SDL_EnableKeyRepeat(SDL_DEFAULT_REPEAT_DELAY, SDL_DEFAULT_REPEAT_INTERVAL);
 
+  if (!init_surface(&rscreen))
+    return;
+
   /* Forcibly set the screen width and load the appropriate BASIC */
   do_set_mode40(width40);
 }
@@ -484,11 +516,12 @@ void screen_reset(void)
 }
 
 /*
- * Handle events
+ * Handle events.  This is called from vsync_screen(), because
+ * SDL_PollEvent() might be expensive on some platforms.
  */
-int keyboard_code;		/* Keyboard code exported to PIO */
+int keyboard_code;		/* Keyboard code exported to PIO/DART */
 
-void check_event(void)
+static void check_event(void)
 {
   SDL_Event event;
   static int keyboard_scan = -1; /* No key currently down */
@@ -497,8 +530,6 @@ void check_event(void)
     KSH_CTRL  = 2,
     KSH_ALT   = 4
   } kshift;
-
-  set_blink(timer_poll());	/* Poll timer, change blink if needed */
 
   while ( SDL_PollEvent(&event) ) {
     switch ( event.type ) {

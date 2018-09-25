@@ -6,6 +6,7 @@
 
 static void abc80_clock_tick(void);
 static void abc800_clock_tick(void);
+static struct abctimer *ctc_timer[4];
 
 /*
  * Initialize the time for next event
@@ -13,25 +14,44 @@ static void abc800_clock_tick(void);
 struct abctimer {
   uint64_t last;
   uint64_t period;
+  void (*func)(void);
 };
-static struct abctimer clock_timer, vsync_timer;
-static void (*clock_tick)(void);
+
+#define MAX_TIMERS 2
+static struct abctimer timers[MAX_TIMERS];
+static int ntimers;
+
+static struct abctimer *create_timer(uint64_t period, void (*func)(void))
+{
+  struct abctimer *t;
+
+  if (ntimers >= MAX_TIMERS)
+    abort();
+
+  t = &timers[ntimers++];
+
+  t->period = period;
+  t->func = func;
+  t->last = nstime();
+
+  return t;
+}
 
 void timer_init(void)
 {
   switch (model) {
   case MODEL_ABC80:
-    clock_timer.period = 20000000;	/* 20 ms */
-    clock_tick = abc80_clock_tick;
+    /* 20 ms = 50 Hz */
+    create_timer(20000000, abc80_clock_tick);
     break;
   case MODEL_ABC802:
-    clock_timer.period = 10666667;	/* 10.67 ms = 93.75 Hz */
-    clock_tick = abc800_clock_tick;
-    vsync_timer.period = 20000000;
+    /* 10.67 ms = 93.75 Hz */
+    ctc_timer[3] = create_timer(10666667, abc800_clock_tick);
+
+    /* 20 ms = 50 Hz */
+    create_timer(20000000, abc802_vsync);
     break;
   }
-
-  clock_timer.last = vsync_timer.last = nstime();
 }
 
 static inline bool trigger(uint64_t now, struct abctimer *tmr)
@@ -49,15 +69,19 @@ static inline bool trigger(uint64_t now, struct abctimer *tmr)
   return true;
 }
 
-void timer_poll(void)
+/* Poll for timers - these the only external event we look for */
+void z80_poll_external(void)
 {
   uint64_t now = nstime();
+  struct abctimer *t = timers;
+  int i;
 
-  if (trigger(now, &clock_timer))
-    clock_tick();
+  for (i = 0; i < ntimers; i++) {
+    if (trigger(now, t))
+      t->func();
 
-  if (trigger(now, &vsync_timer))
-    abc802_vsync();
+    t++;
+  }
 }
 
 /*
@@ -121,8 +145,8 @@ uint8_t abc800_ctc_in(uint8_t port)
   case 3:
     {
       uint64_t now = nstime();
-      v = ((clock_timer.last + clock_timer.period - now) * ctc_div[3])
-	/ clock_timer.period;
+      v = ((ctc_timer[3]->last + ctc_timer[3]->period - now) * ctc_div[3])
+	/ ctc_timer[3]->period;
       break;
     }
   }
