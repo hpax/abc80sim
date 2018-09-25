@@ -8,10 +8,10 @@
 #include <wchar.h>
 
 extern void abcprint_init(void);
-extern void abcprint(const void *, size_t);
-extern int abcprint_read(void);
-extern int abcprint_poll(void);
+extern void abcprint_recv(const void *, size_t);
+extern void abcprint_send(const void *, size_t);
 extern bool file_op(unsigned char);
+extern int open_serial_port(const char *path, unsigned int speed, bool flow);
 extern const char *fileop_path, *lpr_command;
 
 #endif

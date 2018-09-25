@@ -9,7 +9,7 @@ for prg in install-sh compile config.guess config.sub; do
 done
 rm -f autoconf/aclocal.m4
 mkdir -p autoconf/m4.old autoconf/m4
-mv -f autoconf/m4/*.m4 autoconf/m4.old/ || true
+mv -f autoconf/m4/*.m4 autoconf/m4.old/ 2>/dev/null || true
 ACLOCAL_PATH="${ACLOCAL_PATH}${ACLOCAL_PATH:+:}`pwd`/autoconf/m4.old"
 export ACLOCAL_PATH
 aclocal --install --output=autoconf/aclocal.m4 -I autoconf/m4
