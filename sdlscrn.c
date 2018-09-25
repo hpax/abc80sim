@@ -13,6 +13,7 @@
 #include "z80.h"
 #include "clock.h"
 #include "abcio.h"
+#include "nstime.h"
 
 #define min(x,y) ((x)<(y)?(x):(y))
 #define max(x,y) ((x)>(y)?(x):(y))
@@ -88,6 +89,7 @@ struct surface {
     /* Keep track of what the dirty rectangle is */
     unsigned int upd_x0, upd_y0, upd_x1, upd_y1;
     int lock_count;		/* Lock nesting count */
+    uint64_t updated;		/* Time stamp of last update */
 };
 
 static struct surface rscreen;
@@ -145,12 +147,6 @@ static void lock_screen(struct surface *s)
 {
     if (s->lock_count++ == 0)
 	SDL_LockSurface(s->surf);
-}
-
-static void unlock_screen(struct surface *s)
-{
-  if (--s->lock_count == 0)
-    SDL_UnlockSurface(s->surf);
 }
 
 /*
@@ -237,14 +233,24 @@ put_screen(struct surface *s, unsigned int tx, unsigned int ty, bool blink)
 }
 
 /*
- * Actually update the screen or another surface
+ * Refresh rectangle and unlock screen
  */
-static void update_screen(struct surface *s)
+#define MIN_UPDATE_INTERVAL (10000000) /* 10 ms */
+
+static void update_screen(struct surface *s, bool force)
 {
-  if (s->lock_count)
+  uint64_t now;
+
+  if (--s->lock_count > 0)
     return;
 
+  SDL_UnlockSurface(s->surf);
+
   if (s->upd_x0 == UINT_MAX)
+    return;
+
+  now = nstime();
+  if (!force && (now - s->updated) < MIN_UPDATE_INTERVAL)
     return;
 
   if (s->surf->flags & SDL_DOUBLEBUF)
@@ -256,6 +262,7 @@ static void update_screen(struct surface *s)
 		   ((s->upd_x1-s->upd_x0+1)*FONT_XSIZE*FONT_XDUP) << mode40,
 		   (s->upd_y1-s->upd_y0+1)*FONT_YSIZE*FONT_YDUP);
 
+  s->updated = now;
   s->upd_x0 = s->upd_y0 = UINT_MAX;
   s->upd_x1 = s->upd_y1 = 0;
 }
@@ -266,9 +273,8 @@ static void refresh_screen(struct surface *s, bool blink)
   unsigned int x, y;
   unsigned int width = TS_WIDTH >> mode40;
 
-  /* Mark the whole screen, but only the screen(!), as dirty */
   s->upd_x0 = s->upd_y0 = 0;
-  s->upd_x1 = (TS_WIDTH-1) >> mode40;
+  s->upd_x1 = width-1;
   s->upd_y1 = TS_HEIGHT-1;
 
   lock_screen(s);
@@ -277,7 +283,7 @@ static void refresh_screen(struct surface *s, bool blink)
     for (x = 0; x < width; x++)
       put_screen(s, x, y, blink);
 
-  unlock_screen(s);
+  update_screen(s, true);
 }
 
 /*
@@ -309,7 +315,7 @@ void write_screen(uint8_t *p, uint8_t v)
       put_screen(&rscreen, xy.x, xy.y, blink_on);
   }
 
-  unlock_screen(&rscreen);
+  update_screen(&rscreen, false);
 }
 
 static void do_set_mode40(bool m)
@@ -363,23 +369,9 @@ static bool set_blink(bool to_what)
     break;
   }
 
-  unlock_screen(&rscreen);
+  update_screen(&rscreen, true);
 
   return !to_what;		/* We just flipped it... */
-}
-
-/* Called from the timer that corresponds to the simulated vsync */
-void vsync_screen(void)
-{
-  const int blink_rate = 400/20; /* 400 ms/20 ms = 2.5 Hz */
-  static int blink_ctr;
-
-  if (!blink_ctr--) {
-    set_blink(!blink_on);
-    blink_ctr += blink_rate;
-  }
-
-  update_screen(&rscreen);
 }
 
 /*
@@ -421,7 +413,6 @@ static void abc_screenshot(void)
   if (!init_surface(&s))
     return;
   refresh_screen(&s, true);	/* Always snapshot with blink on */
-  update_screen(&s);
   screenshot(s.surf);
 
   SDL_FreeSurface(s.surf);
@@ -507,7 +498,7 @@ void check_event(void)
     KSH_ALT   = 4
   } kshift;
 
-  timer_poll();
+  set_blink(timer_poll());	/* Poll timer, change blink if needed */
 
   while ( SDL_PollEvent(&event) ) {
     switch ( event.type ) {
