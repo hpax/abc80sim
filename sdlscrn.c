@@ -155,7 +155,7 @@ static void unlock_screen(struct surface *s)
 {
   if (s->lock_count > 0)
     SDL_UnlockSurface(s->surf);
-  else if (s->lock_count < 0)
+  else if (unlikely(s->lock_count < 0))
     abort();			/* SHOULD NEVER HAPPEN */
 
   s->lock_count--;
