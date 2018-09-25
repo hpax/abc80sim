@@ -10,25 +10,33 @@
 # define O_TEXT 0
 #endif
 
-static int redirect_stdio(const char *to)
+static int redirect_stdio(const char *in, const char *out)
 {
     int err = 0;
-    int infd, outfd;
+    int infd = -1;
+    int outfd = -1;
 
     fflush(NULL);
 
-    infd = open(to, O_RDWR|O_TEXT);
+    infd = open(in, O_RDWR|O_TEXT);
     if (infd >= 0) {
-	outfd = infd;
+      if (!out)
+	  outfd = infd;
     } else {
-	infd = open(to, O_RDONLY|O_TEXT);
-	outfd = open(to, O_WRONLY|O_TEXT);
+	infd = open(in, O_RDONLY|O_TEXT);
     }
 
     if (infd < 0) {
 	err = -1;
     } else {
 	dup2(infd, STDIN_FILENO);
+    }
+
+    if (outfd < 0) {
+      out = out ? out : in;
+      outfd = open(out, O_RDWR|O_TEXT);
+      if (outfd < 0)
+	outfd = open(out, O_WRONLY|O_TEXT);
     }
 
     if (outfd < 0) {
@@ -66,8 +74,8 @@ void attach_console(void)
 
 void detach_console(void)
 {
-    redirect_stdio("\\Device\\Null");
-    console();
+  redirect_stdio("\\Device\\Null", NULL);
+    FreeConsole();
 }
 
 #else
@@ -89,7 +97,7 @@ void detach_console(void)
 {
     pid_t pid;
 
-    redirect_stdio(_PATH_DEVNULL);
+    redirect_stdio(_PATH_DEVNULL, NULL);
 
     pid = fork();
 
