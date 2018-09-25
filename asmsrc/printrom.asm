@@ -14,7 +14,7 @@
 ;
 ; Convert FF -> FF FF and send FF 00 on CLOSE.
 ;
-selcode: equ 60
+	defc selcode=60			; ABC-bus select code
 
 	org 0x7800
 
@@ -30,29 +30,9 @@ pr_jptable:
 	jp notthere			; DELETE
 	jp notthere			; RENAME
 
-prab_jp_init:
-	call prab_init
+prabc_jp_init:
+	call prabc_init
 	jp 0x6543			; Initialize DOS
-
-pr_open:
-	call select
-
-	ld a,128+selcode
-	out (3),a
-	
-	in a,(1)
-	and a
-	jr z,done
-
-pr_close:
-	call select
-	call wait_busy
-	ld a,0FFh
-	out (0),a
-	call wait_busy
-	xor a
-	out (0),a
-	jr done
 
 pr_print:
 	call select
@@ -62,15 +42,13 @@ pr_print_loop:
 	ld a,b
 	or c
 	jr z,done
-	call wait_busy
 	ld a,(hl)
 	cp d
 	jr nz,pr_print_not_ff
-	out (0),a
-	call wait_busy
+	call send_byte
 	ld a,(hl)
 pr_print_not_ff:
-	out (0),a
+	call send_byte
 
 	dec bc
 	inc hl
@@ -84,19 +62,28 @@ select:
 	out (1),a
 	ret
 
-wait_busy:
-	push af
-wb_loop:
+pr_open:
+	call select
+
 	in a,(1)
-	and 0A0h			; TX busy or TX flow control
-	jr nz,wb_loop
-	pop af
-	ret
+	and 01Fh
+	jr z,done
+	; fall through to notthere
 
 notthere:
 	ld a,128+52
 	scf
 	ret
+
+pr_close:
+	call select
+	ld a,0FFh
+	call send_byte
+	; fall through to send_zero_done
+
+send_zero_done:
+	xor a
+	call send_byte
 
 done:
 	xor a
@@ -108,11 +95,8 @@ done_err:
 	pop af
 	and a
 	ret p
-	cp 128+21			; ERR 21 = file not found
-	jr z,eof
 	cp 128+34			; ERR 34 = end of file
 	jr nz,not_eof
-eof:
 	xor a				; ... end of file is signalled by A=0
 not_eof:
 	scf
@@ -162,7 +146,6 @@ prb_prepare:
 	ld (ix+14),1
 	ld c,0xA3
 prx_open:
-	push de
 	push bc
 	ex de,hl			; HL <- filename
 	ld (ix+6),0
@@ -180,7 +163,6 @@ prx_open:
 	call recv_reply
 	and a
 	pop bc
-	pop de
 	jr nz,done_err2
 	bit 0,c				; PRB:?
 	jr z,done_err2
@@ -362,7 +344,12 @@ psb_found:
 
 	; Send a single byte
 send_byte:
-	call wait_busy
+	push af
+wb_loop:
+	in a,(1)
+	and 0A0h			; TX busy or TX flow control
+	jr nz,wb_loop
+	pop af
 	out (0),a
 	ret
 
@@ -380,11 +367,11 @@ send_cmd:
 	inc a
 	ld (ram_serial),a
 	call send_byte
-	defb 0ddh
-	ld a,l			; LD A,IXL
+	defb 0xdd	; IXL
+	ld a,l
 	call send_byte
-	defb 0ddh
-	ld a,h			; LD A,IXH
+	defb 0xdd	; IXH
+	ld a,h
 	jr send_byte
 
 	; Send a buffer HL->data BC=count
@@ -448,19 +435,51 @@ rr_done:
 	pop bc
 	ret
 
-ram_devlst:	equ 7B00h
-ram_select:	equ 7B0Eh	; Previous select code
-ram_cmd:	equ 7B0Fh	; Latest sent command
-ram_serial:	equ 7B10h	; Latest serial number
-ram_dummy:	equ 7B11h	; Scratch byte
+prc_jptable:
+	jp pr_open			; OPEN
+	jp pr_open			; PREPARE
+	jp done				; CLOSE
+	jp notthere			; INPUT
+	jp prc_print			; PRINT
+	jp notthere			; RDBLK
+	jp notthere			; WRBLK
+	jp notthere			; DELETE
+	jp notthere			; RENAME
 
-prab_init:
-	ld hl,prab_device
+prc_print:
+	call select
+	ld a,0xFF
+	call send_byte
+	ld a,0xc0
+	call send_byte
+
+prc_print_loop:
+	ld a,b
+	or c
+	jp z,send_zero_done
+	ld a,(hl)
+	and a
+	jr z,prc_skip
+	call send_byte
+prc_skip:
+	dec bc
+	inc hl
+	jr prc_print_loop
+
+; Abuse part of this "ROM" address space as RAM
+	defc ram_devlst=7B00h	; Device descriptors (linked list!)
+	defc ram_select=7B15h	; Previous select code
+	defc ram_cmd=7B16h	; Latest sent command
+	defc ram_serial=7B17h	; Latest serial number
+	defc ram_dummy=7B18h	; Scratch byte
+
+prabc_init:
+	ld hl,prabc_device
 	ld de,ram_devlst
-	ld bc,7*2
+	ld bc,7*3
 	ldir
 	ld hl,(65034)		; Device list
-	ld (ram_devlst+7),hl
+	ld (ram_devlst+14),hl
 	ld hl,ram_devlst
 	ld (65034),hl
 	call select
@@ -468,10 +487,13 @@ prab_init:
 	call send_cmd
 	jp done
 
-prab_device:
+prabc_device:
 	defw ram_devlst+7
 	defm "PRA"
 	defw pra_jptable
-	defw 0
+	defw ram_devlst+14
 	defm "PRB"
 	defw prb_jptable
+	defw 0
+	defm "PRC"
+	defw prc_jptable

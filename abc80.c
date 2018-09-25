@@ -85,30 +85,32 @@ static no_return help(void)
     printf("Usage: %s [options] [ihex_files...]\n"
 	   "Simulate a microcomputer from the Luxor ABC series.\n"
 	   "\n"
-	   "      --abc80          simulate an ABC80 (default)\n"
-	   "      --abc802         simulate an ABC802\n"
-	   "  -4, --40             start in 40-column mode\n"
-	   "  -8, --80             start in 80-column mode\n"
-	   "  -b, --no-basic       no BASIC ROM (uninitialized RAM instead)\n"
-	   "  -B, --basic          reverts the --no-basic option\n"
-	   "  -d, --no-device      no device driver ROMs\n"
-	   "  -D, --device         reverts the --no-device option\n"
-	   "      --old-basic      ABC80 only: run BASIC 1.0 (checksum 11273)\n"
-	   "      --11273          same as --old-basic\n"
-	   "      --new-basic      ABC80 only: run BASIC 1.2 (checksum 9913)\n"
-	   "      --9913           same as --new-basic\n"
-	   "  -t, --trace ...      trace various events (see \"--trace help\")\n"
-	   "  -T, --tracefile ...  redirect trace output to a file\n"
-	   "  -v, --version        print the version string\n"
-	   "  -h, --help           print this help message\n"
-	   "  -k, --kb #           set the memory size in K (ABC80: 1-32 or 64)\n"
-	   "      --diskdir ...    set directory for disk images (default abcdisk)\n"
-	   "      --filedir ...    set directory for file sharing (default abcdir)\n"
-	   "      --scrndir ...    set directory for screen shots (default .)\n"
-	   "      --dumpdir ...    set directory for memory dumps (default .)\n"
-	   "      --printcmd ...   set command to launch a print job (* = filename)\n"
-	   "      --memfile ...    load a file into the ABC802 MEM: device\n"
-	   "      --detach         detach from console if run from a command line\n"
+	   "      --abc80           simulate an ABC80 (default)\n"
+	   "      --abc802          simulate an ABC802\n"
+	   "  -4, --40              start in 40-column mode\n"
+	   "  -8, --80              start in 80-column mode\n"
+	   "  -b, --no-basic        no BASIC ROM (uninitialized RAM instead)\n"
+	   "  -B, --basic           reverts the --no-basic option\n"
+	   "  -d, --no-device       no device driver ROMs\n"
+	   "  -D, --device          reverts the --no-device option\n"
+	   "      --old-basic       ABC80 only: run BASIC 1.0 (checksum 11273)\n"
+	   "      --11273           same as --old-basic\n"
+	   "      --new-basic       ABC80 only: run BASIC 1.2 (checksum 9913)\n"
+	   "      --9913            same as --new-basic\n"
+	   "  -t, --trace ...       trace various events (see \"--trace help\")\n"
+	   "  -T, --tracefile ...   redirect trace output to a file\n"
+	   "  -v, --version         print the version string\n"
+	   "  -h, --help            print this help message\n"
+	   "  -k, --kb #            set the memory size in K (ABC80: 1-32 or 64)\n"
+	   "      --diskdir ...     set directory for disk images (default abcdisk)\n"
+	   "      --filedir ...     set directory for file sharing (default abcdir)\n"
+	   "      --scrndir ...     set directory for screen shots (default .)\n"
+	   "      --dumpdir ...     set directory for memory dumps (default .)\n"
+	   "      --printcmd ...    set command to launch a print job (* = filename)\n"
+	   "      --memfile ...     load a file into the ABC802 MEM: device\n"
+	   "  -c, --console         enable console output device (PRC:)\n"
+	   "      --consolefile ... enable console output device to a file\n"
+	   "      --detach          detach from console if run from a command line\n"
 	   "\n"
 	   "The simulator supports the following hotkeys:\n"
 	   "  Alt-q                quit the simulator\n"
@@ -211,6 +213,7 @@ int main(int argc, char **argv)
     const char *tracefile = NULL;
     const char *memfile = NULL;
     bool detach = false;
+    const char *console = NULL;
 
     attach_console();
 
@@ -281,6 +284,10 @@ int main(int argc, char **argv)
 		memfile = LONG_ARG();
 	    } else if (!strcmp(optstr, "detach")) {
 		detach = enable;
+	    } else if (!strcmp(optstr, "console")) {
+		console = enable ? "-" : NULL;
+	    } else if (!strcmp(optstr, "consolefile")) {
+		console = LONG_ARG();
 	    } else {
 		fprintf(stderr, "%s: unknown option: --%s\n",
 			program_name, optstr);
@@ -301,6 +308,12 @@ int main(int argc, char **argv)
 		    break;
 		case 'B':
 		    memflags &= ~MEMFL_NOBASIC;
+		    break;
+		case 'c':
+		    console = "-";
+		    break;
+		case 'C':
+		    console = NULL;
 		    break;
 		case 'd':
 		    memflags |= MEMFL_NODEV;
@@ -351,6 +364,14 @@ int main(int argc, char **argv)
     if (detach)
 	detach_console();
 
+    if (console) {
+	if (!console[0] || (console[0] == '-' && !console[1])) {
+	    console_file = detach ? NULL : stdout;
+	} else {
+	    console_file = fopen(console, "wt");
+	}
+    }
+    
     hostfile_init();
 
     screen_init(width40);

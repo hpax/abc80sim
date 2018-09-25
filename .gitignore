@@ -4,6 +4,12 @@
 *.obj
 *.exe
 *.lst
+*.bin
+*.lis
+*.err
+*.map
+*.sym
+*.reloc
 abc*/
 /roms/*.c
 /autoconf/aclocal.m4

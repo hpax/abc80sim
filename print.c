@@ -102,8 +102,10 @@ enum input_state {
   is_normal,                  /* Normal operation */
   is_ff,                      /* 0xFF received */
   is_file,                    /* File operation in progress */
+  is_console		      /* Output to console */
 };
 static enum input_state is;
+FILE *console_file;
 
 void abcprint_init(void)
 {
@@ -134,6 +136,9 @@ void abcprint_recv(const void *data, size_t len)
       } else if (c >= 0xa0 && c <= 0xbf) {
 	/* Opcode range reserved for file ops */
 	is = file_op(c) ? is_file : is_normal;
+      } else if (c == 0xc0) {
+	/* Output to console */
+	is = is_console;
       } else {
 	output(c);
 	is = is_normal;
@@ -142,6 +147,13 @@ void abcprint_recv(const void *data, size_t len)
 
     case is_file:
       is = file_op(c) ? is_file : is_normal;
+      break;
+
+    case is_console:
+      if (c == 0)
+	is = is_normal;
+      else if (console_file)
+	fputc(c, console_file);
       break;
     }
   }

@@ -1,0 +1,70 @@
+abcprintd protocol
+
+FF 00	-> end of print job
+
+FF 01	-> FF as part of print job (FF FF in older firmware)
+
+All other bytes are part of a print job
+
+
+File sharing commands:
+----------------------
+
+All commands start with FF <opcode> <seq>, and all responses begin
+with FF <opcode> <seq> <err>, where <err> is 0 for OK and otherwise
+0x80+ABC80 error code.
+
+FF A0 ss ixix NNNNNNNNEEE	OPEN TEXT
+
+   	ixix = Address of IX-map (used as a handle)
+
+	Open an existing file for reading in text mode
+	If the filename is empty (all spaces), read the directory
+
+FF A1 ss ixix NNNNNNNNEEE	OPEN BINARY
+
+	Open an existing file for reading in binary (block) mode
+
+FF A2 ss ixix NNNNNNNNEEE	PREPARE TEXT
+
+   	Create a new file for writing in text mode
+
+FF A3 ss ixix NNNNNNNNEEE	PREPARE BINARY
+
+   	Create a new file for writing in binary (block) mode
+
+FF A4 ss ixix			INPUT
+
+   	Read a text line; response followed by len (2 bytes) + data
+
+FF A5 ss ixix len		READ BLOCK
+
+	Read a data block of specified len; response: len + data
+
+FF A6 ss ixix len data...	PRINT
+
+   	Write a text line or data block
+
+FF A7 ss ixix			CLOSE
+
+   	Close a file handle
+
+FF A8 ss xxxx			CLOSE ALL
+
+	All files are closed and forgotten.  xxxx ignored.
+
+FF A9 ss xxxx			CLOSE ALL NO REPLY
+
+	All files are closed and forgotten.  xxxx ignored.
+	No response token is sent.
+
+
+Debug console
+-------------
+
+FF C0 .... 00
+
+	Text between FF C0 and terminating 00 are written out on
+	stdout for abcprintd if the -c option was given.  Intended to
+	be used for debugging messages.
+
