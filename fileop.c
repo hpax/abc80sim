@@ -7,14 +7,19 @@ const char *fileop_path = "abcdir";
 
 static enum {
   st_op,
-  st_filename,
-  st_len,
-  st_data
+  st_data,
+  st_open,
+  st_read,
+  st_print,
+  st_seek,
+  st_rename,
+  st_delete
 } state = st_op;
-static int byte_count = 4;
+static unsigned int byte_count = 4;
 static unsigned char cmd[4];
 static unsigned char *bytep = cmd;
 static struct host_file *filemap[65536];
+static unsigned char data[65536+2];
 
 static void send_reply(int status)
 {
@@ -147,17 +152,15 @@ static void do_read_block(uint16_t ix, uint16_t len)
 {
   struct host_file *hf = filemap[ix];
   int err;
-  unsigned char *data;
   int dlen;
 
-  if (!hf || !hf->f) {
+  if (!hf) {
     send_reply(128+45);
     return;
   }
 
-  data = calloc(len+2, 1);
-  if (!data) {
-    send_reply(128+42);		/* "Skivan ej klar" */
+  if (hf->f) {
+    send_reply(128+37);		/* Felaktigt recordformat */
     return;
   }
 
@@ -181,7 +184,6 @@ static void do_read_block(uint16_t ix, uint16_t len)
       err = 128+34;		/* Slut på filen */
     }
     send_reply(err);
-    free(data);
     return;
   }
 
@@ -190,7 +192,24 @@ static void do_read_block(uint16_t ix, uint16_t len)
   data[0] = len;
   data[1] = len >> 8;
   abcprint_send(data, len+2);
-  free(data);
+}
+
+static void do_seek(uint16_t ix, uint64_t pos)
+{
+  struct host_file *hf = filemap[ix];
+  int err;
+
+  if (!hf) {
+    err = 128+45;		/* Fel logiskt filnummer */
+  } else if (!hf->f) {
+    err = 128+37;		/* Felaktigt recordformat */
+  } else if (fseek(hf->f, pos, SEEK_SET) == -1) {
+    err = 128+38;		/* Recordnummer utanför filen */
+  } else {
+    err = 0;
+  }
+
+  send_reply(err);
 }
 
 /*
@@ -268,7 +287,7 @@ static void do_input(uint16_t ix)
 {
   struct host_file *hf = filemap[ix];
   int err;
-  char data[BUF_SIZE], data1[2*BUF_SIZE];
+  char data1[255+2];		/* Max number of bytes to return + 2 */
   char *p, *q, c;
   int dlen;
   struct dirent *de;
@@ -281,7 +300,7 @@ static void do_input(uint16_t ix)
 
   if (hf->f) {
     clearerr(hf->f);
-    if (!fgets(data, sizeof data, hf->f)) {
+    if (!fgets((char *)data, sizeof data, hf->f)) {
       if (ferror(hf->f)) {
 	switch (errno) {
 	case EBADF:
@@ -300,7 +319,9 @@ static void do_input(uint16_t ix)
       }
     } else {
       /* Strip CR and change LF -> CR LF */
-      for (p = data, q = data1+2 ; (c = *p) ; p++) {
+      for (p = (char *)data, q = data1+2 ; (c = *p) ; p++) {
+	if (q == &data1[sizeof data1])
+	  break;
 	switch (c) {
 	case '\r':
 	  break;
@@ -345,7 +366,7 @@ static void do_input(uint16_t ix)
   }
 }
 
-static void do_print(uint16_t ix, uint16_t len, void *data)
+static void do_print(uint16_t ix, uint16_t len)
 {
   struct host_file *hf = filemap[ix];
   int err;
@@ -382,21 +403,120 @@ static void do_print(uint16_t ix, uint16_t len, void *data)
   send_reply(err);
 }
 
+static void do_rename(const char *files)
+{
+  char old_name[64], new_name[64];
+  int err;
+
+  unmangle_filename(old_name, files);
+  unmangle_filename(new_name, files+11);
+
+  if (!rename(old_name, new_name)) {
+    err = 0;
+  } else {
+    switch (errno) {
+    case EACCES:
+      err = 128+39;		/* Filen skrivskyddad */
+      break;
+    case EROFS:
+      err = 128+43;		/* Skivan skrivskyddad */
+      break;
+    case ENOENT:
+      err = 128+21;		/* Hittar ej filen */
+      break;
+    case ENOSPC:
+      err = 128+41;		/* Skivan full */
+      break;
+    case EISDIR:
+      err = 128+40;	        /* Filen raderingsskyddad */
+      break;
+    case EIO:
+      err = 128+36;	        /* Checksummafel vid skrivning */
+      break;
+    default:
+      err = 128+48;		/* Fel i biblioteket */
+      break;
+    }
+  }
+
+  send_reply(err);
+}
+
+static void do_delete(const char *file)
+{
+  char path_buf[64];
+  int err;
+
+  unmangle_filename(path_buf, file);
+
+  if (!remove(path_buf)) {
+    err = 0;
+  } else {
+    switch (errno) {
+    case EROFS:
+      err = 128+43;		/* Skivan skrivskyddad */
+      break;
+    case ENOENT:
+      err = 128+21;		/* Hittar ej filen */
+      break;
+    case ENOSPC:
+      err = 128+41;		/* Skivan full */
+      break;
+    case EISDIR:
+    case EPERM:
+    case EACCES:
+      err = 128+40;	        /* Filen raderingsskyddad */
+      break;
+    case EIO:
+      err = 128+36;	        /* Checksummafel vid skrivning */
+      break;
+    default:
+      err = 128+48;		/* Fel i biblioteket */
+      break;
+    }
+  }
+
+  send_reply(err);
+}
+
+typedef union argbuf {
+  uint8_t b[32];
+  char c[32];
+  uint64_t q;
+} argbuf;
+
+static inline uint64_t get_qword(const argbuf *v)
+{
+#ifdef WORDS_LITTLEENDIAN
+  return v->q;
+#else
+  return v.b[0] +
+    ((uint64_t)v->b[1] << 8) +
+    ((uint64_t)v->b[2] << 16) +
+    ((uint64_t)v->b[3] << 24) +
+    ((uint64_t)v->b[4] << 32) +
+    ((uint64_t)v->b[5] << 40) +
+    ((uint64_t)v->b[6] << 48) +
+    ((uint64_t)v->b[7] << 56);
+#endif
+}
+
 bool file_op(unsigned char c)
 {
-  static unsigned char *data;
-  static char namebuf[12];
-  static unsigned char lenbuf[2];
-  uint16_t ix, len;
+  static argbuf argbuf;
+  static unsigned int datalen = 0;
+  uint16_t ix;
+  uint64_t arg;
 
   *bytep++ = c;
   if (--byte_count)
     return true;		/* More to do... */
 
   /* Otherwise, we have a full deck of *something* */
-
   ix  = (cmd[3] << 8) + cmd[2];
-  len = (lenbuf[1] << 8) + lenbuf[0];
+  arg = get_qword(&argbuf);
+  memset(&argbuf, 0, sizeof argbuf);
+  bytep = argbuf.b;
 
   switch (state) {
   case st_op:
@@ -405,21 +525,23 @@ bool file_op(unsigned char c)
     case 0xA1:			/* PREPARE TEXT */
     case 0xA2:			/* OPEN BINARY */
     case 0xA3:			/* PREPARE BINARY */
-      bytep = (void *)namebuf;
       byte_count = 11;
-      state = st_filename;
-      return true;
+      state = st_open;
+      break;
 
     case 0xA4:			/* INPUT */
       do_input(ix);
       break;
 
     case 0xA5:			/* READ BLOCK */
-    case 0xA6:			/* PRINT */
-      bytep = lenbuf;
       byte_count = 2;
-      state = st_len;
-      return true;
+      state = st_read;
+      break;
+
+    case 0xA6:			/* PRINT */
+      byte_count = 2;
+      state = st_print;
+      break;
 
     case 0xA7:			/* CLOSE */
       send_reply(do_close(ix));
@@ -430,6 +552,28 @@ bool file_op(unsigned char c)
       do_closeall();
       break;
 
+    case 0xAA:			/* RENAME */
+      byte_count = 22;
+      state = st_rename;
+      break;
+
+    case 0xAB:			/* DELETE */
+      byte_count = 11;
+      state = st_delete;
+      break;
+
+    case 0xB0:			/* SEEK1 */
+    case 0xB1:			/* SEEK2 */
+    case 0xB2:			/* SEEK3 */
+    case 0xB3:			/* SEEK4 */
+    case 0xB4:			/* SEEK5 */
+    case 0xB5:			/* SEEK6 */
+    case 0xB6:			/* SEEK7 */
+    case 0xB7:			/* SEEK8 */
+      byte_count = cmd[0] - 0xAF;
+      state = st_seek;
+      break;
+
     default:
       /* Unknown command */
       send_reply(128+11);
@@ -437,38 +581,46 @@ bool file_op(unsigned char c)
     }
     break;
 
-  case st_filename:
-    do_open(ix, namebuf);
+  case st_open:
+    do_open(ix, argbuf.c);
     break;
 
-  case st_len:
-    switch (cmd[0]) {
-    case 0xA5:			/* READ BLOCK */
-      do_read_block(ix, len);
-      break;
-    case 0xA6:			/* PRINT */
-      if (data)
-	free(data);
-      data = malloc(len);
-      if (!data)
-	send_reply(128+42);	/* "Skivan ej klar" */
-      bytep = data;
-      byte_count = len;
-      state = st_data;
-      return true;
-    }
+  case st_read:
+    do_read_block(ix, arg);
+    break;
+
+  case st_print:
+    bytep = data;
+    byte_count = arg;
+    state = st_data;
+    break;
+
+  case st_seek:
+    do_seek(ix, arg);
     break;
 
   case st_data:
-    do_print(ix, len, data);
-    free(data);
-    data = NULL;
+    do_print(ix, datalen);
+    break;
+
+  case st_rename:
+    do_rename(argbuf.c);		/* Unimplemented command */
+    break;
+
+  case st_delete:
+    do_delete(argbuf.c);
     break;
   }
 
-  /* unless otherwise specified, back to command mode */
-  bytep = cmd;
-  byte_count = 4;
-  state = st_op;
-  return false;
+  datalen = byte_count;
+
+  if (byte_count) {
+    return true;
+  } else {
+    /* back to command mode */
+    bytep = cmd;
+    byte_count = 4;
+    state = st_op;
+    return false;
+  }
 }

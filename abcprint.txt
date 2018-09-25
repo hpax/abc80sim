@@ -14,50 +14,61 @@ All commands start with FF <opcode> <seq>, and all responses begin
 with FF <opcode> <seq> <err>, where <err> is 0 for OK and otherwise
 0x80+ABC80 error code.
 
-FF A0 ss ixix NNNNNNNNEEE	OPEN TEXT
+FF A0 ss ixix NNNNNNNNEEE		OPEN TEXT
 
    	ixix = Address of IX-map (used as a handle)
 
 	Open an existing file for reading in text mode
 	If the filename is empty (all spaces), read the directory
 
-FF A1 ss ixix NNNNNNNNEEE	OPEN BINARY
+FF A1 ss ixix NNNNNNNNEEE		OPEN BINARY
 
 	Open an existing file for reading in binary (block) mode
 
-FF A2 ss ixix NNNNNNNNEEE	PREPARE TEXT
+FF A2 ss ixix NNNNNNNNEEE		PREPARE TEXT
 
    	Create a new file for writing in text mode
 
-FF A3 ss ixix NNNNNNNNEEE	PREPARE BINARY
+FF A3 ss ixix NNNNNNNNEEE		PREPARE BINARY
 
    	Create a new file for writing in binary (block) mode
 
-FF A4 ss ixix			INPUT
+FF A4 ss ixix				INPUT
 
    	Read a text line; response followed by len (2 bytes) + data
 
-FF A5 ss ixix len		READ BLOCK
+FF A5 ss ixix len2			READ BLOCK (= GET)
 
 	Read a data block of specified len; response: len + data
 
-FF A6 ss ixix len data...	PRINT
+FF A6 ss ixix len2 data...		PRINT (= WRITE BLOCK, PUT)
 
    	Write a text line or data block
 
-FF A7 ss ixix			CLOSE
+FF A7 ss ixix				CLOSE
 
    	Close a file handle
 
-FF A8 ss xxxx			CLOSE ALL
+FF A8 ss xxxx				CLOSE ALL
 
 	All files are closed and forgotten.  xxxx ignored.
 
-FF A9 ss xxxx			CLOSE ALL NO REPLY
+FF A9 ss xxxx				CLOSE ALL NO REPLY
 
 	All files are closed and forgotten.  xxxx ignored.
 	No response token is sent.
 
+FF AA ss xxxx NNNNNNNNEEE NNNNNNNNEEE	RENAME
+
+	Rename the first filename to the second filename.
+
+FF AB ss xxxx NNNNNNNNEEE		DELETE
+
+	Delete the named file
+
+FF Bn ss ixix pos2			SEEK(1-8)
+
+	Seek to a specific position (n+1 bytes, 1-8)
 
 Debug console
 -------------
