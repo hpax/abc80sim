@@ -5,7 +5,7 @@
 mkdir -p autoconf autoconf/aux config
 autolib="`automake --print-libdir`"
 for prg in install-sh compile config.guess config.sub; do
-    cp -u "$autolib"/"$prg" autoconf/aux
+    cp -f "$autolib"/"$prg" autoconf/aux
 done
 rm -f autoconf/aclocal.m4
 mkdir -p autoconf/m4.old autoconf/m4
