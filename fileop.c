@@ -515,7 +515,6 @@ bool file_op(unsigned char c)
   /* Otherwise, we have a full deck of *something* */
   ix  = (cmd[3] << 8) + cmd[2];
   arg = get_qword(&argbuf);
-  memset(&argbuf, 0, sizeof argbuf);
   bytep = argbuf.b;
 
   switch (state) {
@@ -613,6 +612,8 @@ bool file_op(unsigned char c)
   }
 
   datalen = byte_count;
+  if (bytep == argbuf.b)
+    memset(&argbuf, 0, sizeof argbuf);
 
   if (byte_count) {
     return true;
