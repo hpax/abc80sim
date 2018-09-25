@@ -85,7 +85,7 @@ typedef enum bool { false, true } bool;
 static inline void *mempcpy(void *dest, const void *src, size_t n)
 {
     memcpy(dest, src, n);
-    return dest + n;
+    return (char *)dest + n;
 }
 #endif
 
