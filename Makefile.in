@@ -31,7 +31,7 @@ X		= @EXEEXT@
 GENC = $(patsubst %.rom,%.c,$(wildcard roms/*.rom))
 SRCS = abc80.c clock.c sdlscrn.c screenshot.c z80.c abcmem.c abcio.c \
        abcfont.c disk.c rtc.c abcprint.c print.c fileop.c z80dis.c \
-       nstime.c hostfile.c console.c clib/asprintf.c $(GENC)
+       nstime.c hostfile.c console.c cas.c clib/asprintf.c $(GENC)
 HDRS = clock.h screen.h z80.h patchlevel.h screenshot.h abcio.h \
        abcprintd.h rom.h nstime.h hostfile.h \
        compiler.h clib/inttypes.h config/config.h

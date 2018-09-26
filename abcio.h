@@ -38,6 +38,9 @@ extern void abc802_vsync(void);
 
 extern void dump_memory(bool ramonly);
 
+extern void abc80_piob_out(uint8_t port, uint8_t v);
+extern uint8_t abc80_piob_in(void);
+
 /* Directories */
 extern const char *fileop_path, *disk_path, *screen_path, *memdump_path;
 

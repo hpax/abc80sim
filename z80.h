@@ -195,6 +195,7 @@ extern FILE *tracef;
 #define TRACE_CPU	1
 #define TRACE_IO	2
 #define TRACE_DISK	4
+#define TRACE_CAS	8
 
 extern uint8_t ram[];		/* Array for plain RAM */
 

@@ -98,6 +98,11 @@ static void abc80_out(uint8_t port, uint8_t value)
     }
     break;
 
+  case (58 & 0x17):
+  case (59 & 0x17):
+    abc80_piob_out(port, value);
+    break;
+
   default:
     break;
   }
@@ -308,6 +313,10 @@ static uint8_t abc80_in(uint8_t port)
   case (56 & 0x17):
     v = keyb_data;
     keyb_data &= ~0x80;		/* Hack to avoid insanely fast repeat */
+    break;
+
+  case (58 & 0x17):
+    v = abc80_piob_in();
     break;
 
   default:

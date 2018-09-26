@@ -403,6 +403,9 @@ void vsync_screen(void)
   }
 
   update_screen(&rscreen);
+
+  if (tracing)
+    fflush(tracef);		/* So we don't buffer indefinitely */
 }
 
 /*

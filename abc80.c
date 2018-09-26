@@ -134,6 +134,7 @@ static void parse_trace(char *arg)
 	{ "cpu", TRACE_CPU,   "cpu execution and memory accesses" },
 	{ "io", TRACE_IO,     "port I/O"},
 	{ "disk", TRACE_DISK, "disk commands" },
+	{ "cas", TRACE_CAS,   "cassette I/O" },
 	{ NULL, 0, NULL }
     };
     const struct trace_args *trp;
