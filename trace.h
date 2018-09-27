@@ -15,6 +15,11 @@ enum tracing {
     TRACE_ALL   = 0x1f
 };
 
-extern enum tracing tracing;
+extern enum tracing traceflags;
+
+static inline bool tracing(enum tracing flags)
+{
+    return unlikely(traceflags & flags);
+}
 
 #endif /* TRACE_H */

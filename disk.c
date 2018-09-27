@@ -208,7 +208,7 @@ void disk_out(int sel, int port, int value)
       state->k[3] = value;
       state->state = disk_k0;
 
-      if (tracing & TRACE_DISK) {
+      if (tracing(TRACE_DISK)) {
 	fprintf(tracef, "%s%d: command %02X %02X %02X %02X\n",
 		state->name, state->k[1] & 7,
 		state->k[0], state->k[1], state->k[2], state->k[3]);
@@ -229,10 +229,10 @@ void disk_out(int sel, int port, int value)
       break;
     case disk_upload:
       state->buf[state->k[1] >> 6][state->out_ptr++] = value;
-      if (tracing & TRACE_DISK)
+      if (tracing(TRACE_DISK))
 	fprintf(tracef, "%02X", value);
       if ( state->out_ptr >= 256 ) {
-	if (tracing & TRACE_DISK)
+	if (tracing(TRACE_DISK))
 	  fprintf(tracef, "\nPC = %04X  BC = %04X  DE = %04X  HL = %04X\n",
 		  REG_PC, REG_BC, REG_DE, REG_HL);
 	do_next_command(state);
@@ -248,7 +248,7 @@ void disk_out(int sel, int port, int value)
 
   case 2:			/* Start command */
   case 4:			/* Reset */
-    if (tracing & TRACE_DISK) {
+    if (tracing(TRACE_DISK)) {
       fprintf(tracef, "OUT %d/%d : ", sel, port);
       fprintf(tracef, "PC = %04X  BC = %04X  DE = %04X  HL = %04X\n",
 	     REG_PC, REG_BC, REG_DE, REG_HL);
@@ -299,7 +299,7 @@ int disk_in(int sel, int port)
     break;
   }
 
-  if (tracing & TRACE_DISK) {
+  if (tracing(TRACE_DISK)) {
     fprintf(tracef, "IN %d/%d: %02X : ", sel, port, v);
     fprintf(tracef, "PC = %04X  BC = %04X  DE = %04X  HL = %04X\n",
 	   REG_PC, REG_BC, REG_DE, REG_HL);

@@ -61,7 +61,7 @@ static void cas_format_block(void)
 static void cas_enable(bool enable)
 {
     if (hf) {
-	if (tracing & TRACE_CAS)
+	if (tracing(TRACE_CAS))
 	    fprintf(tracef, "CAS: closing file %s\n", hf->filename);
 	close_file(&hf);
     }
@@ -88,7 +88,7 @@ static bool cas_edge(void)
     bc = bitctr++;
 
     if (!hf && block_nr == -1) {
-	if (tracing & TRACE_CAS)
+	if (tracing(TRACE_CAS))
 	    fprintf(tracef, "CAS: reading with nothing, bit %4u\n", bc);
 	return false;
     }
@@ -96,7 +96,7 @@ static bool cas_edge(void)
     b = ((const uint8_t *)&block)[bc >> 4];
     bit = ((b >> ((bc >> 1) & 7)) | ~bc) & 1;
 
-    if (tracing & TRACE_CAS) {
+    if (tracing(TRACE_CAS)) {
 	char bstr[4];
 	if (b >= 32 && b <= 126) {
 	    bstr[0] = bstr[2] = '\'';

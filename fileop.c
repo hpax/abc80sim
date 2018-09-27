@@ -28,7 +28,7 @@ static void trace_data(const void *data, size_t len, const char *pfx)
   size_t i;
   const uint8_t *dp = data;
 
-  if (!(tracing & TRACE_PR))
+  if (!tracing(TRACE_PR))
     return;
 
   fprintf(tracef, "PR:  %-5s: ", pfx);
@@ -515,7 +515,7 @@ bool file_op(unsigned char c)
       send_reply(128+11);
       break;
     }
-    if (tracing & TRACE_PR) {
+    if (tracing(TRACE_PR)) {
       static const char * const cmdnames[0x20] =
 	{
 	 "OPEN A", "OPEN B", "PREP A", "PREP B",

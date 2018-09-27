@@ -196,20 +196,7 @@ extern void mem_init(unsigned int flags, const char *memfile);
 
 
 /* Signal an interrupt. If passed an odd value, e.g. -1, ignore. */
-static inline void z80_interrupt_eoi(uint8_t vector, eoifunc do_eoi,
-				     void *eoi_arg)
-{
-    if (!(vector & 1) && z80_state.int_in_progress != vector) {
-	if (tracing & (TRACE_CPU|TRACE_IO)) {
-	    fprintf(tracef, "IRQ: interrupt pending, vector 0x%02x (%3u)\n",
-		    vector, vector);
-	}
-	z80_state.interrupt = true;
-	z80_state.i_vector  = vector;
-	z80_state.eoi.func = do_eoi;
-	z80_state.eoi.arg = eoi_arg;
-    }
-}
+extern void z80_interrupt_eoi(uint8_t vector, eoifunc do_eoi, void *eoi_arg);
 
 static inline void z80_interrupt(uint8_t vector)
 {

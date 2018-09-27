@@ -15,7 +15,7 @@
 static const char version_string[] = VERSION;
 const char *program_name;
 
-enum tracing tracing;
+enum tracing traceflags;
 FILE *tracef;
 
 int events_in_queue = 1;
@@ -159,7 +159,7 @@ static void parse_trace(char *arg)
     for (arg = strtok(arg, ","); arg; arg = strtok(NULL, ",")) {
 	bool invert = false;
 	if (!strcmp(arg, "none")) {
-	    tracing = TRACE_NONE;
+	    traceflags = TRACE_NONE;
 	    continue;
 	}
 	if (!strncmp(arg, "no-", 3)) {
@@ -169,9 +169,9 @@ static void parse_trace(char *arg)
 	for (trp = trace_args; trp->name; trp++) {
 	    if (!strcmp(arg, trp->name)) {
 		if (invert)
-		    tracing &= ~trp->mask;
+		    traceflags &= ~trp->mask;
 		else
-		    tracing |= trp->mask;
+		    traceflags |= trp->mask;
 	    }
 	}
     }
@@ -356,7 +356,7 @@ int main(int argc, char **argv)
 	}
     }
 
-    if (tracing) {
+    if (traceflags) {
 	if (!tracefile || !tracefile[0] ||
 	    (tracefile[0] == '-' && !tracefile[1])) {
 	    tracef = stdout;
@@ -365,7 +365,7 @@ int main(int argc, char **argv)
 	    if (!tracef) {
 		fprintf(stderr, "%s: Unable to open trace file %s: %s\n",
 			program_name, tracefile, strerror(errno));
-		tracing = 0;
+		traceflags = TRACE_NONE;
 	    }
 	}
     }

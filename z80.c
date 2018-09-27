@@ -1301,7 +1301,7 @@ static void do_im2(void)
 static void do_nmi(void)
 {
     /* handle a non-maskable interrupt */
-    if (tracing & (TRACE_IO|TRACE_CPU)) {
+    if (tracing(TRACE_IO|TRACE_CPU)) {
 	fprintf(tracef, "NMI: PC=%04x\n", REG_PC);
     }
 
@@ -1347,7 +1347,7 @@ do_int(void)
     z80_state.iff1 = false;
     z80_state.int_in_progress = z80_state.i_vector & ~1;
 
-    if (tracing & (TRACE_CPU | TRACE_IO)) {
+    if (tracing(TRACE_CPU|TRACE_IO)) {
 	fprintf(tracef, "INT: vector 0x%02x (%3d) I=%02x PC=%04x -> %04x\n",
 		z80_state.i_vector, z80_state.i_vector,
 		z80_state.i, old_pc, REG_PC);
@@ -1356,6 +1356,20 @@ do_int(void)
     inc_r();
 }
 
+
+void z80_interrupt_eoi(uint8_t vector, eoifunc do_eoi, void *eoi_arg)
+{
+    if (!(vector & 1) && z80_state.int_in_progress != vector) {
+	if (tracing(TRACE_CPU|TRACE_IO)) {
+	    fprintf(tracef, "IRQ: interrupt pending, vector 0x%02x (%3u)\n",
+		    vector, vector);
+	}
+	z80_state.interrupt = true;
+	z80_state.i_vector  = vector;
+	z80_state.eoi.func = do_eoi;
+	z80_state.eoi.arg = eoi_arg;
+    }
+}
 
 static uint16_t get_hl_addr(wordregister *ix)
 {
@@ -2480,7 +2494,7 @@ static void do_ED_instruction(wordregister *ix)
 	  uint8_t vector = z80_state.int_in_progress;
 	  eoifunc do_eoi = z80_state.eoi.func;
 
-	  if (tracing & (TRACE_CPU|TRACE_IO)) {
+	  if (tracing(TRACE_CPU|TRACE_IO)) {
 	    fprintf(tracef, "EOI: vector 0x%02x (%3u) PC=%04x\n",
 		    vector, vector, REG_PC);
 	  }
@@ -2554,7 +2568,7 @@ int z80_run(bool continuous, bool halted)
 	    }
 	  } while (halted);
 
-	  if (tracing & TRACE_CPU) {
+	  if (tracing(TRACE_CPU)) {
 	      diffstate();
 	      tracemem();
 	      fprintf(tracef, "\nPC=%04X ", z80_state.pc.word);
@@ -3713,7 +3727,7 @@ static void diffstate(void)
 {
     static struct z80_state_struct old_state;
 
-    if (!(tracing & TRACE_CPU))
+    if (!tracing(TRACE_CPU))
 	return;
 
     BREG(A,af.byte.high);
