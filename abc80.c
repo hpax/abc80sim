@@ -113,6 +113,7 @@ static no_return help(void)
 	   "      --printcmd ...    set command to launch a print job (* = filename)\n"
 	   "      --memfile ...     load a file into the ABC802 MEM: device\n"
 	   "      --casfile ...     input file for cassette (CAS:)\n"
+	   "      --caslist ...     read list of files for the cassette from a file\n"
 	   "  -c, --console         enable console output device (PRC:)\n"
 	   "      --consolefile ... enable console output device to a file\n"
 	   "      --detach          detach from console if run from a command line\n"
@@ -296,7 +297,12 @@ int main(int argc, char **argv)
 	    } else if (!strcmp(optstr, "consolefile")) {
 		console = enable ? LONG_ARG() : NULL;
 	    } else if (!strcmp(optstr, "casfile")) {
-		cas_file = enable ? LONG_ARG() : NULL;
+		if (!enable)
+		    filelist_free(&cas_files);
+		else
+		    filelist_add_file(&cas_files, LONG_ARG());
+	    } else if (!strcmp(optstr, "caslist")) {
+		filelist_add_list(&cas_files, LONG_ARG());
 	    } else {
 		fprintf(stderr, "%s: unknown option: --%s\n",
 			program_name, optstr);

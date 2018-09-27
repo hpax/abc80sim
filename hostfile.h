@@ -35,15 +35,15 @@ static inline void keep_file(struct host_file *file)
 
 static inline bool is_path_separator(char c)
 {
-  switch (c) {
-  case '/':
+    switch (c) {
+    case '/':
 #ifdef __WIN32__
-  case ':':
-  case '\\':
+    case ':':
+    case '\\':
 #endif
-    return true;
-  default:
-    return false;
+	return true;
+    default:
+	return false;
   }
 }
 
@@ -71,5 +71,16 @@ extern void hostfile_init(void);
 
 /* Point to a filename, without any path */
 extern const char *host_strip_path(const char *path);
+
+/* Simple linked list of filenames */
+struct file_node;
+struct file_list {
+    struct file_node *first, *last;
+};
+
+extern void filelist_add_file(struct file_list *, const char *);
+extern void filelist_add_list(struct file_list *, const char *);
+extern void filelist_free(struct file_list *);
+extern char *filelist_pop(struct file_list *);
 
 #endif /* HOSTFILE_H */

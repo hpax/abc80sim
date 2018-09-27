@@ -8,7 +8,7 @@
 #include "abcfile.h"
 #include "trace.h"
 
-const char *cas_file;
+struct file_list cas_files;
 
 /*
  * Cassette I/O
@@ -60,23 +60,44 @@ static void cas_format_block(void)
 
 static void cas_enable(bool enable)
 {
+    char *casfile;
+
+    if (tracing(TRACE_CAS))
+	fprintf(tracef, "CAS: motor %s\n", enable ? "on" : "off");
+
     if (hf) {
 	if (tracing(TRACE_CAS))
 	    fprintf(tracef, "CAS: closing file %s\n", hf->filename);
 	close_file(&hf);
     }
 
-    if (!enable || !cas_file || !cas_file[0])
+    if (!enable)
 	return;
 
-    hf = open_host_file(HF_BINARY, NULL, cas_file, O_RDONLY);
-    if (!hf)
-	return;
-
+    /* Reset the cassette file position */
     block_nr = -1;
-    mangle_filename((char *)block.data, cas_file);
-    memset(block.data+11, 0, sizeof block.data - 11);
-    cas_format_block();
+    bitctr = 0;
+
+    casfile = filelist_pop(&cas_files);
+    if (!casfile) {
+	if (tracing(TRACE_CAS))
+	    fprintf(tracef, "CAS: no more files\n");
+	return;
+    }
+
+    hf = open_host_file(HF_BINARY, NULL, casfile, O_RDONLY);
+    if (hf) {
+	mangle_filename((char *)block.data, casfile);
+	memset(block.data+11, 0, sizeof block.data - 11);
+	if (tracing(TRACE_CAS))
+	    fprintf(tracef, "CAS: opening file %s (%8.8s.%3.3s)\n",
+		    casfile, (char *)block.data, (char *)block.data+8);
+	cas_format_block();
+    } else {
+	if (tracing(TRACE_CAS))
+	    fprintf(tracef, "CAS: failed to open file %s\n", casfile);
+    }
+    free(casfile);
 }
 
 static bool cas_edge(void)

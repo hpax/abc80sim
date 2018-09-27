@@ -2,6 +2,7 @@
 #define ABCIO_H
 
 #include "compiler.h"
+#include "hostfile.h"
 
 extern void io_init(void);
 
@@ -43,7 +44,7 @@ extern uint8_t abc80_piob_in(void);
 
 /* Directory and filenames */
 extern const char *fileop_path, *disk_path, *screen_path, *memdump_path;
-extern const char *cas_file;
+extern struct file_list cas_files;
 
 /* Program name for error messages */
 extern const char *program_name;
