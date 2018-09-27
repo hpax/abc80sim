@@ -108,6 +108,7 @@ static no_return help(void)
 	   "      --dumpdir ...     set directory for memory dumps (default .)\n"
 	   "      --printcmd ...    set command to launch a print job (* = filename)\n"
 	   "      --memfile ...     load a file into the ABC802 MEM: device\n"
+	   "      --casfile ...     input file for cassette (CAS:)\n"
 	   "  -c, --console         enable console output device (PRC:)\n"
 	   "      --consolefile ... enable console output device to a file\n"
 	   "      --detach          detach from console if run from a command line\n"
@@ -272,7 +273,7 @@ int main(int argc, char **argv)
 	    } else if (!strcmp(optstr, "trace")) {
 		parse_trace(LONG_ARG());
 	    } else if (!strcmp(optstr, "tracefile")) {
-		tracefile = LONG_ARG();
+		tracefile = enable ? LONG_ARG() : NULL;
 	    } else if (!strcmp(optstr, "diskdir")) {
 		disk_path = LONG_ARG();
 	    } else if (!strcmp(optstr, "filedir")) {
@@ -282,13 +283,15 @@ int main(int argc, char **argv)
 	    } else if (!strcmp(optstr, "printcmd")) {
 		lpr_command = LONG_ARG();
 	    } else if (!strcmp(optstr, "memfile")) {
-		memfile = LONG_ARG();
+		memfile = enable ? LONG_ARG() : NULL;
 	    } else if (!strcmp(optstr, "detach")) {
 		detach = enable;
 	    } else if (!strcmp(optstr, "console")) {
 		console = enable ? "-" : NULL;
 	    } else if (!strcmp(optstr, "consolefile")) {
-		console = LONG_ARG();
+		console = enable ? LONG_ARG() : NULL;
+	    } else if (!strcmp(optstr, "casfile")) {
+		cas_file = enable ? LONG_ARG() : NULL;
 	    } else {
 		fprintf(stderr, "%s: unknown option: --%s\n",
 			program_name, optstr);
@@ -372,7 +375,7 @@ int main(int argc, char **argv)
 	    console_file = fopen(console, "wt");
 	}
     }
-    
+
     hostfile_init();
 
     screen_init(width40);

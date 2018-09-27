@@ -34,6 +34,12 @@ typedef union
     uint16_t word;
 } wordregister;
 
+typedef void (*eoifunc)(uint8_t, void *);
+struct eoi {
+    eoifunc func;
+    void *arg;
+};
+
 struct z80_state_struct
 {
     wordregister af;
@@ -63,6 +69,8 @@ struct z80_state_struct
     bool interrupt;	/* used to signal an interrupt */
 
     uint8_t i_vector;     /* offset into interrupt-page from _external_ device */
+    uint8_t int_in_progress;	/* interrupt being serviced */
+    struct eoi eoi;		/* EOI (= RETI) callback */
 };
 
 #define Z80_ADDRESS_LIMIT	(1 << 16)
@@ -154,16 +162,6 @@ struct z80_state_struct
 #define SIGN_FLAG		(REG_F & SIGN_MASK)
 
 extern struct z80_state_struct z80_state;
-
-/* Signal an interrupt. If passed an odd value, e.g. -1, ignore. */
-static inline void z80_interrupt(uint8_t vector)
-{
-  if (!(vector & 1)) {
-    z80_state.interrupt = true;
-    z80_state.i_vector  = vector;
-  }
-}
-
 /* Signal an NMI */
 static inline void z80_nmi(void)
 {
@@ -202,5 +200,36 @@ extern uint8_t ram[];		/* Array for plain RAM */
 extern void mem_init(unsigned int flags, const char *memfile);
 #define MEMFL_NOBASIC	1
 #define MEMFL_NODEV	2
+
+
+/* Signal an interrupt. If passed an odd value, e.g. -1, ignore. */
+static inline void z80_interrupt_eoi(uint8_t vector, eoifunc do_eoi,
+				     void *eoi_arg)
+{
+    if (!(vector & 1) && z80_state.int_in_progress != vector) {
+	if (tracing & (TRACE_CPU|TRACE_IO)) {
+	    fprintf(tracef, "IRQ: interrupt pending, vector 0x%02x (%3u)\n",
+		    vector, vector);
+	}
+	z80_state.interrupt = true;
+	z80_state.i_vector  = vector;
+	z80_state.eoi.func = do_eoi;
+	z80_state.eoi.arg = eoi_arg;
+    }
+}
+
+static inline void z80_interrupt(uint8_t vector)
+{
+    z80_interrupt_eoi(vector, NULL, NULL);
+}
+
+static inline void z80_clear_interrupt(uint8_t vector)
+{
+    if (!(vector & 1) && z80_state.interrupt == vector) {
+	z80_state.interrupt = false;
+	if (z80_state.int_in_progress & 1)
+	    z80_state.eoi.func = NULL;
+    }
+}
 
 #endif /* Z80_H */

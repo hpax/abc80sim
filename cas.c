@@ -5,30 +5,29 @@
 #include "hostfile.h"
 #include "abcio.h"
 #include "z80.h"
+#include "abcfile.h"
 
-const char *casfile = "abcdir/foo.bas";
-const char *casname = "FOO     BAS"; /* Fix this */
+const char *cas_file;
 
 /*
  * Cassette I/O
  */
 struct cas_block {
-    uint8_t leadin[32];		/* Min 16 bytes all zero */
-    uint8_t sync[4];		/* 0x16 (XXX: how many?) */
+    uint8_t leadin[32];		/* 0x00 */
+    uint8_t sync[3];		/* 0x16 */
     uint8_t stx;		/* 0x02 */
-    uint8_t blktype;		/* 0 for data, 0xff for filename */
+    uint8_t blktype;		/* 0x00 for data, 0xff for filename */
     uint8_t blkno[2];		/* Block number (littleendian) */
     uint8_t data[253];		/* Actual data */
     uint8_t etx;		/* 0x03 */
     uint8_t csum[2];		/* Checksum */
-    uint8_t leadout[8];		/* Zero? */
+    uint8_t leadout[1];		/* 0x00 */
 };
 
 static struct host_file *hf;
 static struct cas_block block;
 static unsigned int bitctr;
-static int block_nr;
-#define block_data (block + 33)	/* 33 byte header */
+static int block_nr = -1;
 
 static void cas_format_block(void)
 {
@@ -37,7 +36,6 @@ static void cas_format_block(void)
     int i;
 
     memset(block.leadin, 0, sizeof block.leadin);
-    memset(block.leadout, 0, sizeof block.leadout);
     memset(block.sync, 0x16, sizeof block.sync);
     block.stx = 0x02;
     block.blktype = -(block_nr < 0);
@@ -53,6 +51,8 @@ static void cas_format_block(void)
     block.csum[0] = csum;
     block.csum[1] = csum >> 8;
 
+    memset(block.leadout, 0, sizeof block.leadout);
+
     block_nr++;
     bitctr = 0;
 }
@@ -65,20 +65,15 @@ static void cas_enable(bool enable)
 	close_file(&hf);
     }
 
-    if (!enable)
+    if (!enable || !cas_file || !cas_file[0])
 	return;
 
-    if (tracing & TRACE_CAS) {
-	fprintf(tracef, "CAS: opening file %s as (%11.11s)\n",
-		casfile, casname);
-    }
-
-    hf = open_host_file(HF_BINARY, NULL, casfile, O_RDONLY);
+    hf = open_host_file(HF_BINARY, NULL, cas_file, O_RDONLY);
     if (!hf)
 	return;
 
     block_nr = -1;
-    memcpy(block.data, casname, 11);
+    mangle_filename((char *)block.data, cas_file);
     memset(block.data+11, 0, sizeof block.data - 11);
     cas_format_block();
 }
@@ -91,14 +86,14 @@ static bool cas_edge(void)
 
     bc = bitctr++;
 
-    if (!hf) {
+    if (!hf && block_nr == -1) {
 	if (tracing & TRACE_CAS)
 	    fprintf(tracef, "CAS: reading with nothing, bit %4u\n", bc);
 	return false;
     }
 
     b = ((const uint8_t *)&block)[bc >> 4];
-    bit = ((b >> ((~bc >> 1) & 7)) | ~bc) & 1;
+    bit = ((b >> ((bc >> 1) & 7)) | ~bc) & 1;
 
     if (tracing & TRACE_CAS) {
 	char bstr[4];
@@ -110,19 +105,27 @@ static bool cas_edge(void)
 	    snprintf(bstr, sizeof bstr, "%3u", b);
 	}
 
-	fprintf(tracef, "CAS: block %3d byte %3u = %02x %s %s %u = %u\n",
-		block_nr-1, bc >> 4, b, bstr, (bc & 1) ? "bit" : "clk",
-		(~bc >> 1) & 7, bit);
+	fprintf(tracef, "CAS: block %3d byte %3d = %02x %s %s %u = %u\n",
+		block_nr-1, (bc >> 4) - (int)offsetof(struct cas_block, data),
+		b, bstr, (bc & 1) ? "bit" : "clk",
+		(bc >> 1) & 7, bit);
     }
 
     if (bitctr >= 16*sizeof block) {
 	/* End of data, read another block */
-	size_t len = fread(block.data, 1, sizeof block.data, hf->f);
-	memset(block.data + len, 0, sizeof block.data - len);
-	if (len == 0) {
-	    close_file(&hf);
-	    bitctr = 0;
+	if (!hf) {
+	    block_nr = -1;	/* Finished EOF block */
 	} else {
+	    size_t len = fread(block.data, 1, sizeof block.data, hf->f);
+	    memset(block.data + len, 0, sizeof block.data - len);
+	    if (len == 0)
+		block.data[6] = 0x03; /* Make an EOF block */
+
+	    if (!memcmp(block.data, "\0\0\0\0\0\0\3", 7)) {
+		/* It is an EOF block */
+		close_file(&hf);
+	    }
+
 	    cas_format_block();
 	}
     }
@@ -142,7 +145,8 @@ enum pioctl_state {
 
 struct pio {
     uint8_t out, in, mask;
-    uint8_t irq, irqmask, irqctl;
+    uint8_t mode;
+    uint8_t irq, irqmask, irqctl, irqprev;
     enum pioctl_state ctlstate;
 };
 
@@ -153,38 +157,66 @@ static inline uint8_t pio_readval(const struct pio *pio)
     return (pio->out & pio->mask) | (pio->in & ~pio->mask);
 }
 
-static void pio_check_interrupt(const struct pio *pio, uint8_t prev)
+static void pio_eoi(uint8_t vector, void *arg);
+
+static void pio_check_interrupt(struct pio *pio)
 {
     uint8_t val = pio_readval(pio);
     uint8_t masked;
     bool trigger;
 
-    if (!(pio->irqctl & 0x80))
-	return;			/* Interrupts not enabled */
+    pio->irqprev = val;
 
-    masked = (pio->irqctl & 0x20) ? ~prev & val : prev & ~val;
+    masked = (pio->irqctl & 0x20) ? val : ~val;
     masked &= pio->irqmask;
 
-    trigger = (pio->irqctl & 0x40) ? (masked == pio->irqmask) : (masked != 0);
+    trigger = (pio->irqctl & 0x80) && (pio->mode == 3) &&
+	(pio->irqctl & 0x40) ? (masked == pio->irqmask) : (masked != 0);
 
     if (trigger)
-	z80_interrupt(pio->irq);
+	z80_interrupt_eoi(pio->irq, pio_eoi, (void *)pio);
+    else
+	z80_clear_interrupt(pio->irq);
+}
+
+static void pio_eoi(uint8_t vector, void *arg)
+{
+    (void)vector;
+    pio_check_interrupt((struct pio *)arg);
 }
 
 static void pio_control(struct pio *pio, uint8_t v)
 {
     switch (pio->ctlstate) {
     case pcs_init:
-	if ((v & 1) == 0) {
-	    pio->irq = v;
-	} else if ((v & 0xcf) == 0xcf) {
-	    pio->ctlstate = pcs_mask;
-	} else if ((v & 0x0f) == 0x07) {
+	switch (v & 15) {
+	case 0xf:
+	    pio->mode = v >> 6;
+	    switch (pio->mode) {
+	    case 0:		/* All output */
+		pio->mask = 0xff;
+		break;
+	    case 1:		/* All input */
+	    case 2:		/* Bidir, treat as input */
+		pio->mask = 0;
+		break;
+	    case 3:		/* Programmable */
+		pio->ctlstate = pcs_mask;
+		break;
+	    }
+	    break;
+	case 0x07:
 	    pio->irqctl = v;
 	    if (pio->irqctl & 0x10)
 		pio->ctlstate = pcs_irqmask;
-	} else if ((v & 0x0f) == 0x03) {
+	    break;
+	case 0x03:
 	    pio->irqctl = (pio->irqctl & 0x7f) | (v & 0x80);
+	    break;
+	default:
+	    if ((v & 1) == 0)
+		pio->irq = v;
+	    break;
 	}
 	break;
 
@@ -220,14 +252,20 @@ void abc80_piob_out(uint8_t port, uint8_t v)
 	    if (cas_edge())
 		portb.in &= ~0x80;
 	}
-
-	pio_check_interrupt(&portb, old);
 	break;
 
     case 1:			/* Control port */
+    {
+	uint8_t oldirqctl = portb.irqctl;
 	pio_control(&portb, v);
+	/* Hack to resynchronize with bitstream */
+	if (~oldirqctl & portb.irqctl & 0x80)
+	    bitctr &= ~1;	/* Next bit will be a clock bit */
 	break;
     }
+    }
+
+    pio_check_interrupt(&portb);
 }
 
 /* This is called for the data port only */

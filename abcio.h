@@ -41,8 +41,9 @@ extern void dump_memory(bool ramonly);
 extern void abc80_piob_out(uint8_t port, uint8_t v);
 extern uint8_t abc80_piob_in(void);
 
-/* Directories */
+/* Directory and filenames */
 extern const char *fileop_path, *disk_path, *screen_path, *memdump_path;
+extern const char *cas_file;
 
 /* Program name for error messages */
 extern const char *program_name;

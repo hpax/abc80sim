@@ -1305,26 +1305,23 @@ static void do_nmi(void)
 {
     /* handle a non-maskable interrupt */
     if (tracing & (TRACE_IO|TRACE_CPU)) {
-	fprintf(tracef, "NMI: PC=%02x\n", REG_PC);
+	fprintf(tracef, "NMI: PC=%04x\n", REG_PC);
     }
 
     REG_SP -= 2;
     mem_write_word(REG_SP, REG_PC);
     z80_state.iff2 = z80_state.iff1;
     z80_state.iff1 = false;
+    z80_state.nmi_in_progress = true;
+    z80_state.nminterrupt = false;
     REG_PC = 0x66;
     inc_r();
 }
 
-
 static void
 do_int(void)
 {
-    if (tracing & (TRACE_CPU | TRACE_IO)) {
-	fprintf(tracef, "INT: vector %02x (%3d) I=%02x PC=%04x\n",
-		z80_state.i_vector, z80_state.i_vector,
-		z80_state.i, REG_PC);
-    }
+    uint16_t old_pc = REG_PC;
 
     switch (z80_state.interrupt_mode) {
       case 0:
@@ -1347,6 +1344,16 @@ do_int(void)
 
       default: /* oops, unkown interrupt mode... */
         break;
+    }
+
+    z80_state.interrupt = false;
+    z80_state.iff1 = false;
+    z80_state.int_in_progress = z80_state.i_vector & ~1;
+
+    if (tracing & (TRACE_CPU | TRACE_IO)) {
+	fprintf(tracef, "INT: vector 0x%02x (%3d) I=%02x PC=%04x -> %04x\n",
+		z80_state.i_vector, z80_state.i_vector,
+		z80_state.i, old_pc, REG_PC);
     }
 
     inc_r();
@@ -2472,7 +2479,24 @@ static void do_ED_instruction(wordregister *ix)
       case 0x5D:
       case 0x6D:
       case 0x7D:
-	/* no support for alerting peripherals, just like retn, fall through */
+	{
+	  uint8_t vector = z80_state.int_in_progress;
+	  eoifunc do_eoi = z80_state.eoi.func;
+
+	  if (tracing & (TRACE_CPU|TRACE_IO)) {
+	    fprintf(tracef, "EOI: vector 0x%02x (%3u) PC=%04x\n",
+		    vector, vector, REG_PC);
+	  }
+
+	  REG_PC = mem_read_word(REG_SP);
+	  REG_SP += 2;
+	  z80_state.iff1 = z80_state.iff2;
+	  z80_state.int_in_progress = -1;
+	  z80_state.eoi.func = NULL;
+	  if (do_eoi)
+	    do_eoi(vector, z80_state.eoi.arg);
+	}
+	break;
 
       case 0x45:	/* retn */
       case 0x55:
@@ -2480,7 +2504,7 @@ static void do_ED_instruction(wordregister *ix)
       case 0x75:
 	REG_PC = mem_read_word(REG_SP);
 	REG_SP += 2;
-	z80_state.iff1 = z80_state.iff2;  /* restore the iff state */
+	z80_state.iff1 = z80_state.iff2;
 	z80_state.nmi_in_progress = false;
 	break;
 
@@ -2511,11 +2535,6 @@ static void do_ED_instruction(wordregister *ix)
     }
 }
 
-/* Hack, hack, see if we can speed this up. */
-/*extern uint8_t *memory;*/
-/*#define MEM_READ(a) ((a < 0x3000) ? memory[a] : mem_read(a));*/
-/* #define MEM_READ(a) (((((a) - 0x3000) & 0xffff) >= 0xc00) ? memory[a] : mem_read(a)) */
-
 int z80_run(bool continuous, bool halted)
 {
     uint8_t instruction;
@@ -2529,17 +2548,12 @@ int z80_run(bool continuous, bool halted)
 	    z80_poll_external();
 
 	    /* Check for an interrupt */
-	    if (z80_state.nminterrupt) {
-	      if(z80_state.nmi_in_progress == 0) {
-		halted = 0;
-		z80_state.nmi_in_progress = 1;
-		do_nmi();
-		z80_state.nminterrupt = false;
-	      }
-	    } else if (z80_state.iff1 && z80_state.interrupt) {
+	    if (z80_state.nminterrupt && !z80_state.nmi_in_progress) {
+	      halted = false;
+	      do_nmi();
+	    } else if (z80_state.interrupt && z80_state.iff1) {
 	      halted = false;
 	      do_int();
-	      z80_state.interrupt = false;
 	    }
 	  } while (halted);
 
@@ -3683,6 +3697,7 @@ z80_reset(void)
     z80_state.interrupt_mode = 0;
     z80_state.nmi_in_progress = false;
     z80_state.interrupt = false;
+    z80_state.int_in_progress = -1;
     /* z80_state.r = 0; */
 }
 
