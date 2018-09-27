@@ -55,11 +55,11 @@ static void trace_data(const void *data, size_t len, const char *pfx)
   }
   putc(']', tracef);
   if (len > 16)
-    fprintf(tracef, "+ (%zu bytes)", len);
+    fprintf(tracef, "+ (%lu bytes)", (unsigned long)len);
   putc('\n', tracef);
 }
 
-static void send(const void *buf, size_t len)
+static void pr_send(const void *buf, size_t len)
 {
   trace_data(buf, len, "SEND");
   abcprint_send(buf, len);
@@ -74,7 +74,7 @@ static void send_reply(int status)
   reply[2] = cmd[1];
   reply[3] = status;
 
-  send(reply, 4);
+  pr_send(reply, 4);
 }
 
 
@@ -199,7 +199,7 @@ static void do_read_block(uint16_t ix, uint16_t len)
 
   data[0] = len;
   data[1] = len >> 8;
-  send(data, len+2);
+  pr_send(data, len+2);
 }
 
 static void do_seek(uint16_t ix, uint64_t pos)
@@ -299,7 +299,7 @@ static void do_input(uint16_t ix)
   if (!err) {
     data1[0] = dlen;
     data1[1] = dlen >> 8;
-    send(data1, dlen+2);
+    pr_send(data1, dlen+2);
   }
 }
 
