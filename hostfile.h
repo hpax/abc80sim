@@ -33,6 +33,20 @@ static inline void keep_file(struct host_file *file)
     file->nuke = false;
 }
 
+static inline bool is_path_separator(char c)
+{
+  switch (c) {
+  case '/':
+#ifdef __WIN32__
+  case ':':
+  case '\\':
+#endif
+    return true;
+  default:
+    return false;
+  }
+}
+
 /* Open a host filesystem file */
 extern struct host_file *
 open_host_file(enum host_file_mode mode, const char *dir,

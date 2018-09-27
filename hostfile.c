@@ -72,20 +72,6 @@ static inline int mode_openflags(enum host_file_mode mode)
 # define _setmode(x,y) ((void)(x), (void)(y))
 #endif
 
-static inline bool is_path_separator(char c)
-{
-  switch (c) {
-  case '/':
-#ifdef __WIN32__
-  case ':':
-  case '\\':
-#endif
-    return true;
-  default:
-    return false;
-  }
-}
-
 static inline bool filename_is_absolute(const char *name)
 {
   if (*name == '/')
