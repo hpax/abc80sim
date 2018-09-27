@@ -382,3 +382,19 @@ void hostfile_init(void)
 {
     atexit(hostfile_cleanup);
 }
+
+/*
+ * Strip the path from a (host) filename
+ */
+const char *host_strip_path(const char *path)
+{
+  const char *p;
+
+  p = strrchr(path, '\0');
+  while (--p >= path) {
+    if (is_path_separator(*p))
+      break;
+  }
+
+  return p+1;
+}

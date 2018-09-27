@@ -3,6 +3,7 @@
  */
 
 #include "abcfile.h"
+#include "hostfile.h"		/* For host_strip_path() */
 
 #include <wchar.h>
 
@@ -62,16 +63,7 @@ void mangle_filename(char *dst, const char *src)
   int n;
 
   /* Skip any path prefix */
-  s = strchr(src, '\0');
-  while (--s >= src) {
-    if (*s == '/'
-#ifdef __WIN32__
-	|| *s == ':' || *s == '\\'
-#endif
-	)
-      break;
-  }
-  s++;
+  s = host_strip_path(src);
 
   memset(dst, ' ', 11);
   dst[11] = '\0';

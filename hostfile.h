@@ -69,4 +69,7 @@ extern int stat_file(const char *dir, const char *filename, struct stat *st);
 /* Initialize the hostfile subsystem */
 extern void hostfile_init(void);
 
+/* Point to a filename, without any path */
+extern const char *host_strip_path(const char *path);
+
 #endif /* HOSTFILE_H */
