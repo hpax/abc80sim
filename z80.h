@@ -17,6 +17,7 @@
 #define Z80_H
 
 #include "compiler.h"
+#include "trace.h"
 
 struct twobyte
 {
@@ -186,14 +187,6 @@ extern int z80_in(int);
 extern int disassemble(int);
 extern int DAsm(uint16_t pc, char *T, int *target);
 extern void z80_poll_external(void);
-
-extern unsigned int tracing;
-extern FILE *tracef;
-
-#define TRACE_CPU	1
-#define TRACE_IO	2
-#define TRACE_DISK	4
-#define TRACE_CAS	8
 
 extern uint8_t ram[];		/* Array for plain RAM */
 

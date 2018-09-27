@@ -6,6 +6,7 @@
 #include "z80.h"
 #include "abcio.h"
 #include "hostfile.h"
+#include "trace.h"
 
 const char *disk_path = "abcdisk";
 

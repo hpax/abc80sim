@@ -14,6 +14,7 @@
 #include "clock.h"
 #include "abcio.h"
 #include "nstime.h"
+#include "trace.h"
 
 #define min(x,y) ((x)<(y)?(x):(y))
 #define max(x,y) ((x)>(y)?(x):(y))

@@ -1,6 +1,7 @@
 #include "abcprintd.h"
 #include "hostfile.h"
 #include "abcfile.h"
+#include "trace.h"
 
 const char *fileop_path = "abcdir";
 
@@ -22,6 +23,48 @@ static unsigned char *bytep = cmd;
 static struct host_file *filemap[65536];
 static unsigned char data[65536+2];
 
+static void trace_data(const void *data, size_t len, const char *pfx)
+{
+  size_t i;
+  const uint8_t *dp = data;
+
+  if (!(tracing & TRACE_PR))
+    return;
+
+  fprintf(tracef, "PR:  %-5s: ", pfx);
+
+  for (i = 0; i < 16; i++) {
+    if (i >= len)
+      fprintf(tracef, "  ");
+    else
+      fprintf(tracef, "%02x", dp[i]);
+
+    putc(i == 8 ? '-' : ' ', tracef);
+  }
+
+  fprintf(tracef, "%c  [", (len > 16) ? '+' : ' ');
+
+  for (i = 0; i < 16; i++) {
+    char c;
+
+    c = (i >= len) ? ' ' : dp[i];
+    if (c < 32 || c > 126)
+      c = '.';
+
+    putc(c, tracef);
+  }
+  putc(']', tracef);
+  if (len > 16)
+    fprintf(tracef, "+ (%zu bytes)", len);
+  putc('\n', tracef);
+}
+
+static void send(const void *buf, size_t len)
+{
+  trace_data(buf, len, "SEND");
+  abcprint_send(buf, len);
+}
+
 static void send_reply(int status)
 {
   unsigned char reply[4];
@@ -31,8 +74,10 @@ static void send_reply(int status)
   reply[2] = cmd[1];
   reply[3] = status;
 
-  abcprint_send(reply, 4);
+  send(reply, 4);
 }
+
+
 
 /* Returns the status code, use send_reply(do_close(ix)) if reply desired */
 static int do_close(uint16_t ix)
@@ -122,7 +167,7 @@ static void do_read_block(uint16_t ix, uint16_t len)
     return;
   }
 
-  if (hf->f) {
+  if (!hf->f) {
     send_reply(128+37);		/* Felaktigt recordformat */
     return;
   }
@@ -154,7 +199,7 @@ static void do_read_block(uint16_t ix, uint16_t len)
 
   data[0] = len;
   data[1] = len >> 8;
-  abcprint_send(data, len+2);
+  send(data, len+2);
 }
 
 static void do_seek(uint16_t ix, uint64_t pos)
@@ -254,7 +299,7 @@ static void do_input(uint16_t ix)
   if (!err) {
     data1[0] = dlen;
     data1[1] = dlen >> 8;
-    abcprint_send(data1, dlen+2);
+    send(data1, dlen+2);
   }
 }
 
@@ -470,35 +515,61 @@ bool file_op(unsigned char c)
       send_reply(128+11);
       break;
     }
+    if (tracing & TRACE_PR) {
+      static const char * const cmdnames[0x20] =
+	{
+	 "OPEN A", "OPEN B", "PREP A", "PREP B",
+	 "INPUT", "READ", "PRINT", "CLOSE",
+	 "CALL", "CALLNR", "RENAME", "DELETE",
+	 NULL, NULL, NULL, NULL,
+	 "SEEK1", "SEEK2", "SEEK3", "SEEK4",
+	 "SEEK5", "SEEK6", "SEEK7", "SEEK8",
+	 NULL, NULL, NULL, NULL,
+	 NULL, NULL, NULL, NULL
+	};
+      int cnum = cmd[0] - 0xa0;
+      const char *cmdname = (cnum >= 0x20) ? NULL : cmdnames[cnum];
+
+      fprintf(tracef, "PR:  CMD  : %-6s %02x %02x %04x <need %u bytes>\n",
+	      cmdname ? cmdname : "???", cmd[0], cmd[1], ix, byte_count);
+    }
     break;
 
   case st_open:
+    trace_data(argbuf.b, 11, "OPEN");
     do_open(ix, argbuf.c);
     break;
 
   case st_read:
+    trace_data(argbuf.b, 2, "RLEN");
     do_read_block(ix, arg);
     break;
 
   case st_print:
+    trace_data(argbuf.b, 2, "WLEN");
     bytep = data;
     byte_count = arg;
     state = st_data;
     break;
 
   case st_seek:
+    trace_data(argbuf.b, cmd[0] - 0xb0 + 1, "SEEK");
     do_seek(ix, arg);
     break;
 
   case st_data:
+    trace_data(data, datalen, "WRTE");
     do_print(ix, datalen);
     break;
 
   case st_rename:
-    do_rename(argbuf.c);		/* Unimplemented command */
+    trace_data(data,    11, "REN1");
+    trace_data(data+11, 11, "REN2");
+    do_rename(argbuf.c);
     break;
 
   case st_delete:
+    trace_data(data, 11, "DEL ");
     do_delete(argbuf.c);
     break;
   }

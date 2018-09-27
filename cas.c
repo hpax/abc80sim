@@ -6,6 +6,7 @@
 #include "abcio.h"
 #include "z80.h"
 #include "abcfile.h"
+#include "trace.h"
 
 const char *cas_file;
 

@@ -30,9 +30,6 @@
 
 #include <setjmp.h>
 
-unsigned int tracing;
-FILE *tracef;
-
 /*
  * The state of our Z-80 registers is kept in this structure:
  */

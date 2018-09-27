@@ -4,6 +4,7 @@
 #include "screen.h"
 #include "abcio.h"
 #include "clock.h"
+#include "trace.h"
 
 #define READ_MODE   0
 #define WRITE_MODE  1

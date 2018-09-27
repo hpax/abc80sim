@@ -8,11 +8,15 @@
 #include "abcprintd.h"
 #include "hostfile.h"
 #include "console.h"
+#include "trace.h"
 
 #include <SDL_main.h>
 
 static const char version_string[] = VERSION;
 const char *program_name;
+
+enum tracing tracing;
+FILE *tracef;
 
 int events_in_queue = 1;
 volatile int event_pending = 1;
@@ -131,11 +135,12 @@ static void parse_trace(char *arg)
 	unsigned int mask;
 	const char *help;
     } trace_args[] = {
-	{ "all", ~0U,         "all traceable events" },
+	{ "all", TRACE_ALL,   "all traceable events" },
 	{ "cpu", TRACE_CPU,   "cpu execution and memory accesses" },
 	{ "io", TRACE_IO,     "port I/O"},
 	{ "disk", TRACE_DISK, "disk commands" },
 	{ "cas", TRACE_CAS,   "cassette I/O" },
+	{ "pr", TRACE_PR,     "printer interface"},
 	{ NULL, 0, NULL }
     };
     const struct trace_args *trp;
@@ -154,7 +159,7 @@ static void parse_trace(char *arg)
     for (arg = strtok(arg, ","); arg; arg = strtok(NULL, ",")) {
 	bool invert = false;
 	if (!strcmp(arg, "none")) {
-	    tracing = 0;
+	    tracing = TRACE_NONE;
 	    continue;
 	}
 	if (!strncmp(arg, "no-", 3)) {
