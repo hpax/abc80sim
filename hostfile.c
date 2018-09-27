@@ -86,6 +86,19 @@ static inline bool is_path_separator(char c)
   }
 }
 
+static inline bool filename_is_absolute(const char *name)
+{
+  if (*name == '/')
+    return true;
+
+#ifdef __WIN32__
+  if (*name == '\\' || strchr(name, ':'))
+    return true;
+#endif
+
+  return false;
+}
+
 int stat_file(const char *dir, const char *filename, struct stat *st)
 {
     size_t dl;
@@ -148,7 +161,7 @@ struct host_file *open_host_file(enum host_file_mode mode, const char *dir,
     hf->nuke      = !!(openflags & O_EXCL);
 
     p = hf->filename;
-    if (dl > 0) {
+    if (dl > 0 && !filename_is_absolute(filename)) {
 	p = mempcpy(p, dir, dl);
 	if (!is_path_separator(p[-1]))
 	    *p++ = '/';
