@@ -3,10 +3,6 @@
 
 #include "compiler.h"
 
-#include <ctype.h>
-#include <locale.h>
-#include <wchar.h>
-
 extern void abcprint_init(void);
 extern void abcprint_recv(const void *, size_t);
 extern void abcprint_send(const void *, size_t);

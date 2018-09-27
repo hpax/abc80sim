@@ -21,6 +21,9 @@
 #include "abcprintd.h"
 #include "hostfile.h"
 
+#include <wchar.h>
+#include <locale.h>
+
 #ifdef __WIN32__
 const char *lpr_command = "powershell -command \"GetContent -raw -path '*' | OutPrinter\"";
 #else
