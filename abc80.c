@@ -376,7 +376,7 @@ int main(int argc, char **argv)
 	}
     }
 
-    if (memfile && model != ABC802) {
+    if (memfile && model != MODEL_ABC802) {
 	fprintf(stderr, "WARNING: --memfile specified for a system which is not ABC802\n");
     }
 
