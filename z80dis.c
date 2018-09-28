@@ -208,7 +208,7 @@ int disassemble(int pc)
   int n;
 
   n = DAsm(pc, buffer, NULL);
-  fputs(buffer, stdout);
+  fputs(buffer, tracef);
 
   return n;
 }
