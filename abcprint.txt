@@ -14,6 +14,8 @@ All commands start with FF <opcode> <seq>, and all responses begin
 with FF <opcode> <seq> <err>, where <err> is 0 for OK and otherwise
 0x80+ABC80 error code.
 
+All multibyte arguments are sent in littleendian order.
+
 FF A0 ss ixix NNNNNNNNEEE		OPEN TEXT
 
    	ixix = Address of IX-map (used as a handle)
@@ -78,9 +80,10 @@ FF AD ss ixix blk2 data...		PWRITE
 	This moves the file pointer as if it had been
 	a SEEK followed by WRITE BLOCK/PRINT.
 
-FF Bn ss ixix pos2			SEEK(1-8)
+FF Bn ss ixix posn			REWIND, SEEK1..SEEK8
 
-	Seek to a specific position (n+1 bytes, 1-8)
+	Seek to a specific position (n bytes, 0-8).
+	REWIND is effectively "SEEK0".
 
 Debug console
 -------------

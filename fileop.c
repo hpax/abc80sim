@@ -539,15 +539,16 @@ bool file_op(unsigned char c)
       state = st_pwrite;
       break;
 
-    case 0xB0:			/* SEEK1 */
-    case 0xB1:			/* SEEK2 */
-    case 0xB2:			/* SEEK3 */
-    case 0xB3:			/* SEEK4 */
-    case 0xB4:			/* SEEK5 */
-    case 0xB5:			/* SEEK6 */
-    case 0xB6:			/* SEEK7 */
-    case 0xB7:			/* SEEK8 */
-      byte_count = cmd[0] - 0xAF;
+    case 0xB0:			/* SEEK0 == REWIND */
+    case 0xB1:			/* SEEK1 */
+    case 0xB2:			/* SEEK2 */
+    case 0xB3:			/* SEEK3 */
+    case 0xB4:			/* SEEK4 */
+    case 0xB5:			/* SEEK5 */
+    case 0xB6:			/* SEEK6 */
+    case 0xB7:			/* SEEK7 */
+    case 0xB8:			/* SEEK8 */
+      byte_count = cmd[0] - 0xb0;
       state = st_seek;
       break;
 
@@ -562,10 +563,10 @@ bool file_op(unsigned char c)
 	 "OPEN A", "OPEN B", "PREP A", "PREP B",
 	 "INPUT", "READ", "PRINT", "CLOSE",
 	 "CALL", "CALLNR", "RENAME", "DELETE",
-	 NULL, NULL, NULL, NULL,
-	 "SEEK1", "SEEK2", "SEEK3", "SEEK4",
-	 "SEEK5", "SEEK6", "SEEK7", "SEEK8",
-	 NULL, NULL, NULL, NULL,
+	 "PREAD", "PWRITE", NULL, NULL,
+	 "REWIND", "SEEK1", "SEEK2", "SEEK3",
+	 "SEEK4", "SEEK5", "SEEK6", "SEEK7",
+	 "SEEK8", NULL, NULL, NULL, NULL,
 	 NULL, NULL, NULL, NULL
 	};
       int cnum = cmd[0] - 0xa0;
@@ -616,7 +617,7 @@ bool file_op(unsigned char c)
     break;
 
   case st_seek:
-    trace_data(argbuf.b, cmd[0] - 0xb0 + 1, "SEEK");
+    trace_data(argbuf.b, cmd[0] - 0xb0, "SEEK");
     do_seek(ix, arg);
     break;
 
