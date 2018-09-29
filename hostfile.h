@@ -3,6 +3,11 @@
 
 #include "compiler.h"
 
+static inline bool is_stdio(const char *filename)
+{
+    return !filename || !filename[0] || (filename[0] == '-' && !filename[1]);
+}
+
 enum host_file_mode {
     HF_BINARY    = 0,		/* Raw binary */
     HF_TEXT      = 1,		/* Text mode compatible with ASCII */

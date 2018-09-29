@@ -35,7 +35,7 @@ static int abcprint_read(void)
   }
 }
 
-static int abcprint_poll(void)
+static bool abcprint_poll(void)
 {
   return output_head != output_tail;
 }
@@ -88,6 +88,74 @@ int printer_in(int sel, int port)
   default:
     v = -1;
     break;
+  }
+
+  return v;
+}
+
+/* Hardware-like interface via the ABC800 PR: port */
+static uint8_t dart_pr_ctl[8];
+
+void dart_pr_out(uint8_t port, uint8_t v)
+{
+  uint8_t r;
+
+  switch (port & 1) {
+  case 0:			/* Data port */
+    if (dart_pr_ctl[5] & 0x08)
+      abcprint_recv(&v, 1);
+    break;
+
+  case 1:			/* Control port */
+    r = dart_pr_ctl[0] & 7;
+    dart_pr_ctl[0] &= ~7;
+    dart_pr_ctl[r] = v;
+    /* Should to things like supporting interrupts here */
+    break;
+  }
+}
+
+uint8_t dart_pr_in(uint8_t port)
+{
+  uint8_t r, v = 0;
+
+  switch (port & 1) {
+  case 0:			/* Data port */
+    if (dart_pr_ctl[3] & 1)
+      v = abcprint_read();
+    break;
+
+  case 1:
+    r = dart_pr_ctl[0] & 7;
+    dart_pr_ctl[0] &= ~7;
+
+    switch (r) {
+    case 0:			/* RR0 primary status */
+      /*
+       * 7 - 0 - No break
+       * 6 - 0 - No transmit underrun
+       * 5 - 1 - CTS# asserted
+       * 4 - x - RI# asserted if 80 columns on boot
+       * 3 - 1 - DCD# asserted
+       * 2 - 1 - Transmit buffer empty
+       * 1 - 0 - Interrupt not pending
+       * 0 - x - Receive character available
+       */
+      v = 0x2c | (!startup_width40 << 4) | (dart_pr_ctl[3] & abcprint_poll());
+      break;
+
+    case 1:			/* RR1 Rx special modes */
+      /*
+       * 5 - 0 - No receiver overrun
+       * 4 - 0 - No parity error
+       * 0 - 1 - All sent
+       */
+      v = 0x01;
+      break;
+
+    default:
+      break;
+    }
   }
 
   return v;

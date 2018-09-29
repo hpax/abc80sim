@@ -21,6 +21,9 @@ FILE *tracef;
 int events_in_queue = 1;
 volatile int event_pending = 1;
 
+/* This reflects the screen width at system boot; e.g. ABC802 jumper setting */
+bool startup_width40   = false;
+
 /*
  * Read a two digit hex number from a string
  * and return its numeric value.
@@ -214,7 +217,6 @@ static char *long_arg(bool enable, const char *opt, char *arg)
 int main(int argc, char **argv)
 {
     unsigned int memflags = 0;
-    bool  width40   = false;
     char **option;
     const char *optstr;
     char optchr;
@@ -253,9 +255,9 @@ int main(int argc, char **argv)
 	    } else if (!strcmp(optstr, "abc802")) {
 		model = MODEL_ABC802;
 	    } else if (!strcmp(optstr, "40")) {
-		width40 = enable;
+		startup_width40 = enable;
 	    } else if (!strcmp(optstr, "80")) {
-		width40 = !enable;
+		startup_width40 = !enable;
 	    } else if (!strcmp(optstr, "basic")) {
 		memflags &= ~MEMFL_NOBASIC;
 		memflags |= (enable ? 0 : MEMFL_NOBASIC);
@@ -337,10 +339,10 @@ int main(int argc, char **argv)
 		    memflags &= ~MEMFL_NODEV;
 		    break;
 		case '4':
-		    width40 = true;
+		    startup_width40 = true;
 		    break;
 		case '8':
-		    width40 = false;
+		    startup_width40 = false;
 		    break;
 		case 'k':
 		    kilobytes = strtoul(SHORT_ARG(), NULL, 0);
@@ -362,9 +364,15 @@ int main(int argc, char **argv)
 	}
     }
 
+    hostfile_init();
+
+    if (memfile && model != MODEL_ABC802) {
+	fprintf(stderr, "WARNING: --memfile specified for a system "
+		"other than ABC802 - not possible\n");
+    }
+
     if (traceflags) {
-	if (!tracefile || !tracefile[0] ||
-	    (tracefile[0] == '-' && !tracefile[1])) {
+	if (is_stdio(tracefile)) {
 	    tracef = stdout;
 	} else {
 	    tracef = fopen(tracefile, "wt");
@@ -376,24 +384,22 @@ int main(int argc, char **argv)
 	}
     }
 
-    if (memfile && model != MODEL_ABC802) {
-	fprintf(stderr, "WARNING: --memfile specified for a system which is not ABC802\n");
+    if (console) {
+	if (is_stdio(console)) {
+	    console_file = stdout;
+	} else {
+	    console_file = fopen(console, "wt");
+	    if (!console_file) {
+		fprintf(stderr, "%s: Unable to open console file %s: %s\n",
+			program_name, console, strerror(errno));
+	    }
+	}
     }
 
     if (detach)
 	detach_console();
 
-    if (console) {
-	if (!console[0] || (console[0] == '-' && !console[1])) {
-	    console_file = detach ? NULL : stdout;
-	} else {
-	    console_file = fopen(console, "wt");
-	}
-    }
-
-    hostfile_init();
-
-    screen_init(width40);
+    screen_init(startup_width40);
 
     mem_init(memflags, memfile);
     io_init();

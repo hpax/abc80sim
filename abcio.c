@@ -221,6 +221,11 @@ static void abc802_out(uint8_t port, uint8_t value)
     abcbus_out(port, value);
     break;
 
+  case 32:
+  case 33:
+    dart_pr_out(port, value);
+    break;
+
   case 34:
   case 35:
     dart_keyb_out(port, value);
@@ -341,6 +346,11 @@ static uint8_t abc802_in(uint8_t port)
   case 2:
   case 7:
     v = abcbus_in(port);
+    break;
+
+  case 32:
+  case 33:
+    v = dart_pr_in(port);
     break;
 
   case 34:

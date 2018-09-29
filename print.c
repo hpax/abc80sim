@@ -153,10 +153,13 @@ void abcprint_recv(const void *data, size_t len)
       break;
 
     case is_console:
-      if (c == 0)
+      if (c == 0) {
 	is = is_normal;
-      else if (console_file)
+	if (console_file)
+	  fflush(console_file);
+      } else if (console_file) {
 	fputc(c, console_file);
+      }
       break;
     }
   }
