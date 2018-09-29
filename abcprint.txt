@@ -72,7 +72,7 @@ FF AC ss ixix blk2			PREAD
 	This moves the file pointer as if it had been
 	a SEEK followed by READ BLOCK.
 
-FF AD ss ixix blk2			PWRITE
+FF AD ss ixix blk2 data...		PWRITE
 
 	Write a 253-byte block starting at offset blk2*253.
 	This moves the file pointer as if it had been
