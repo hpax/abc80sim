@@ -540,6 +540,9 @@ bool file_op(unsigned char c)
       break;
 
     case 0xB0:			/* SEEK0 == REWIND */
+      do_seek(ix, 0);
+      break;
+
     case 0xB1:			/* SEEK1 */
     case 0xB2:			/* SEEK2 */
     case 0xB3:			/* SEEK3 */
@@ -561,13 +564,13 @@ bool file_op(unsigned char c)
       static const char * const cmdnames[0x20] =
 	{
 	 "OPEN A", "OPEN B", "PREP A", "PREP B",
-	 "INPUT", "READ", "PRINT", "CLOSE",
-	 "CALL", "CALLNR", "RENAME", "DELETE",
-	 "PREAD", "PWRITE", NULL, NULL,
-	 "REWIND", "SEEK1", "SEEK2", "SEEK3",
-	 "SEEK4", "SEEK5", "SEEK6", "SEEK7",
-	 "SEEK8", NULL, NULL, NULL, NULL,
-	 NULL, NULL, NULL, NULL
+	 "INPUT",  "READ",   "PRINT",  "CLOSE",
+	 "CALL",   "CALLNR", "RENAME", "DELETE",
+	 "PREAD",  "PWRITE",  NULL,     NULL,
+	 "REWIND", "SEEK1",  "SEEK2",  "SEEK3",
+	 "SEEK4",  "SEEK5",  "SEEK6",  "SEEK7",
+	 "SEEK8",   NULL,     NULL,     NULL,
+	  NULL,     NULL,     NULL,     NULL
 	};
       int cnum = cmd[0] - 0xa0;
       const char *cmdname = (cnum >= 0x20) ? NULL : cmdnames[cnum];
