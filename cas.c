@@ -22,13 +22,19 @@ struct cas_block {
     uint8_t data[253];		/* Actual data */
     uint8_t etx;		/* 0x03 */
     uint8_t csum[2];		/* Checksum */
-    uint8_t leadout[1];		/* 0x00 */
 };
 
 static struct host_file *hf;
 static struct cas_block block;
-static unsigned int bitctr;
+static unsigned int bitctr;	/* Bit counter for ABC80 */
+static unsigned int bytectr;	/* Byte counter for ABC800 */
 static int block_nr = -1;
+
+/* True if there is nothing on the "tape" right now */
+static inline bool cas_idle(void)
+{
+    return !hf && block_nr == -1;
+}
 
 static void cas_format_block(void)
 {
@@ -52,10 +58,11 @@ static void cas_format_block(void)
     block.csum[0] = csum;
     block.csum[1] = csum >> 8;
 
-    memset(block.leadout, 0, sizeof block.leadout);
+    if (tracing(TRACE_CAS))
+	fprintf(tracef, "CAS: block %3d ready\n", block_nr);
 
     block_nr++;
-    bitctr = 0;
+    bitctr = bytectr = 0;
 }
 
 static void cas_enable(bool enable)
@@ -65,6 +72,9 @@ static void cas_enable(bool enable)
     if (tracing(TRACE_CAS))
 	fprintf(tracef, "CAS: motor %s\n", enable ? "on" : "off");
 
+    /* Reset the cassette file position */
+    block_nr = -1;
+
     if (hf) {
 	if (tracing(TRACE_CAS))
 	    fprintf(tracef, "CAS: closing file %s\n", hf->filename);
@@ -73,10 +83,6 @@ static void cas_enable(bool enable)
 
     if (!enable)
 	return;
-
-    /* Reset the cassette file position */
-    block_nr = -1;
-    bitctr = 0;
 
     casfile = filelist_pop(&cas_files);
     if (!casfile) {
@@ -100,6 +106,25 @@ static void cas_enable(bool enable)
     free(casfile);
 }
 
+static void cas_next_block(void)
+{
+    if (!hf) {
+	block_nr = -1;	/* Finished EOF block, cassette idle */
+    } else {
+	size_t len = fread(block.data, 1, sizeof block.data, hf->f);
+	memset(block.data + len, 0, sizeof block.data - len);
+	if (len == 0)
+	    block.data[6] = 0x03; /* Make an EOF block */
+
+	if (!memcmp(block.data, "\0\0\0\0\0\0\3", 7)) {
+	    /* It is an EOF block */
+	    close_file(&hf);
+	}
+
+	cas_format_block();
+    }
+}
+
 static bool cas_edge(void)
 {
     unsigned int bc;
@@ -108,7 +133,7 @@ static bool cas_edge(void)
 
     bc = bitctr++;
 
-    if (!hf && block_nr == -1) {
+    if (cas_idle()) {
 	if (tracing(TRACE_CAS))
 	    fprintf(tracef, "CAS: reading with nothing, bit %4u\n", bc);
 	return false;
@@ -135,21 +160,7 @@ static bool cas_edge(void)
 
     if (bitctr >= 16*sizeof block) {
 	/* End of data, read another block */
-	if (!hf) {
-	    block_nr = -1;	/* Finished EOF block */
-	} else {
-	    size_t len = fread(block.data, 1, sizeof block.data, hf->f);
-	    memset(block.data + len, 0, sizeof block.data - len);
-	    if (len == 0)
-		block.data[6] = 0x03; /* Make an EOF block */
-
-	    if (!memcmp(block.data, "\0\0\0\0\0\0\3", 7)) {
-		/* It is an EOF block */
-		close_file(&hf);
-	    }
-
-	    cas_format_block();
-	}
+	cas_next_block();
     }
 
     return bit;
@@ -294,4 +305,178 @@ void abc80_piob_out(uint8_t port, uint8_t v)
 uint8_t abc80_piob_in(void)
 {
     return pio_readval(&portb);
+}
+
+/*
+ * ABC800 SIO/2 cassette interface
+ *
+ * From a software perspective this is extremely simple:
+ * - The RTS output controls the motor relay
+ * - The SIO finds the 16 02 synchronization sequence and sends an interrupt
+ * - Receive starts with the 16 02 sequence
+ * - At end of block either hardware or software go back to need sync
+ */
+
+static uint8_t sio_cas_ctl[8];
+static bool cas_first_rx_armed = true;
+
+static inline bool cas_have_sync(void)
+{
+    return !cas_idle() && (sio_cas_ctl[3] && 1);
+}
+static inline bool cas_have_data(void)
+{
+    return cas_have_sync() && !(sio_cas_ctl[3] & 0x10);
+}
+static inline bool cas_rx_interrupt(bool huntok)
+{
+    return cas_have_sync() && (huntok || !(sio_cas_ctl[3] & 0x10)) &&
+	((sio_cas_ctl[1] & 0x10) ||
+	 ((sio_cas_ctl[1] & 0x08) && cas_first_rx_armed));
+}
+
+static void cas_poll_interrupt(void);
+
+static void sio_cas_eoi(uint8_t vector, void *dummy)
+{
+    (void)vector;
+    (void)dummy;
+
+    cas_poll_interrupt();
+}
+
+static void cas_poll_interrupt(void)
+{
+    if (!cas_rx_interrupt(true))
+	return;
+
+    /* Actually signal a receive data interrupt */
+    sio_cas_ctl[3] &= ~0x10;	/* Not hunting anymore */
+    cas_first_rx_armed = false;
+    z80_interrupt_eoi((sio_cas_ctl[2] & ~0x0f) | 0x04,
+		      sio_cas_eoi, NULL);
+}
+
+void abc800_sio_cas_out(uint8_t port, uint8_t v)
+{
+    uint8_t r;
+
+    switch (port & 1) {
+    case 0:			/* Data port */
+	break;			/* Ignore for now */
+
+    case 1:
+	r = sio_cas_ctl[0] & 7;
+	sio_cas_ctl[0] &= ~7;
+	sio_cas_ctl[r] = v;
+
+	switch (r) {
+	case 0:
+	    switch ((v >> 3) & 7) {
+	    case 3:
+		memset(sio_cas_ctl, 0, sizeof sio_cas_ctl);
+		cas_first_rx_armed = true;
+		break;
+	    case 4:
+		cas_first_rx_armed = true;
+		break;
+	    default:
+		break;
+	    }
+	    break;
+	case 3:
+	    if (v & 0x10) {
+		/* Entering hunt mode; skip to next sync */
+		if (bytectr)
+		    cas_next_block();
+		bytectr = 0;
+	    }
+	    break;
+	case 5:
+	    if ((v & 0x80) && cas_idle())
+		cas_enable(true);
+	    break;
+	default:
+	    break;
+	}
+	if (tracing(TRACE_CAS)) {
+	    fprintf(tracef, "CAS: SIO ctl %02x %02x %02x %02x - "
+		    "%02x %02x %02x %02x\n",
+		    sio_cas_ctl[0],
+		    sio_cas_ctl[1],
+		    sio_cas_ctl[2],
+		    sio_cas_ctl[3],
+		    sio_cas_ctl[4],
+		    sio_cas_ctl[5],
+		    sio_cas_ctl[6],
+		    sio_cas_ctl[7]);
+	}
+	break;
+    }
+
+    cas_poll_interrupt();
+}
+
+uint8_t abc800_sio_cas_in(uint8_t port)
+{
+    uint8_t r, v;
+
+    switch (port & 1) {
+    case 0:			/* Data port */
+	if (cas_have_data()) {
+	    if (!bytectr) {
+		/* Mark that this block has been read from */
+		bytectr = offsetof(struct cas_block, blktype);
+	    }
+	    v = ((const uint8_t *)&block)[bytectr];
+	    if (tracing(TRACE_CAS)) {
+		fprintf(tracef, "CAS: block %3d byte %3d = %02x\n",
+			block_nr-1, bytectr, v);
+	    }
+	    bytectr++;
+	    if (bytectr >= sizeof block) {
+		cas_next_block();
+		sio_cas_ctl[3] |= 0x10;
+	    }
+	}
+	break;
+    case 1:			/* Control port */
+	r = sio_cas_ctl[0] & 7;
+	sio_cas_ctl[0] &= ~7;
+
+	switch (r) {
+	case 0:
+	    v = sio_cas_ctl[3] & 0x10; /* Hunting */
+	    v |= 0x20;		       /* CTS = 1? */
+	    v |= 0x04;		       /* Transmit buffer empty */
+	    if (cas_have_sync()) {
+		/* Rx enabled */
+		if (cas_have_data()) {
+		    v |= 1;	/* Data available */
+		} else {
+		    /* In hunt mode, establish "sync" */
+		    if (bytectr)
+			cas_next_block();
+		    sio_cas_ctl[3] &= ~0x10; /* Not hunting anymore */
+		}
+	    }
+	    break;
+
+	case 1:
+	    v = 0x01;		/* Transmit buffer empty */
+	    break;
+
+	case 2:
+	    v = (sio_cas_ctl[2] & ~0x0e) |
+		(cas_rx_interrupt(false) ? 0x04 : 0x06);
+	    break;
+
+	default:
+	    v = 0xff;
+	    break;
+	}
+    }
+
+    cas_poll_interrupt();
+    return v;
 }

@@ -1281,6 +1281,7 @@ static void do_di(void)
 static void do_ei(void)
 {
     z80_state.iff1 = z80_state.iff2 = true;
+    z80_state.ei_shadow = true;
 }
 
 static void do_im0(void)
@@ -2491,21 +2492,11 @@ static void do_ED_instruction(wordregister *ix)
       case 0x6D:
       case 0x7D:
 	{
-	  uint8_t vector = z80_state.int_in_progress;
-	  eoifunc do_eoi = z80_state.eoi.func;
-
-	  if (tracing(TRACE_CPU|TRACE_IO)) {
-	    fprintf(tracef, "EOI: vector 0x%02x (%3u) PC=%04x\n",
-		    vector, vector, REG_PC);
-	  }
-
 	  REG_PC = mem_read_word(REG_SP);
 	  REG_SP += 2;
 	  z80_state.iff1 = z80_state.iff2;
+	  z80_state.eoi.trigger = z80_state.int_in_progress;
 	  z80_state.int_in_progress = -1;
-	  z80_state.eoi.func = NULL;
-	  if (do_eoi)
-	    do_eoi(vector, z80_state.eoi.arg);
 	}
 	break;
 
@@ -2554,6 +2545,25 @@ int z80_run(bool continuous, bool halted)
 
     /* loop to do a z80 instruction */
     do {
+	  if (tracing(TRACE_CPU)) {
+	      diffstate();
+	      tracemem();
+	      fputc('\n', tracef);
+	  }
+	  if (z80_state.eoi.trigger >= 0) {
+	    struct eoi eoi = z80_state.eoi;
+
+	    /* We need to set these back *before* calling eoi.func */
+	    z80_state.eoi.func = NULL;
+	    z80_state.eoi.trigger = -1;
+
+	    if (tracing(TRACE_CPU|TRACE_IO)) {
+	      fprintf(tracef, "EOI: vector 0x%02x (%3u) PC=%04x\n",
+		      eoi.trigger, eoi.trigger, REG_PC);
+	    }
+	    if (eoi.func)
+	      eoi.func(eoi.trigger, eoi.arg);
+	  }
 	  do {
 	    /* Poll for external event */
 	    z80_poll_external();
@@ -2562,16 +2572,16 @@ int z80_run(bool continuous, bool halted)
 	    if (z80_state.nminterrupt && !z80_state.nmi_in_progress) {
 	      halted = false;
 	      do_nmi();
-	    } else if (z80_state.interrupt && z80_state.iff1) {
+	    } else if (z80_state.interrupt && z80_state.iff1 &&
+		       !z80_state.ei_shadow) {
 	      halted = false;
 	      do_int();
 	    }
+	    z80_state.ei_shadow = false;
 	  } while (halted);
 
 	  if (tracing(TRACE_CPU)) {
-	      diffstate();
-	      tracemem();
-	      fprintf(tracef, "\nPC=%04X ", z80_state.pc.word);
+	      fprintf(tracef, "PC=%04X ", z80_state.pc.word);
 	      disassemble(z80_state.pc.word);
 	  }
 
@@ -3705,10 +3715,12 @@ z80_reset(void)
     z80_state.i = 0;
     z80_state.iff1 = false;
     z80_state.iff2 = false;
+    z80_state.ei_shadow = false;
     z80_state.interrupt_mode = 0;
     z80_state.nmi_in_progress = false;
     z80_state.interrupt = false;
     z80_state.int_in_progress = -1;
+    z80_state.eoi.trigger = -1;
     /* z80_state.r = 0; */
 }
 

@@ -236,6 +236,11 @@ static void abc802_out(uint8_t port, uint8_t value)
     crtc_out(port, value);
     break;
 
+  case 66:
+  case 67:
+    abc800_sio_cas_out(port, value);
+    break;
+
   case 96:
   case 97:
   case 98:
@@ -361,6 +366,11 @@ static uint8_t abc802_in(uint8_t port)
   case 56:
   case 57:
     v = crtc_in(port);
+    break;
+
+  case 66:
+  case 67:
+    v = abc800_sio_cas_in(port);
     break;
 
   case 96:

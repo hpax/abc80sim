@@ -35,7 +35,6 @@ extern int printer_in(int sel, int port);
 extern void dart_pr_out(uint8_t port, uint8_t v);
 extern uint8_t dart_pr_in(uint8_t port);
 
-
 extern void keyboard_down(int sym);
 extern void keyboard_up(void);
 
@@ -45,6 +44,9 @@ extern void dump_memory(bool ramonly);
 
 extern void abc80_piob_out(uint8_t port, uint8_t v);
 extern uint8_t abc80_piob_in(void);
+
+extern void abc800_sio_cas_out(uint8_t port, uint8_t v);
+extern uint8_t abc800_sio_cas_in(uint8_t port);
 
 /* Directory and filenames */
 extern const char *fileop_path, *disk_path, *screen_path, *memdump_path;

@@ -39,6 +39,7 @@ typedef void (*eoifunc)(uint8_t, void *);
 struct eoi {
     eoifunc func;
     void *arg;
+    int trigger;		/* Vector to call EOI for, otherwise -1 */
 };
 
 struct z80_state_struct
@@ -62,7 +63,7 @@ struct z80_state_struct
     uint8_t rf; /* fixed part of register R (bit 7) */
 
     uint8_t interrupt_mode;
-    bool iff1, iff2;
+    bool iff1, iff2, ei_shadow;
 
     bool nmi_in_progress;	/* to prevent multiple simultaneous NMIs */
 
