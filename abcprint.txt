@@ -66,6 +66,18 @@ FF AB ss xxxx NNNNNNNNEEE		DELETE
 
 	Delete the named file
 
+FF AC ss ixix blk2			PREAD
+
+	Read a 253-byte block starting at offset blk2*253.
+	This moves the file pointer as if it had been
+	a SEEK followed by READ BLOCK.
+
+FF AD ss ixix blk2			PWRITE
+
+	Write a 253-byte block starting at offset blk2*253.
+	This moves the file pointer as if it had been
+	a SEEK followed by WRITE BLOCK/PRINT.
+
 FF Bn ss ixix pos2			SEEK(1-8)
 
 	Seek to a specific position (n+1 bytes, 1-8)

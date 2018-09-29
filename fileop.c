@@ -8,14 +8,17 @@ const char *fileop_path = "abcdir";
 #define BUF_SIZE 512
 
 static enum {
-  st_op,
-  st_data,
-  st_open,
-  st_read,
-  st_print,
-  st_seek,
-  st_rename,
-  st_delete
+    st_op,			/* Receiving command */
+    st_open,
+    st_read,
+    st_print,			/* Before data */
+    st_print2,			/* After data */
+    st_seek,
+    st_rename,
+    st_delete,
+    st_pread,
+    st_pwrite,			/* Before data */
+    st_pwrite2			/* After data */
 } state = st_op;
 static unsigned int byte_count = 4;
 static unsigned char cmd[4];
@@ -202,7 +205,8 @@ static void do_read_block(uint16_t ix, uint16_t len)
   pr_send(data, len+2);
 }
 
-static void do_seek(uint16_t ix, uint64_t pos)
+/* Common routine for all commands which need seek */
+static int seeker(uint16_t ix, uint64_t pos)
 {
   struct host_file *hf = filemap[ix];
   int err;
@@ -217,7 +221,23 @@ static void do_seek(uint16_t ix, uint64_t pos)
     err = 0;
   }
 
-  send_reply(err);
+  return err;
+}
+
+static void do_seek(uint16_t ix, uint64_t pos)
+{
+    send_reply(seeker(ix, pos));
+}
+
+static void do_pread(uint16_t ix, uint16_t blk)
+{
+    int err;
+
+    err = seeker(ix, 253L * blk);
+    if (err)
+	send_reply(err);
+    else
+	do_read_block(ix, 253);
 }
 
 static void do_input(uint16_t ix)
@@ -338,6 +358,17 @@ static void do_print(uint16_t ix, uint16_t len)
     err = 0;
   }
   send_reply(err);
+}
+
+static void do_pwrite(uint16_t ix, uint16_t blk)
+{
+    int err;
+
+    err = seeker(ix, 253L * blk);
+    if (err)
+	send_reply(err);
+    else
+	do_print(ix, 253);
 }
 
 static void do_rename(const char *files)
@@ -498,6 +529,16 @@ bool file_op(unsigned char c)
       state = st_delete;
       break;
 
+    case 0xAC:			/* PREAD */
+      byte_count = 2;
+      state = st_pread;
+      break;
+
+    case 0xAD:			/* PWRITE */
+      byte_count = 2;
+      state = st_pwrite;
+      break;
+
     case 0xB0:			/* SEEK1 */
     case 0xB1:			/* SEEK2 */
     case 0xB2:			/* SEEK3 */
@@ -541,25 +582,42 @@ bool file_op(unsigned char c)
     break;
 
   case st_read:
-    trace_data(argbuf.b, 2, "RLEN");
+    trace_data(argbuf.b, 2, "READ");
     do_read_block(ix, arg);
     break;
 
   case st_print:
-    trace_data(argbuf.b, 2, "WLEN");
+    trace_data(argbuf.b, 2, "WRTE");
     bytep = data;
     byte_count = arg;
-    state = st_data;
+    state = st_print2;
+    break;
+
+  case st_print2:
+    trace_data(data, datalen, "DATA");
+    do_print(ix, datalen);
+    break;
+
+  case st_pwrite:
+    trace_data(argbuf.b, 2, "PWRT");
+    bytep = data;
+    byte_count = 253;
+    state = st_pwrite2;
+    break;
+
+  case st_pwrite2:
+    trace_data(data, datalen, "DATA");
+    do_pwrite(ix, arg);
+    break;
+
+  case st_pread:
+    trace_data(argbuf.b, 2, "PRED");
+    do_pread(ix, arg);
     break;
 
   case st_seek:
     trace_data(argbuf.b, cmd[0] - 0xb0 + 1, "SEEK");
     do_seek(ix, arg);
-    break;
-
-  case st_data:
-    trace_data(data, datalen, "WRTE");
-    do_print(ix, datalen);
     break;
 
   case st_rename:
