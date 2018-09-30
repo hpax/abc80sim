@@ -456,7 +456,7 @@ static void abc_screenshot(void)
 /*
  * Initialize SDL and the data structures
  */
-void screen_init(bool width40)
+void screen_init(bool width40, bool color)
 {
   int window = 1;		/* True = run in a window */
   int debug = 1;		/* False = force clean shutdown */
@@ -476,7 +476,13 @@ void screen_init(bool width40)
   if ( !window )
     SDL_ShowCursor(SDL_DISABLE);
 
-  /* Initialize CRTC values to something sensible (also applies for ABC80) */
+  /* If not color, then overwrite colors 1-6 with white */
+  if (!color) {
+    for (i = 1; i < NCOLORS-1; i++)
+      rgbcolors[i] = rgbcolors[NCOLORS-1];
+  }
+
+  /* Initialize CRTC values to something sensible (also used by ABC80) */
   memset(&crtc, 0, sizeof crtc);
   crtc.r.htotal = 80;
   crtc.r.hdisp  = 80;

@@ -109,6 +109,8 @@ static no_return help(void)
 	   "  -v, --version         print the version string\n"
 	   "  -h, --help            print this help message\n"
 	   "  -k, --kb #            set the memory size in K (ABC80: 1-32 or 64)\n"
+	   "      --color           allow ABC800C-style color graphics (default)\n"
+	   "      --no-color        black and white only\n"
 	   "      --diskdir ...     set directory for disk images (default abcdisk)\n"
 	   "      --filedir ...     set directory for file sharing (default abcdir)\n"
 	   "      --scrndir ...     set directory for screen shots (default .)\n"
@@ -224,6 +226,7 @@ int main(int argc, char **argv)
     const char *memfile = NULL;
     bool detach = false;
     const char *console = NULL;
+    bool color = true;
 
     attach_console();
 
@@ -305,6 +308,9 @@ int main(int argc, char **argv)
 		    filelist_add_file(&cas_files, LONG_ARG());
 	    } else if (!strcmp(optstr, "caslist")) {
 		filelist_add_list(&cas_files, LONG_ARG());
+	    } else if (!strcmp(optstr, "color") ||
+		       !strcmp(optstr, "colour")) {
+		color = enable;
 	    } else {
 		fprintf(stderr, "%s: unknown option: --%s\n",
 			program_name, optstr);
@@ -399,7 +405,7 @@ int main(int argc, char **argv)
     if (detach)
 	detach_console();
 
-    screen_init(startup_width40);
+    screen_init(startup_width40, color);
 
     mem_init(memflags, memfile);
     io_init();
