@@ -55,10 +55,10 @@ FF A8 ss xxxx				CLOSE ALL
 
 	All files are closed and forgotten.  xxxx ignored.
 
-FF A9 ss xxxx				CLOSE ALL NO REPLY
+FF A9 ss xxxx				INIT
 
-	All files are closed and forgotten.  xxxx ignored.
-	No response token is sent.
+	All files are closed and forgotten.  Block size is set to 253.
+	xxxx ignored.  No response token is sent.
 
 FF AA ss xxxx NNNNNNNNEEE NNNNNNNNEEE	RENAME
 
@@ -70,15 +70,25 @@ FF AB ss xxxx NNNNNNNNEEE		DELETE
 
 FF AC ss ixix blk2			PREAD
 
-	Read a 253-byte block starting at offset blk2*253.
-	This moves the file pointer as if it had been
-	a SEEK followed by READ BLOCK.
+	Read a block starting at offset blk2*block size.  This moves
+	the file pointer as if it had been a SEEK followed by READ
+	BLOCK.
 
 FF AD ss ixix blk2 data...		PWRITE
 
-	Write a 253-byte block starting at offset blk2*253.
-	This moves the file pointer as if it had been
-	a SEEK followed by WRITE BLOCK/PRINT.
+	Write a block starting at offset blk2*block size.  This moves
+	the file pointer as if it had been a SEEK followed by WRITE
+	BLOCK/PRINT.
+
+FF AE ss xxxx len2			SET BLOCK SIZE
+
+	Set the block size for the PREAD and PWRITE commands and for
+	directory listing.
+
+FF AF ss xxxx len2			INITSZ
+
+	All files are closed and forgotten.  Block size is set to len2.
+	xxxx ignored.  No response token is sent.
 
 FF Bn ss ixix posn			REWIND, SEEK1..SEEK8
 

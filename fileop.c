@@ -18,13 +18,15 @@ static enum {
     st_delete,
     st_pread,
     st_pwrite,			/* Before data */
-    st_pwrite2			/* After data */
+    st_pwrite2,			/* After data */
+    st_blksize
 } state = st_op;
 static unsigned int byte_count = 4;
 static unsigned char cmd[4];
 static unsigned char *bytep = cmd;
 static struct host_file *filemap[65536];
 static unsigned char data[65536+2];
+static unsigned int blksize = 253;
 
 static void trace_data(const void *data, size_t len, const char *pfx)
 {
@@ -93,7 +95,7 @@ static int do_close(uint16_t ix)
   }
 }
 
-static void do_closeall(void)
+static void do_closeall(bool reply)
 {
   int ix;
 
@@ -101,7 +103,7 @@ static void do_closeall(void)
     if (filemap[ix])
       do_close(ix);
 
-  if (cmd[0] == 0xA8)
+  if (reply)
     send_reply(0);
 }
 
@@ -233,11 +235,11 @@ static void do_pread(uint16_t ix, uint16_t blk)
 {
     int err;
 
-    err = seeker(ix, 253L * blk);
+    err = seeker(ix, blksize * (long)blk);
     if (err)
-	send_reply(err);
+      send_reply(err);
     else
-	do_read_block(ix, 253);
+      do_read_block(ix, blksize);
 }
 
 static void do_input(uint16_t ix)
@@ -303,8 +305,8 @@ static void do_input(uint16_t ix)
 	}
       }
       if (de) {
-	unsigned long blocks = (st.st_size + 252)/253;
-	unsigned long pad = 253*blocks - st.st_size;
+	unsigned long blocks = (st.st_size + blksize - 1)/blksize;
+	unsigned long pad = blksize*blocks - st.st_size;
 	/* pad = unused bytes in the last block */
 	dlen += sprintf(data1+2+dlen, ",%lu,%lu\r\n", blocks, pad);
 	err = 0;
@@ -364,11 +366,11 @@ static void do_pwrite(uint16_t ix, uint16_t blk)
 {
     int err;
 
-    err = seeker(ix, 253L * blk);
+    err = seeker(ix, blksize * (long)blk);
     if (err)
-	send_reply(err);
+      send_reply(err);
     else
-	do_print(ix, 253);
+      do_print(ix, blksize);
 }
 
 static void do_rename(const char *files)
@@ -515,8 +517,18 @@ bool file_op(unsigned char c)
       break;
 
     case 0xA8:			/* CLOSEALL */
-    case 0xA9:
-      do_closeall();
+      do_closeall(true);
+      break;
+
+    case 0xA9:			/* INIT */
+      blksize = 253;
+      do_closeall(false);
+      break;
+
+    case 0xAE:			/* SET BLOCK SIZE */
+    case 0xAF:			/* INITSZ */
+      byte_count = 2;
+      state = st_blksize;
       break;
 
     case 0xAA:			/* RENAME */
@@ -566,7 +578,7 @@ bool file_op(unsigned char c)
 	 "OPEN A", "OPEN B", "PREP A", "PREP B",
 	 "INPUT",  "READ",   "PRINT",  "CLOSE",
 	 "CALL",   "CALLNR", "RENAME", "DELETE",
-	 "PREAD",  "PWRITE",  NULL,     NULL,
+	 "PREAD",  "PWRITE", "BLKSIZ", "INITSZ",
 	 "REWIND", "SEEK1",  "SEEK2",  "SEEK3",
 	 "SEEK4",  "SEEK5",  "SEEK6",  "SEEK7",
 	 "SEEK8",   NULL,     NULL,     NULL,
@@ -635,6 +647,13 @@ bool file_op(unsigned char c)
     do_delete(argbuf.c);
     break;
   }
+
+  case st_blksize:
+    trace_data(data, 2, "SIZE");
+    blksize = arg;
+    if (cmd[0] == 0xAF)
+      do_closeall(false);
+    break;
 
   datalen = byte_count;
   if (bytep == argbuf.b)
