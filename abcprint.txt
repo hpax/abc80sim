@@ -39,11 +39,12 @@ FF A4 ss ixix				INPUT
 
    	Read a text line; response followed by len (2 bytes) + data
 
-FF A5 ss ixix len2			READ BLOCK (= GET)
+FF A5 ss ixix len2			GET
 
-	Read a data block of specified len; response: len + data
+	Read binary of specified len; response: len + data. No end of
+	line conversion even if opened as a text file
 
-FF A6 ss ixix len2 data...		PRINT (= WRITE BLOCK, PUT)
+FF A6 ss ixix len2 data...		PRINT
 
    	Write a text line or data block
 
@@ -72,13 +73,14 @@ FF AC ss ixix blk2			PREAD
 
 	Read a block starting at offset blk2*block size.  This moves
 	the file pointer as if it had been a SEEK followed by READ
-	BLOCK.
+	BLOCK. No end of line conversion even if opened as a text file.
 
 FF AD ss ixix blk2 data...		PWRITE
 
 	Write a block starting at offset blk2*block size.  This moves
 	the file pointer as if it had been a SEEK followed by WRITE
-	BLOCK/PRINT.
+	BLOCK/PRINT. No end of line conversion even if opened as a
+	text file.
 
 FF AE ss xxxx len2			SET BLOCK SIZE
 
@@ -94,6 +96,12 @@ FF Bn ss ixix posn			REWIND, SEEK1..SEEK8
 
 	Seek to a specific position (n bytes, 0-8).
 	REWIND is effectively "SEEK0".
+
+FF B9 ss ixix len2 data...		PUT
+
+	Write a data block of specified length.
+	No end of line conversion even if opened as a text file.
+
 
 Debug console
 -------------
