@@ -419,7 +419,7 @@ void abc800_sio_cas_out(uint8_t port, uint8_t v)
 
 uint8_t abc800_sio_cas_in(uint8_t port)
 {
-    uint8_t r, v;
+    uint8_t r, v = 0xff;
 
     switch (port & 1) {
     case 0:			/* Data port */
