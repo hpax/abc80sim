@@ -38,6 +38,60 @@ struct z80_state_struct z80_state;
 static void diffstate(void);
 
 /*
+ * T-states (clock cycles) for various instructions.
+ * This reflects the base clock count; in particular:
+ * - Conditional JR, CALL, DJNZ, RET not taken
+ * - Block instructions not repeated
+ * - HALT instruction does not loop
+ *
+ * Prefix opcodes count as 4 cycles for the prefix itself
+ */
+
+/* Main opcode group */
+static const uint8_t clk_main[256] = {
+    /*         0   1   2   3   4   5   6   7   8   9   a   b   c   d   e   f */
+    /* 00 */   4, 10,  7,  6,  4,  4,  7,  4,  4, 11,  7,  6,  4,  4,  7,  4,
+    /* 10 */   8, 10,  7,  6,  4,  4,  7,  4, 12, 11,  7,  6,  4,  4,  7,  4,
+    /* 20 */   7, 10, 16,  6,  4,  4,  7,  4,  7, 11, 16,  6,  4,  4,  7,  4,
+    /* 30 */   7, 10, 13,  6, 11, 11, 10,  4,  7, 11, 13,  6,  4,  4,  7,  4,
+    /* 40 */   4,  4,  4,  4,  4,  4,  7,  4,  4,  4,  4,  4,  4,  4,  7,  4,
+    /* 50 */   4,  4,  4,  4,  4,  4,  7,  4,  4,  4,  4,  4,  4,  4,  7,  4,
+    /* 60 */   4,  4,  4,  4,  4,  4,  7,  4,  4,  4,  4,  4,  4,  4,  7,  4,
+    /* 70 */   7,  7,  7,  7,  7,  7,  4,  7,  4,  4,  4,  4,  4,  4,  7,  4,
+    /* 80 */   4,  4,  4,  4,  4,  4,  7,  4,  4,  4,  4,  4,  4,  4,  7,  4,
+    /* 90 */   4,  4,  4,  4,  4,  4,  7,  4,  4,  4,  4,  4,  4,  4,  7,  4,
+    /* a0 */   4,  4,  4,  4,  4,  4,  7,  4,  4,  4,  4,  4,  4,  4,  7,  4,
+    /* b0 */   4,  4,  4,  4,  4,  4,  7,  4,  4,  4,  4,  4,  4,  4,  7,  4,
+    /* c0 */   5, 10, 10, 10, 10, 11,  7, 11,  5, 10, 10,  4, 10, 17,  7, 11,
+    /* d0 */   5, 10, 10, 11, 10, 11,  7, 11,  5,  4, 10, 11, 10,  4,  7, 11,
+    /* e0 */   5, 10, 10, 19, 10, 11,  7, 11,  5,  4, 10,  4, 10,  4,  7, 11,
+    /* f0 */   5, 10, 10,  4, 10, 11,  7, 11,  5,  6, 10,  4, 10,  4,  7, 11,
+};
+
+/* EB opcode group - not including 4 cycles for the EB prefix itself */
+#define X 4			/* Believed to be NOPs with this timing */
+static const uint8_t clk_ED[256] = {
+    /*         0   1   2   3   4   5   6   7   8   9   a   b   c   d   e   f */
+    /* 00 */   X,  X,  X,  X,  X,  X,  X,  X,  X,  X,  X,  X,  X,  X,  X,  X,
+    /* 10 */   X,  X,  X,  X,  X,  X,  X,  X,  X,  X,  X,  X,  X,  X,  X,  X,
+    /* 20 */   X,  X,  X,  X,  X,  X,  X,  X,  X,  X,  X,  X,  X,  X,  X,  X,
+    /* 30 */   X,  X,  X,  X,  X,  X,  X,  X,  X,  X,  X,  X,  X,  X,  X,  X,
+    /* 40 */   8,  8, 11, 16,  4, 10,  4,  5,  8,  8, 11, 16,  4, 10,  4,  5,
+    /* 50 */   8,  8, 11, 16,  4, 10,  4,  5,  8,  8, 11, 16,  4, 10,  4,  5,
+    /* 60 */   8,  8, 11, 16,  4, 10,  4, 14,  8,  8, 11, 16,  4, 10,  4, 14,
+    /* 70 */   8,  8, 11, 16,  4, 10,  4,  X,  8,  8, 11, 16,  4, 10,  4,  X,
+    /* 80 */   X,  X,  X,  X,  X,  X,  X,  X,  X,  X,  X,  X,  X,  X,  X,  X,
+    /* 90 */   X,  X,  X,  X,  X,  X,  X,  X,  X,  X,  X,  X,  X,  X,  X,  X,
+    /* a0 */  12, 12, 12, 12,  X,  X,  X,  X, 12, 12, 12, 12,  X,  X,  X,  X,
+    /* b0 */  12, 12, 12, 12,  X,  X,  X,  X, 12, 12, 12, 12,  X,  X,  X,  X,
+    /* c0 */   X,  X,  X,  X,  X,  X,  X,  X,  X,  X,  X,  X,  X,  X,  X,  X,
+    /* d0 */   X,  X,  X,  X,  X,  X,  X,  X,  X,  X,  X,  X,  X,  X,  X,  X,
+    /* e0 */   X,  X,  X,  X,  X,  X,  X,  X,  X,  X,  X,  X,  X,  X,  X,  X,
+    /* f0 */   X,  X,  X,  X,  X,  X,  X,  X,  X,  X,  X,  X,  X,  X,  X,  X,
+};
+#undef X
+
+/*
  * Tables and routines for computing various flag values:
  */
 
@@ -456,58 +510,28 @@ static void do_cp(int value) /* compare this value with A's contents */
     do_sub_flags(a, value, result);
 }
 
-static void do_cpd(void)
+/* dir == 1 for CPI, -1 for CPD */
+static void do_cpid(int dir)
 {
     do_cp(mem_read(REG_HL));
-    REG_HL--;
+    REG_HL += dir;
     REG_BC--;
 
-    if(REG_BC == 0)
+    if (REG_BC == 0)
       CLEAR_OVERFLOW();
     else
       SET_OVERFLOW();
 }
 
-static void do_cpi(void)
+/* dir == 1 for CPIR, -1 for CPDR */
+static void do_cpidr(int dir)
 {
-    do_cp(mem_read(REG_HL));
-    REG_HL++;
-    REG_BC--;
+    do_cpid(dir);
 
-    if(REG_BC == 0)
-      CLEAR_OVERFLOW();
-    else
-      SET_OVERFLOW();
-}
-
-static void do_cpdr(void)
-{
-    do
-    {
-	do_cp(mem_read(REG_HL));
-	REG_HL--;
-	REG_BC--;
-
-	if(REG_BC == 0)
-	  CLEAR_OVERFLOW();
-	else
-	  SET_OVERFLOW();
-    } while((REG_BC != 0) && !ZERO_FLAG);
-}
-
-static void do_cpir(void)
-{
-    do
-    {
-	do_cp(mem_read(REG_HL));
-	REG_HL++;
-	REG_BC--;
-
-	if(REG_BC == 0)
-	  CLEAR_OVERFLOW();
-	else
-	  SET_OVERFLOW();
-    } while((REG_BC != 0) && !ZERO_FLAG);
+    if (REG_BC != 0 && !ZERO_FLAG) {
+	TSTATE += 5;
+	REG_PC -= 2;
+    }
 }
 
 static void do_test_bit(int value, int bit)
@@ -856,11 +880,11 @@ static int srl_byte(int value)
     return result;
 }
 
-static void do_ldd(void)
+static void do_ldid(int dir)
 {
     mem_write(REG_DE, mem_read(REG_HL));
-    REG_DE--;
-    REG_HL--;
+    REG_DE += dir;
+    REG_HL += dir;
     REG_BC--;
 
     CLEAR_HALF_CARRY();
@@ -871,51 +895,14 @@ static void do_ldd(void)
       SET_OVERFLOW();
 }
 
-static void do_ldi(void)
+static void do_ldidr(int dir)
 {
-    mem_write(REG_DE, mem_read(REG_HL));
-    REG_DE++;
-    REG_HL++;
-    REG_BC--;
+    do_ldid(dir);
 
-    CLEAR_HALF_CARRY();
-    CLEAR_SUBTRACT();
-    if(REG_BC == 0)
-      CLEAR_OVERFLOW();
-    else
-      SET_OVERFLOW();
-}
-
-static void do_ldir(void)
-{
-    /* repeating block load with increment */
-
-    mem_block_transfer(REG_DE, REG_HL, 1, REG_BC);
-
-    /* set registers to final values */
-    add_r((REG_BC-1) << 1);
-    REG_DE += REG_BC;
-    REG_HL += REG_BC;
-    REG_BC = 0;
-
-    /* clear flags */
-    REG_F &= ~(HALF_CARRY_MASK | OVERFLOW_MASK | SUBTRACT_MASK);
-}
-
-static void do_lddr(void)
-{
-    /* repeating block load with decrement */
-
-    mem_block_transfer(REG_DE, REG_HL, -1, REG_BC);
-
-    /* set registers to final values */
-    add_r((REG_BC-1) << 1);
-    REG_DE -= REG_BC;
-    REG_HL -= REG_BC;
-    REG_BC = 0;
-
-    /* clear flags */
-    REG_F &= ~(HALF_CARRY_MASK | OVERFLOW_MASK | SUBTRACT_MASK);
+    if (REG_BC != 0) {
+	TSTATE += 5;
+	REG_PC -= 2;
+    }
 }
 
 static void do_ld_a_ir(uint8_t val)
@@ -1122,10 +1109,10 @@ static void do_rrd(void)
  * Input/output instruction support:
  */
 
-static void do_ind(void)
+static void do_inid(int dir)
 {
     mem_write(REG_HL, z80_in(REG_C));
-    REG_HL--;
+    REG_HL += dir;
     REG_B--;
 
     if(REG_B == 0)
@@ -1136,48 +1123,14 @@ static void do_ind(void)
     SET_SUBTRACT();
 }
 
-static void do_indr(void)
+static void do_inidr(int dir)
 {
-    add_r((REG_B-1) << 1);
+    do_inid(dir);
 
-    do
-    {
-	mem_write(REG_HL, z80_in(REG_C));
-	REG_HL--;
-	REG_B--;
-    } while(REG_B != 0);
-
-    SET_ZERO();
-    SET_SUBTRACT();
-}
-
-static void do_ini(void)
-{
-    mem_write(REG_HL, z80_in(REG_C));
-    REG_HL++;
-    REG_B--;
-
-    if(REG_B == 0)
-      SET_ZERO();
-    else
-      CLEAR_ZERO();
-
-    SET_SUBTRACT();
-}
-
-static void do_inir(void)
-{
-    add_r((REG_B-1) << 1);
-
-    do
-    {
-	mem_write(REG_HL, z80_in(REG_C));
-	REG_HL++;
-	REG_B--;
-    } while(REG_B != 0);
-
-    SET_ZERO();
-    SET_SUBTRACT();
+    if (REG_B != 0) {
+	TSTATE += 5;
+	REG_PC -= 2;
+    }
 }
 
 static int in_with_flags(int port)
@@ -1210,10 +1163,10 @@ static int in_with_flags(int port)
     return value;
 }
 
-static void do_outd(void)
+static void do_outid(int dir)
 {
     z80_out(REG_C, mem_read(REG_HL));
-    REG_HL--;
+    REG_HL += dir;
     REG_B--;
 
     if(REG_B == 0)
@@ -1224,50 +1177,15 @@ static void do_outd(void)
     SET_SUBTRACT();
 }
 
-static void do_outdr(void)
+static void do_outidr(int dir)
 {
-    add_r((REG_B-1) << 1);
+    do_outid(dir);
 
-    do
-    {
-	z80_out(REG_C, mem_read(REG_HL));
-	REG_HL--;
-	REG_B--;
-    } while(REG_B != 0);
-
-    SET_ZERO();
-    SET_SUBTRACT();
+    if (REG_B != 0) {
+	TSTATE += 5;
+	REG_PC -= 2;
+    }
 }
-
-static void do_outi(void)
-{
-    z80_out(REG_C, mem_read(REG_HL));
-    REG_HL++;
-    REG_B--;
-
-    if(REG_B == 0)
-      SET_ZERO();
-    else
-      CLEAR_ZERO();
-
-    SET_SUBTRACT();
-}
-
-static void do_outir(void)
-{
-    add_r((REG_B-1) << 1);
-
-    do
-    {
-	z80_out(REG_C, mem_read(REG_HL));
-	REG_HL++;
-	REG_B--;
-    } while(REG_B != 0);
-
-    SET_ZERO();
-    SET_SUBTRACT();
-}
-
 
 /*
  * Interrupt handling routines:
@@ -1303,7 +1221,7 @@ static void do_nmi(void)
 {
     /* handle a non-maskable interrupt */
     if (tracing(TRACE_IO|TRACE_CPU)) {
-	fprintf(tracef, "NMI: PC=%04x\n", REG_PC);
+	fprintf(tracef, "[%12"PRIu64"] NMI: PC=%04x\n", TSTATE, REG_PC);
     }
 
     REG_SP -= 2;
@@ -1314,23 +1232,31 @@ static void do_nmi(void)
     z80_state.nminterrupt = false;
     REG_PC = 0x66;
     inc_r();
+    TSTATE += 11;
 }
 
 static void
 do_int(void)
 {
     uint16_t old_pc = REG_PC;
+    uint64_t when = TSTATE;
 
     switch (z80_state.interrupt_mode) {
-      case 0:
-        /* NYI */
-        break;
+    case 0:
+	/* We blithly assume we are fed an RST instruction */
+	do_di();
+	REG_SP -= 2;
+	mem_write_word(REG_SP, REG_PC);
+	REG_PC = z80_state.i_vector & 0x38;
+	TSTATE += 11;
+	break;
 
-      case 1:
+    case 1:
         do_di();
         REG_SP -= 2;
         mem_write_word(REG_SP, REG_PC);
         REG_PC = 0x38;
+	TSTATE += 11;
         break;
 
       case 2:
@@ -1338,6 +1264,7 @@ do_int(void)
         REG_SP -= 2;
         mem_write_word(REG_SP, REG_PC);
         REG_PC = mem_read_word((z80_state.i << 8) | (z80_state.i_vector & ~1));
+	TSTATE += 19;
         break;
 
       default: /* oops, unkown interrupt mode... */
@@ -1349,7 +1276,9 @@ do_int(void)
     z80_state.int_in_progress = z80_state.i_vector & ~1;
 
     if (tracing(TRACE_CPU|TRACE_IO)) {
-	fprintf(tracef, "INT: vector 0x%02x (%3d) I=%02x PC=%04x -> %04x\n",
+	fprintf(tracef, "[%12"PRIu64"] INT: "
+		"vector 0x%02x (%3d) I=%02x PC=%04x -> %04x\n",
+		when,
 		z80_state.i_vector, z80_state.i_vector,
 		z80_state.i, old_pc, REG_PC);
     }
@@ -1374,10 +1303,12 @@ void z80_interrupt_eoi(uint8_t vector, eoifunc do_eoi, void *eoi_arg)
 
 static uint16_t get_hl_addr(wordregister *ix)
 {
-    if (ix == &z80_state.hl)
-      return ix->word;
-    else
-      return ix->word + (int8_t)mem_fetch(REG_PC++);
+    if (ix == &z80_state.hl) {
+	return ix->word;
+    } else {
+	TSTATE += 8;		/* Ouch! */
+	return ix->word + (int8_t)mem_fetch(REG_PC++);
+    }
 }
 
 /*
@@ -1397,6 +1328,13 @@ static void do_CB_instruction(wordregister *ix)
 
       instruction = mem_fetch(REG_PC++);
       inc_r();
+
+      /* (HL) = 7 additional clocks, otherwise 4 */
+      if ((instruction & 7) == 6) {
+	  TSTATE += (instruction & 0xc0) == 0x40 ? 8 : 11;
+      } else {
+	  TSTATE += 4;
+      }
 
       switch(instruction)
 	{
@@ -2194,6 +2132,8 @@ static void do_CB_instruction(wordregister *ix)
       instruction = mem_fetch(REG_PC++);
       /* No R increment here, for some reason */
 
+      TSTATE += ((instruction & 0xc0) == 0x40) ? 12 : 15;
+
       data = mem_read(addr);
 
       switch (instruction & 0xc0) {
@@ -2296,6 +2236,7 @@ static void do_ED_instruction(wordregister *ix)
 
     instruction = mem_fetch(REG_PC++);
     inc_r();
+    TSTATE += clk_ED[instruction];
 
     switch(instruction)
     {
@@ -2313,17 +2254,17 @@ static void do_ED_instruction(wordregister *ix)
 	break;
 
       case 0xA9:	/* cpd */
-	do_cpd();
+	do_cpid(-1);
 	break;
       case 0xB9:	/* cpdr */
-	do_cpdr();
+	do_cpidr(-1);
 	break;
 
       case 0xA1:	/* cpi */
-	do_cpi();
+	do_cpid(+1);
 	break;
       case 0xB1:	/* cpir */
-	do_cpir();
+	do_cpidr(+1);
 	break;
 
       case 0x46:	/* im 0 */
@@ -2364,16 +2305,16 @@ static void do_ED_instruction(wordregister *ix)
 	break;
 
       case 0xAA:	/* ind */
-	do_ind();
+	do_inid(-1);
 	break;
       case 0xBA:	/* indr */
-	do_indr();
+	do_inidr(-1);
 	break;
       case 0xA2:	/* ini */
-	do_ini();
+	do_inid(+1);
 	break;
       case 0xB2:	/* inir */
-	do_inir();
+	do_inidr(+1);
 	break;
 
       case 0x57:	/* ld a, i */
@@ -2426,16 +2367,16 @@ static void do_ED_instruction(wordregister *ix)
 	break;
 
       case 0xA8:	/* ldd */
-	do_ldd();
+	do_ldid(-1);
 	break;
       case 0xB8:	/* lddr */
-	do_lddr();
+	do_ldidr(-1);
 	break;
       case 0xA0:	/* ldi */
-	do_ldi();
+	do_ldid(+1);
 	break;
       case 0xB0:	/* ldir */
-	do_ldir();
+	do_ldidr(+1);
 	break;
 
       case 0x44:	/* neg */
@@ -2475,16 +2416,16 @@ static void do_ED_instruction(wordregister *ix)
 	break;
 
       case 0xAB:	/* outd */
-	do_outd();
+	do_outid(-1);
 	break;
       case 0xBB:	/* outdr */
-	do_outdr();
+	do_outidr(-1);
 	break;
       case 0xA3:	/* outi */
-	do_outi();
+	do_outid(+1);
 	break;
       case 0xB3:	/* outir */
-	do_outir();
+	do_outidr(+1);
 	break;
 
       case 0x4D:	/* reti */
@@ -2564,7 +2505,7 @@ int z80_run(bool continuous, bool halted)
 	    if (eoi.func)
 	      eoi.func(eoi.trigger, eoi.arg);
 	  }
-	  do {
+	  for (;;) {
 	    /* Poll for external event */
 	    z80_poll_external();
 
@@ -2578,17 +2519,22 @@ int z80_run(bool continuous, bool halted)
 	      do_int();
 	    }
 	    z80_state.ei_shadow = false;
-	  } while (halted);
+	    if (!halted)
+		break;
+	    TSTATE += 4;
+	  }
 
 	  if (tracing(TRACE_CPU)) {
-	      fprintf(tracef, "PC=%04X ", z80_state.pc.word);
+	      fprintf(tracef, "[%12"PRIu64"] PC=%04X ", TSTATE, REG_PC);
 	      disassemble(z80_state.pc.word);
 	  }
 
 	  ix = &z80_state.hl;	/* Not an index instruction */
 
 	instruction = mem_fetch_m1(REG_PC++);
+
     indexed:
+	TSTATE += clk_main[instruction];
 	inc_r();
 
 	switch(instruction)
@@ -2719,6 +2665,7 @@ int z80_run(bool continuous, bool halted)
 		REG_SP -= 2;
 		mem_write_word(REG_SP, REG_PC + 2);
 		REG_PC = address;
+		TSTATE += 7;
 		break;
 	    }
 	    else
@@ -2733,6 +2680,7 @@ int z80_run(bool continuous, bool halted)
 		REG_SP -= 2;
 		mem_write_word(REG_SP, REG_PC + 2);
 		REG_PC = address;
+		TSTATE += 7;
 		break;
 	    }
 	    else
@@ -2747,6 +2695,7 @@ int z80_run(bool continuous, bool halted)
 		REG_SP -= 2;
 		mem_write_word(REG_SP, REG_PC + 2);
 		REG_PC = address;
+		TSTATE += 7;
 		break;
 	    }
 	    else
@@ -2761,6 +2710,7 @@ int z80_run(bool continuous, bool halted)
 		REG_SP -= 2;
 		mem_write_word(REG_SP, REG_PC + 2);
 		REG_PC = address;
+		TSTATE += 7;
 		break;
 	    }
 	    else
@@ -2775,6 +2725,7 @@ int z80_run(bool continuous, bool halted)
 		REG_SP -= 2;
 		mem_write_word(REG_SP, REG_PC + 2);
 		REG_PC = address;
+		TSTATE += 7;
 		break;
 	    }
 	    else
@@ -2789,6 +2740,7 @@ int z80_run(bool continuous, bool halted)
 		REG_SP -= 2;
 		mem_write_word(REG_SP, REG_PC + 2);
 		REG_PC = address;
+		TSTATE += 7;
 		break;
 	    }
 	    else
@@ -2803,6 +2755,7 @@ int z80_run(bool continuous, bool halted)
 		REG_SP -= 2;
 		mem_write_word(REG_SP, REG_PC + 2);
 		REG_PC = address;
+		TSTATE += 7;
 		break;
 	    }
 	    else
@@ -2817,6 +2770,7 @@ int z80_run(bool continuous, bool halted)
 		REG_SP -= 2;
 		mem_write_word(REG_SP, REG_PC + 2);
 		REG_PC = address;
+		TSTATE += 7;
 		break;
 	    }
 	    else
@@ -2919,12 +2873,10 @@ int z80_run(bool continuous, bool halted)
 	    /* Zaks says no flag changes. */
 	    if(--REG_B != 0)
 	    {
-		REG_PC += ((int8_t) mem_fetch(REG_PC)) + 1;
+		REG_PC += ((int8_t) mem_fetch(REG_PC));
+		TSTATE += 5;
 	    }
-	    else
-	    {
-		REG_PC++;
-	    }
+	    REG_PC++;
 	    break;
 
 	  case 0xFB:	/* ei */
@@ -3121,29 +3073,37 @@ int z80_run(bool continuous, bool halted)
 	    }
 	    break;
 
-	    case 0x18:	/* jr offset */
-	      REG_PC += (int8_t) mem_fetch(REG_PC);
-	      REG_PC++;
-	      break;
+	case 0x18:	/* jr offset */
+	    REG_PC += (int8_t) mem_fetch(REG_PC);
+	    REG_PC++;
+	    break;
 
-	  case 0x20:	/* jr nz, offset */
-	    if(!ZERO_FLAG)
+	case 0x20:	/* jr nz, offset */
+	    if (!ZERO_FLAG) {
 		REG_PC += (int8_t) mem_fetch(REG_PC);
+		TSTATE += 5;
+	    }
 	    REG_PC++;
 	    break;
-	  case 0x28:	/* jr z, offset */
-	    if(ZERO_FLAG)
-	        REG_PC += (int8_t) mem_fetch(REG_PC);
+	case 0x28:	/* jr z, offset */
+	    if (ZERO_FLAG) {
+		REG_PC += (int8_t) mem_fetch(REG_PC);
+		TSTATE += 5;
+	    }
 	    REG_PC++;
 	    break;
-	  case 0x30:	/* jr nc, offset */
-	    if(!CARRY_FLAG)
-	        REG_PC += (int8_t) mem_fetch(REG_PC);
+	case 0x30:	/* jr nc, offset */
+	    if (!CARRY_FLAG) {
+		REG_PC += (int8_t) mem_fetch(REG_PC);
+		TSTATE += 5;
+	    }
 	    REG_PC++;
 	    break;
-	  case 0x38:	/* jr c, offset */
-	    if(CARRY_FLAG)
+	case 0x38:	/* jr c, offset */
+	    if (CARRY_FLAG) {
 	        REG_PC += (int8_t) mem_fetch(REG_PC);
+		TSTATE += 5;
+	    }
 	    REG_PC++;
 	    break;
 
@@ -3505,6 +3465,7 @@ int z80_run(bool continuous, bool halted)
 	    {
 		REG_PC = mem_read_word(REG_SP);
 		REG_SP += 2;
+		TSTATE += 6;
 	    }
 	    break;
 	  case 0xC8:	/* ret z */
@@ -3512,6 +3473,7 @@ int z80_run(bool continuous, bool halted)
 	    {
 		REG_PC = mem_read_word(REG_SP);
 		REG_SP += 2;
+		TSTATE += 6;
 	    }
 	    break;
 	  case 0xD0:	/* ret nc */
@@ -3519,6 +3481,7 @@ int z80_run(bool continuous, bool halted)
 	    {
 		REG_PC = mem_read_word(REG_SP);
 		REG_SP += 2;
+		TSTATE += 6;
 	    }
 	    break;
 	  case 0xD8:	/* ret c */
@@ -3526,6 +3489,7 @@ int z80_run(bool continuous, bool halted)
 	    {
 		REG_PC = mem_read_word(REG_SP);
 		REG_SP += 2;
+		TSTATE += 6;
 	    }
 	    break;
 	  case 0xE0:	/* ret po */
@@ -3533,6 +3497,7 @@ int z80_run(bool continuous, bool halted)
 	    {
 		REG_PC = mem_read_word(REG_SP);
 		REG_SP += 2;
+		TSTATE += 6;
 	    }
 	    break;
 	  case 0xE8:	/* ret pe */
@@ -3540,6 +3505,7 @@ int z80_run(bool continuous, bool halted)
 	    {
 		REG_PC = mem_read_word(REG_SP);
 		REG_SP += 2;
+		TSTATE += 6;
 	    }
 	    break;
 	  case 0xF0:	/* ret p */
@@ -3547,6 +3513,7 @@ int z80_run(bool continuous, bool halted)
 	    {
 		REG_PC = mem_read_word(REG_SP);
 		REG_SP += 2;
+		TSTATE += 6;
 	    }
 	    break;
 	  case 0xF8:	/* ret m */
@@ -3554,6 +3521,7 @@ int z80_run(bool continuous, bool halted)
 	    {
 		REG_PC = mem_read_word(REG_SP);
 		REG_SP += 2;
+		TSTATE += 6;
 	    }
 	    break;
 

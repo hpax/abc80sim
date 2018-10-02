@@ -73,6 +73,8 @@ struct z80_state_struct
     uint8_t i_vector;     /* offset into interrupt-page from _external_ device */
     uint8_t int_in_progress;	/* interrupt being serviced */
     struct eoi eoi;		/* EOI (= RETI) callback */
+
+    uint64_t tc;		/* T-state (clock cycle) counter */
 };
 
 #define Z80_ADDRESS_LIMIT	(1 << 16)
@@ -112,6 +114,8 @@ struct z80_state_struct
 
 #define REG_I	(z80_state.i)
 #define REG_R	((z80_state.rc & 0x7f) | (z80_state.rf & 0x80))
+
+#define TSTATE	z80_state.tc
 
 /*
  * Flag accessors:
@@ -181,7 +185,6 @@ extern uint8_t *mem_get_addr(uint16_t);
 extern uint16_t mem_read_word(uint16_t);
 extern uint16_t mem_fetch_word(uint16_t);
 extern void mem_write_word(uint16_t, uint16_t);
-extern void mem_block_transfer(uint16_t, uint16_t, int, uint16_t);
 extern void tracemem(void);
 extern void z80_out(int, uint8_t);
 extern int z80_in(int);

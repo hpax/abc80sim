@@ -192,36 +192,6 @@ void mem_write_word(uint16_t address, uint16_t value)
 }
 
 /*
- * Block move instructions, for LDIR and LDDR instructions.
- *
- * Direction is either +1 or -1.
- *
- * Note that a count of zero => move 64K bytes.
- */
-void
-mem_block_transfer(uint16_t dest, uint16_t source, int direction, uint16_t count)
-{
-    if(direction > 0)
-    {
-        do
-        {
-            mem_write(dest++, mem_read(source++));
-            count--;
-        }
-        while(count);
-    }
-    else
-    {
-        do
-        {
-            mem_write(dest--, mem_read(source--));
-            count--;
-        }
-        while(count);
-    }
-}
-
-/*
  * The ABC80 memory map can be altered either by flipping the
  * video mode or by doing out 7 (if enabled.)
  */
