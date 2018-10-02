@@ -198,7 +198,6 @@ extern void mem_init(unsigned int flags, const char *memfile);
 #define MEMFL_NOBASIC	1
 #define MEMFL_NODEV	2
 
-
 /* Signal an interrupt. If passed an odd value, e.g. -1, ignore. */
 extern void z80_interrupt_eoi(uint8_t vector, eoifunc do_eoi, void *eoi_arg);
 

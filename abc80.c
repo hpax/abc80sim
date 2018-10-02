@@ -9,8 +9,12 @@
 #include "hostfile.h"
 #include "console.h"
 #include "trace.h"
+#include "clock.h"
 
 #include <SDL_main.h>
+
+double ns_per_tstate;		/* Nanosection per tstate (clock cycle) */
+bool limit_speed;
 
 static const char version_string[] = VERSION;
 const char *program_name;
@@ -109,6 +113,7 @@ static no_return help(void)
 	   "  -v, --version         print the version string\n"
 	   "  -h, --help            print this help message\n"
 	   "  -k, --kb #            set the memory size in K (ABC80: 1-32 or 64)\n"
+	   "  -f, --MHz #.#         set the CPU frequency (default unlimited)\n"
 	   "      --color           allow ABC800C-style color graphics (default)\n"
 	   "      --no-color        black and white only\n"
 	   "      --diskdir ...     set directory for disk images (default abcdisk)\n"
@@ -180,6 +185,17 @@ static void parse_trace(char *arg)
 		    traceflags |= trp->mask;
 	    }
 	}
+    }
+}
+
+static void set_speed(const char *arg)
+{
+    double mhz = atof(arg);
+    if (mhz <= 0.0) {
+	limit_speed = false;
+    } else {
+	limit_speed = true;
+	ns_per_tstate = 1000.0/mhz;
     }
 }
 
@@ -311,6 +327,11 @@ int main(int argc, char **argv)
 	    } else if (!strcmp(optstr, "color") ||
 		       !strcmp(optstr, "colour")) {
 		color = enable;
+	    } else if (!strcmp(optstr, "MHz") ||
+		       !strcmp(optstr, "mhz") ||
+		       !strcmp(optstr, "speed") ||
+		       !strcmp(optstr, "frequency")) {
+		set_speed(LONG_ARG());
 	    } else {
 		fprintf(stderr, "%s: unknown option: --%s\n",
 			program_name, optstr);
@@ -352,6 +373,9 @@ int main(int argc, char **argv)
 		    break;
 		case 'k':
 		    kilobytes = strtoul(SHORT_ARG(), NULL, 0);
+		    break;
+		case 'f':
+		    set_speed(SHORT_ARG());
 		    break;
 		case 'v':
 		    show_version();
