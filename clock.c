@@ -84,8 +84,8 @@ static void consider_napping(uint64_t now)
   when = ref_time + (TSTATE - ref_tstate) * ns_per_tstate;
   ahead = when - now;
 
-  if (unlikely(ahead <= MS(-50) || ahead >= MS(100)))
-    goto weird;	       /* 50 ms or more behind or 100 ms ahead of schedule */
+  if (unlikely(ahead <= MS(-250) || ahead >= MS(100)))
+    goto weird;	       /* 250 ms or more behind or 100 ms ahead of schedule */
 
   /* If we are more than 5 ms ahead, sleep a bit... */
   if (unlikely(ahead >= MS(5)))
