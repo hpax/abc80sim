@@ -107,26 +107,24 @@ void z80_poll_external(void)
 {
   uint64_t now = nstime();
   uint64_t next = ~UINT64_C(0);
-  struct abctimer *t = timers;
   int i;
   bool sleepy = limit_speed;
 
   for (i = 0; i < ntimers; i++) {
+    struct abctimer *t = &timers[i];
     if (t->period) {
       uint64_t tnext = t->last + t->period;
       if (unlikely(now >= tnext)) {
 	t->last += t->period;
-	tnext += t->period;
 	if (unlikely(now >= tnext)) {
 	  /* Missed tick(s), advance to skip missed */
 	  t->last = now - (now - t->last) % t->period;
-	  tnext = t->last + t->period;
 	}
 	t->func();
 	sleepy = false;		/* Just in case "now" is too far behind now */
+      } else if (next > tnext) {
+	next = tnext;		/* The next event is closer than you thought */
       }
-      if (next > tnext)
-	next = tnext;
     }
   }
 
