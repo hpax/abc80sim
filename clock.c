@@ -87,8 +87,12 @@ static void consider_napping(uint64_t now)
   if (unlikely(ahead <= MS(-250) || ahead >= MS(100)))
     goto weird;	       /* 250 ms or more behind or 100 ms ahead of schedule */
 
-  /* If we are more than 5 ms ahead, sleep a bit... */
-  if (unlikely(ahead >= MS(5)))
+  /*
+   * If we are more than 1 ms ahead, sleep a bit.
+   * SDL seems to at least try to wake up every ms anyway, so we might
+   * as well.  If we sleep more, we'll catch up.
+   */
+  if (unlikely(ahead >= MS(1)))
     SDL_Delay(ahead/MS(1));
 
   return;
