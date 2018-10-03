@@ -41,6 +41,26 @@ void nstime_init(void)
 #elif defined(__WIN32__)
 
 static uint64_t tzero;
+static HANDLE wait_timer;
+
+static inline uint64_t fromft(FILETIME ft)
+{
+  ULARGE_INTEGER q;
+
+  q.LowPart  = ft.dwLowDateTime;
+  q.HighPart = ft.dwHighDateTime;
+  return q.QuadPart;
+}
+static inline FILETIME toft(uint64_t t)
+{
+  FILETIME ft;
+  ULARGE_INTEGER q;
+
+  q.QuadPart = t;
+  ft.dwLowDateTime  = q.LowPart;
+  ft.dwHighDateTime = q.HighPart;
+  return ft;
+}
 
 uint64_t nstime(void)
 {
@@ -48,7 +68,7 @@ uint64_t nstime(void)
   uint64_t t;
 
   GetSystemTimeAsFileTime(&ft);
-  t = ((uint64_t)ft.dwHighDateTime << 32) + ft.dwLowDateTime;
+  t = fromft(ft);
   return (t - tzero) * UINT64_C(100);
 }
 
@@ -57,7 +77,19 @@ void nstime_init(void)
   FILETIME ft;
 
   GetSystemTimeAsFileTime(&ft);
-  tzero = ((uint64_t)ft.dwHighDateTime << 32) + ft.dwLowDateTime;
+  tzero = fromft(ft);
+
+  wait_timer = CreateWaitableTimer(NULL, TRUE, NULL);
+}
+
+void mynssleep(uint64_t until, uint64_t since)
+{
+  LARGE_INTEGER q;
+
+  q.QuadPart = (until+99)/UINT64_C(100);
+  SetWaitableTimer(wait_timer, &q, 0, NULL, NULL, FALSE);
+  WaitForSingleObject(wait_timer,
+		      (until-since+UINT64_C(1999999))/UINT64_C(1000000));
 }
 
 #elif defined(HAVE_GETTIMEOFDAY)
@@ -112,7 +144,7 @@ void mynssleep(uint64_t until, uint64_t since)
   nanosleep(&req, NULL);
 }
 
-#else
+#elif !defined(__WIN32__)
 
 void mynssleep(uint64_t until, uint64_t since)
 {
