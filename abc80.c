@@ -123,7 +123,7 @@ static no_return help(void)
 	   "  -Cp, --printcmd cmd      set command to launch a print job (* = filename)\n"
 	   "  -Fc, --casfile file      input file for cassette (CAS:)\n"
 	   "  -Lc, --caslist file      read list of files for the cassette from a file\n"
-	   "  -c,  --console           enable console output device (PRC:)\n"
+	   "  -e,  --console           enable console output device (PRC:)\n"
 	   "  -Fe, --consolefile file  enable console output device to a file\n"
 	   "       --detach            detach from console if run from a command line\n"
 	   "\n"
@@ -397,8 +397,8 @@ int main(int argc, char **argv)
 		case 'b':
 		    memflags |= MEMFL_NOBASIC;
 		    break;
-		case 'c':
-		    console = "-";
+		case 'e':
+		    console = true;
 		    break;
 		case 'd':
 		    memflags |= MEMFL_NODEV;
@@ -416,6 +416,7 @@ int main(int argc, char **argv)
 		    set_speed(SHORT_ARG());
 		    break;
 		case 'F':
+		case 'C':
 		case 'D':
 		case 'L':
 		  {
