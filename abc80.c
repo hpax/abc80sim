@@ -252,6 +252,7 @@ static int set_path(const char *opt, const char *what)
 	    if (!strcmp(po->opt[j], opt))
 		goto found;
 	}
+	po++;
     }
 
     return -1;			/* Not a valid file option */
@@ -423,15 +424,14 @@ int main(int argc, char **argv)
 		    /* Various types of file paths */
 		    char fopt[3];
 		    fopt[0] = optchr;
-		    fopt[1] = optstr[1];
+		    fopt[1] = *optstr++;
 		    fopt[2] = '\0';
-		    /* If optstr[1] is null, set_path() will error out */
+		    /* If *optstr was \0, set_path() will error out */
 		    if (set_path(fopt, *option++)) {
 			fprintf(stderr, "%s: unknown option: -%s\n",
 				program_name, fopt);
 			usage();
 		    }
-		    optstr++;
 		    break;
 		  }
 		case 'v':
