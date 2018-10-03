@@ -19,6 +19,10 @@ bool limit_speed;
 static const char version_string[] = VERSION;
 const char *program_name;
 
+static const char *tracefile = NULL;
+static const char *memfile = NULL;
+static const char *console_filename = NULL;
+
 enum tracing traceflags;
 FILE *tracef;
 
@@ -96,38 +100,43 @@ static no_return help(void)
     printf("Usage: %s [options] [ihex_files...]\n"
 	   "Simulate a microcomputer from the Luxor ABC series.\n"
 	   "\n"
-	   "      --abc80           simulate an ABC80 (default)\n"
-	   "      --abc802          simulate an ABC802\n"
-	   "  -4, --40              start in 40-column mode\n"
-	   "  -8, --80              start in 80-column mode\n"
-	   "  -b, --no-basic        no BASIC ROM (uninitialized RAM instead)\n"
-	   "  -B, --basic           reverts the --no-basic option\n"
-	   "  -d, --no-device       no device driver ROMs\n"
-	   "  -D, --device          reverts the --no-device option\n"
-	   "      --old-basic       ABC80 only: run BASIC 1.0 (checksum 11273)\n"
-	   "      --11273           same as --old-basic\n"
-	   "      --new-basic       ABC80 only: run BASIC 1.2 (checksum 9913)\n"
-	   "      --9913            same as --new-basic\n"
-	   "  -t, --trace ...       trace various events (see \"--trace help\")\n"
-	   "  -T, --tracefile ...   redirect trace output to a file\n"
-	   "  -v, --version         print the version string\n"
-	   "  -h, --help            print this help message\n"
-	   "  -k, --kb #            set the memory size in K (ABC80: 1-32 or 64)\n"
-	   "  -f, --MHz #.#         set the CPU frequency (default unlimited)\n"
-	   "      --color           allow ABC800C-style color graphics (default)\n"
-	   "      --no-color        black and white only\n"
-	   "      --diskdir ...     set directory for disk images (default abcdisk)\n"
-	   "      --filedir ...     set directory for file sharing (default abcdir)\n"
-	   "      --scrndir ...     set directory for screen shots (default .)\n"
-	   "      --dumpdir ...     set directory for memory dumps (default .)\n"
-	   "      --printcmd ...    set command to launch a print job (* = filename)\n"
-	   "      --memfile ...     load a file into the ABC802 MEM: device\n"
-	   "      --casfile ...     input file for cassette (CAS:)\n"
-	   "      --caslist ...     read list of files for the cassette from a file\n"
-	   "  -c, --console         enable console output device (PRC:)\n"
-	   "      --consolefile ... enable console output device to a file\n"
-	   "      --detach          detach from console if run from a command line\n"
+	   "\nOptions:\n"
+	   "       --abc80             simulate an ABC80 (default)\n"
+	   "       --abc802            simulate an ABC802\n"
+	   "  -4,  --40                start in 40-column mode\n"
+	   "  -8,  --80                start in 80-column mode (default)\n"
+	   "  -b,  --no-basic          no BASIC ROM (uninitialized RAM instead)\n"
+	   "       --basic             reverts the --no-basic option\n"
+	   "  -d,  --no-device         no device driver ROMs\n"
+	   "       --device            reverts the --no-device option\n"
+	   "  -t,  --trace event,...   trace various events (see \"--trace help\")\n"
+	   "  -Ft, --tracefile file    redirect trace output to a file\n"
+	   "  -v, - -version           print the version string\n"
+	   "  -h,  --help              print this help message\n"
+	   "  -s,  --speed #.#|max     set the CPU frequency to #.# MHz (default 3.0)\n"
+	   "       --color             allow ABC800C-style color (default)\n"
+	   "       --no-color          black and white only\n"
+	   "  -Dd, --diskdir dir       set directory for disk images (default abcdisk)\n"
+	   "  -Df, --filedir dir       set directory for file sharing (default abcdir)\n"
+	   "  -Ds, --scrndir dir       set directory for screen shots (default .)\n"
+	   "  -Dd, --dumpdir dir       set directory for memory dumps (default .)\n "
+	   "  -Cp, --printcmd cmd      set command to launch a print job (* = filename)\n"
+	   "  -Fc, --casfile file      input file for cassette (CAS:)\n"
+	   "  -Lc, --caslist file      read list of files for the cassette from a file\n"
+	   "  -c,  --console           enable console output device (PRC:)\n"
+	   "  -Fe, --consolefile file  enable console output device to a file\n"
+	   "       --detach            detach from console if run from a command line\n"
 	   "\n"
+	   "Options for ABC80 only:\n"
+	   "  -k, --kb #              set the memory size K (1-32 or 64)\n"
+	   "      --old-basic         run BASIC 1.0 (checksum 11273)\n"
+	   "      --11273             same as --old-basic\n"
+	   "      --new-basic         run BASIC 1.2 (checksum 9913)\n"
+	   "      --9913              same as --new-basic\n"
+	   "\n"
+	   "Options for ABC802 only:\n"
+	   " -Fm, --memfile file      load a file into the ABC802 MEM: device\n"
+
 	   "The simulator supports the following hotkeys:\n"
 	   "  Alt-q                quit the simulator\n"
 	   "  Alt-s                take a screenshot\n"
@@ -191,12 +200,76 @@ static void parse_trace(char *arg)
 static void set_speed(const char *arg)
 {
     double mhz = atof(arg);
-    if (mhz <= 0.0) {
+    if (mhz <= 0.001 || mhz >= 1.0e+6) {
 	limit_speed = false;
     } else {
 	limit_speed = true;
 	ns_per_tstate = 1000.0/mhz;
     }
+}
+
+static void add_casfile(const char *what, const char **pvt)
+{
+    (void)pvt;
+
+    filelist_add_file(&cas_files, what);
+}
+
+static void add_caslist(const char *what, const char **pvt)
+{
+    (void)pvt;
+
+    filelist_add_list(&cas_files, what);
+}
+
+struct path_option {
+    const char *opt[2];		/* Short and long */
+    const char **what;
+    void (*set_special)(const char *, const char **);
+};
+
+static const struct path_option path_options[] = {
+    { { "Ft", "-tracefile" },	&tracefile,		NULL },
+    { { "Dd", "-diskdir" },	&disk_path,		NULL },
+    { { "Df", "-filedir" },	&fileop_path,		NULL },
+    { { "Ds", "-scrndir" },	&screen_path,		NULL },
+    { { "Dd", "-dumpdir" },	&memdump_path,		NULL },
+    { { "Cp", "-printcmd" },	&lpr_command,		NULL },
+    { { "Fe", "-consolefile" },	&console_filename,	NULL },
+    { { "Fc", "-casfile" },	NULL,			add_casfile },
+    { { "Lc", "-caslist" },	NULL,			add_caslist },
+};
+
+static int set_path(const char *opt, const char *what)
+{
+    const int nopts = (sizeof path_options)/(sizeof path_options[0]);
+    const struct path_option *po;
+    int i, j;
+
+    po = path_options;
+    for (i = 0; i < nopts; i++) {
+	for (j = 0; j < 2; j++) {
+	    if (!strcmp(po->opt[j], opt))
+		goto found;
+	}
+    }
+
+    return -1;			/* Not a valid file option */
+
+found:
+    if (!what) {
+	fprintf(stderr, "%s: the -%s option requires an argument\n",
+		program_name, opt);
+	usage();
+    }
+
+    if (po->set_special) {
+	po->set_special(what, po->what);
+    } else {
+	*po->what = what;
+    }
+
+    return 0;
 }
 
 enum model model = MODEL_ABC80;
@@ -238,11 +311,9 @@ int main(int argc, char **argv)
     char **option;
     const char *optstr;
     char optchr;
-    const char *tracefile = NULL;
-    const char *memfile = NULL;
     bool detach = false;
-    const char *console = NULL;
     bool color = true;
+    bool console = false;
 
     attach_console();
 
@@ -299,31 +370,8 @@ int main(int argc, char **argv)
 		    show_version();
 	    } else if (!strcmp(optstr, "trace")) {
 		parse_trace(LONG_ARG());
-	    } else if (!strcmp(optstr, "tracefile")) {
-		tracefile = enable ? LONG_ARG() : NULL;
-	    } else if (!strcmp(optstr, "diskdir")) {
-		disk_path = LONG_ARG();
-	    } else if (!strcmp(optstr, "filedir")) {
-		fileop_path = LONG_ARG();
-	    } else if (!strcmp(optstr, "scrndir")) {
-		screen_path = LONG_ARG();
-	    } else if (!strcmp(optstr, "printcmd")) {
-		lpr_command = LONG_ARG();
-	    } else if (!strcmp(optstr, "memfile")) {
-		memfile = enable ? LONG_ARG() : NULL;
 	    } else if (!strcmp(optstr, "detach")) {
 		detach = enable;
-	    } else if (!strcmp(optstr, "console")) {
-		console = enable ? "-" : NULL;
-	    } else if (!strcmp(optstr, "consolefile")) {
-		console = enable ? LONG_ARG() : NULL;
-	    } else if (!strcmp(optstr, "casfile")) {
-		if (!enable)
-		    filelist_free(&cas_files);
-		else
-		    filelist_add_file(&cas_files, LONG_ARG());
-	    } else if (!strcmp(optstr, "caslist")) {
-		filelist_add_list(&cas_files, LONG_ARG());
 	    } else if (!strcmp(optstr, "color") ||
 		       !strcmp(optstr, "colour")) {
 		color = enable;
@@ -333,9 +381,11 @@ int main(int argc, char **argv)
 		       !strcmp(optstr, "frequency")) {
 		set_speed(LONG_ARG());
 	    } else {
-		fprintf(stderr, "%s: unknown option: --%s\n",
-			program_name, optstr);
-		usage();
+		if (set_path(optstr-1, *option++)) {
+		    fprintf(stderr, "%s: unknown option: --%s\n",
+			    program_name, optstr);
+		    usage();
+		}
 	    }
 	} else {
 	    /* Short option */
@@ -344,26 +394,14 @@ int main(int argc, char **argv)
 		case 't':
 		    parse_trace(SHORT_ARG());
 		    break;
-		case 'T':
-		    tracefile = SHORT_ARG();
-		    break;
 		case 'b':
 		    memflags |= MEMFL_NOBASIC;
-		    break;
-		case 'B':
-		    memflags &= ~MEMFL_NOBASIC;
 		    break;
 		case 'c':
 		    console = "-";
 		    break;
-		case 'C':
-		    console = NULL;
-		    break;
 		case 'd':
 		    memflags |= MEMFL_NODEV;
-		    break;
-		case 'D':
-		    memflags &= ~MEMFL_NODEV;
 		    break;
 		case '4':
 		    startup_width40 = true;
@@ -374,9 +412,27 @@ int main(int argc, char **argv)
 		case 'k':
 		    kilobytes = strtoul(SHORT_ARG(), NULL, 0);
 		    break;
-		case 'f':
+		case 's':
 		    set_speed(SHORT_ARG());
 		    break;
+		case 'F':
+		case 'D':
+		case 'L':
+		  {
+		    /* Various types of file paths */
+		    char fopt[3];
+		    fopt[0] = optchr;
+		    fopt[1] = optstr[1];
+		    fopt[2] = '\0';
+		    /* If optstr[1] is null, set_path() will error out */
+		    if (set_path(fopt, *option++)) {
+			fprintf(stderr, "%s: unknown option: -%s\n",
+				program_name, fopt);
+			usage();
+		    }
+		    optstr++;
+		    break;
+		  }
 		case 'v':
 		    show_version();
 		    break;
@@ -415,13 +471,13 @@ int main(int argc, char **argv)
     }
 
     if (console) {
-	if (is_stdio(console)) {
+	if (is_stdio(console_filename)) {
 	    console_file = stdout;
 	} else {
-	    console_file = fopen(console, "wt");
+	    console_file = fopen(console_filename, "wt");
 	    if (!console_file) {
 		fprintf(stderr, "%s: Unable to open console file %s: %s\n",
-			program_name, console, strerror(errno));
+			program_name, console_filename, strerror(errno));
 	    }
 	}
     }
