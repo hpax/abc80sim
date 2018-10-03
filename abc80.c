@@ -136,7 +136,7 @@ static no_return help(void)
 	   "\n"
 	   "Options for ABC802 only:\n"
 	   " -Fm, --memfile file      load a file into the ABC802 MEM: device\n"
-
+	   "\n"
 	   "The simulator supports the following hotkeys:\n"
 	   "  Alt-q                quit the simulator\n"
 	   "  Alt-s                take a screenshot\n"
