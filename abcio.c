@@ -17,13 +17,8 @@ static uint8_t keyb_irq = 0xff;	/* = no IRQ vector set */
 static uint8_t keyb_data;
 static bool keyb_new, keyb_down;
 
-extern void disk_reset(void);
-extern void disk_out(int, int, int);
-extern int disk_in(int, int);
-extern int rtc_in(int, int);
-extern void printer_reset(void);
-extern void printer_out(int, int, int);
-extern int printer_in(int, int);
+/* Fake minimal-touch input */
+bool faketype;
 
 static inline uint8_t abc800_mangle_port(uint8_t port)
 {
@@ -325,7 +320,8 @@ static uint8_t abc80_in(uint8_t port)
 
   case (56 & 0x17):
     v = keyb_data;
-    keyb_data &= ~0x80;		/* Hack to avoid insanely fast repeat */
+    if (faketype)
+      keyb_data &= ~0x80;     /* Hack to avoid insanely fast repeat */
     break;
 
   case (58 & 0x17):

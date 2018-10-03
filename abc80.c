@@ -133,17 +133,20 @@ static no_return help(void)
 	   "      --11273             same as --old-basic\n"
 	   "      --new-basic         run BASIC 1.2 (checksum 9913)\n"
 	   "      --9913              same as --new-basic\n"
+	   "      --faketype          fake short keystrokes (default > 12.5 MHz)\n"
+	   "      --realtype          true key up/down emulation (default < 12.5 MHz)\n"
 	   "\n"
 	   "Options for ABC802 only:\n"
 	   " -Fm, --memfile file      load a file into the ABC802 MEM: device\n"
 	   "\n"
 	   "The simulator supports the following hotkeys:\n"
-	   "  Alt-q                quit the simulator\n"
-	   "  Alt-s                take a screenshot\n"
-	   "  Alt-r                CPU reset\n"
-	   "  Alt-n                send NMI\n"
-	   "  Alt-m                dump memory as currently seen from the CPU\n"
-	   "  Alt-u                dump underlying RAM only (even nonexistent)\n"
+	   "  Alt-q    quit the simulator\n"
+	   "  Alt-s    take a screenshot\n"
+	   "  Alt-r    CPU reset\n"
+	   "  Alt-n    send NMI\n"
+	   "  Alt-m    dump memory as currently seen from the CPU\n"
+	   "  Alt-u    dump underlying RAM only (even nonexistent)\n"
+	   "  Alt-f    turn faketype on or off\n"
 	   , program_name);
     exit(1);
 }
@@ -315,6 +318,7 @@ int main(int argc, char **argv)
     bool detach = false;
     bool color = true;
     bool console = false;
+    bool faketype_set = false;
 
     attach_console();
 
@@ -381,6 +385,12 @@ int main(int argc, char **argv)
 		       !strcmp(optstr, "speed") ||
 		       !strcmp(optstr, "frequency")) {
 		set_speed(LONG_ARG());
+	    } else if (!strcmp(optstr, "faketype")) {
+		faketype = enable;
+		faketype_set = true;
+	    } else if (!strcmp(optstr, "realtype")) {
+		faketype = !enable;
+		faketype_set = true;
 	    } else {
 		if (set_path(optstr-1, *option++)) {
 		    fprintf(stderr, "%s: unknown option: --%s\n",
@@ -450,6 +460,9 @@ int main(int argc, char **argv)
 	    }
 	}
     }
+
+    if (!faketype_set)
+	faketype = !limit_speed || (ns_per_tstate < 1000.0/12.5);
 
     hostfile_init();
 

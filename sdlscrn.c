@@ -577,6 +577,10 @@ static void check_event(void)
 	  dump_memory(true);
 	  break;
 
+	case SDLK_f:
+	  faketype = !faketype;
+	  break;
+
 	default:
 	  break;
 	}

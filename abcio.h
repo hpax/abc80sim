@@ -37,6 +37,7 @@ extern uint8_t dart_pr_in(uint8_t port);
 
 extern void keyboard_down(int sym);
 extern void keyboard_up(void);
+extern bool faketype;
 
 extern void abc802_vsync(void);
 
