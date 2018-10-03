@@ -41,6 +41,8 @@ static struct abctimer *create_timer(uint64_t period, void (*func)(void))
 
 void timer_init(void)
 {
+  nstime_init();
+
   switch (model) {
   case MODEL_ABC80:
     /* 20 ms = 50 Hz */
@@ -72,7 +74,7 @@ static inline bool trigger(uint64_t now, struct abctimer *tmr)
 }
 
 /* See if it is time to slow down a bit */
-static void consider_napping(uint64_t now)
+static void consider_napping(uint64_t now, uint64_t next)
 {
   uint64_t when;
   int64_t ahead;
@@ -88,12 +90,13 @@ static void consider_napping(uint64_t now)
     goto weird;	       /* 250 ms or more behind or 100 ms ahead of schedule */
 
   /*
-   * If we are more than 1 ms ahead, sleep a bit.
-   * SDL seems to at least try to wake up every ms anyway, so we might
-   * as well.  If we sleep more, we'll catch up.
+   * If we are more than 2 ms ahead, sleep a bit.
    */
-  if (unlikely(ahead >= MS(1)))
+  if (unlikely(ahead >= MS(2))) {
+    if (next < when)
+      when = next;		/* Don't sleep past the next event */
     mynssleep(when, now);
+  }
   return;
 
  weird:
@@ -106,20 +109,32 @@ static void consider_napping(uint64_t now)
 void z80_poll_external(void)
 {
   uint64_t now = nstime();
+  uint64_t next = ~UINT64_C(0);
   struct abctimer *t = timers;
   int i;
   bool sleepy = limit_speed;
 
   for (i = 0; i < ntimers; i++) {
-    if (trigger(now, t)) {
-      t->func();
-      sleepy = false;		/* Just in case "now" has falled behind */
+    if (t->period) {
+      uint64_t tnext = t->last + t->period;
+      if (unlikely(now >= tnext)) {
+	t->last += t->period;
+	tnext += t->period;
+	if (unlikely(now >= tnext)) {
+	  /* Missed tick(s), advance to skip missed */
+	  t->last = now - (now - t->last) % t->period;
+	  tnext = t->last + t->period;
+	}
+	t->func();
+	sleepy = false;		/* Just in case "now" is too far behind now */
+      }
+      if (next > tnext)
+	next = tnext;
     }
-    t++;
   }
 
   if (sleepy)
-    consider_napping(now);
+    consider_napping(now, next);
 }
 
 /*
