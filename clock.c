@@ -77,26 +77,23 @@ static inline bool trigger(uint64_t now, struct abctimer *tmr)
 static void consider_napping(uint64_t now, uint64_t next)
 {
   uint64_t when;
-  int64_t ahead;
+  int64_t ahead, behind;
   static uint64_t ref_time, ref_tstate;
 
   if (unlikely(now <= ref_time || TSTATE <= ref_tstate))
     goto weird;
 
   when = ref_time + (TSTATE - ref_tstate) * ns_per_tstate;
-  ahead = when - now;
+  behind = now - when;
+  ahead = when - next;
 
-  if (unlikely(ahead <= MS(-250) || ahead >= MS(100)))
-    goto weird;	       /* 250 ms or more behind or 100 ms ahead of schedule */
+  /* Sanity range check: 250 ms behind or 100 ms ahead of schedule */
+  if (unlikely(behind >= MS(250) || ahead >= MS(100)))
+    goto weird;
 
-  /*
-   * If we are more than 2 ms ahead, sleep a bit.
-   */
-  if (unlikely(ahead >= MS(2))) {
-    if (next < when)
-      when = next;		/* Don't sleep past the next event */
-    mynssleep(when, now);
-  }
+  /* If we are ahead of the next event, hold off and wait for it */
+  if (ahead >= 0)
+    mynssleep(next, now);
   return;
 
  weird:
