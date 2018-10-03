@@ -119,7 +119,7 @@ static no_return help(void)
 	   "  -Dd, --diskdir dir       set directory for disk images (default abcdisk)\n"
 	   "  -Df, --filedir dir       set directory for file sharing (default abcdir)\n"
 	   "  -Ds, --scrndir dir       set directory for screen shots (default .)\n"
-	   "  -Dd, --dumpdir dir       set directory for memory dumps (default .)\n "
+	   "  -Dd, --dumpdir dir       set directory for memory dumps (default .)\n"
 	   "  -Cp, --printcmd cmd      set command to launch a print job (* = filename)\n"
 	   "  -Fc, --casfile file      input file for cassette (CAS:)\n"
 	   "  -Lc, --caslist file      read list of files for the cassette from a file\n"
