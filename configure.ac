@@ -103,6 +103,8 @@ AC_CHECK_FUNCS([_setmode])
 
 dnl Timekeeping...
 AC_CHECK_FUNCS(clock_gettime)
+AC_CHECK_FUNCS(clock_nanosleep)
+AC_CHECK_FUNCS(nanosleep)
 AC_CHECK_FUNCS(gettimeofday)
 
 dnl Console handling

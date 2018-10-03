@@ -93,8 +93,7 @@ static void consider_napping(uint64_t now)
    * as well.  If we sleep more, we'll catch up.
    */
   if (unlikely(ahead >= MS(1)))
-    SDL_Delay(ahead/MS(1));
-
+    mynssleep(when, now);
   return;
 
  weird:

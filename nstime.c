@@ -11,17 +11,20 @@
 # include <unistd.h>
 #endif
 
+#include <SDL.h>
+
 #ifdef _POSIX_TIMERS
+
+#ifdef _POSIX_MONOTONIC_CLOCK
+# define WHICHCLOCK CLOCK_MONOTONIC
+#else
+# define WHICHCLOCK CLOCK_REALTIME
+#endif
 
 uint64_t nstime(void)
 {
   struct timespec ts;
-#ifdef _POSIX_MONOTONIC_CLOCK
-  const clockid_t whichclock = CLOCK_MONOTONIC;
-#else
-  const clockid_t whichclock = CLOCK_REALTIME;
-#endif
-  clock_gettime(whichclock, &ts);
+  clock_gettime(WHICHCLOCK, &ts);
   return ((uint64_t)ts.tv_sec * 1000000000) + ts.tv_nsec;
 }
 
@@ -47,4 +50,42 @@ uint64_t nstime(void)
 
 #else
 # error "Need to implement a different fine-grained timer function here"
+#endif
+
+#if defined(WHICHCLOCK) && defined(HAVE_CLOCK_NANOSLEEP)
+
+void mynssleep(uint64_t until, uint64_t since)
+{
+  (void)since;
+  struct timespec req;
+
+  req.tv_sec  = until / UINT64_C(1000000000);
+  req.tv_nsec = until % UINT64_C(1000000000);
+
+  clock_nanosleep(WHICHCLOCK, TIMER_ABSTIME, &req, NULL);
+}
+
+#elif defined(HAVE_NANOSLEEP)
+
+void mynssleep(uint64_t until, uint64_t since)
+{
+  struct timespec req;
+
+  until -= since;
+
+  req.tv_sec  = until / UINT64_C(1000000000);
+  req.tv_nsec = until % UINT64_C(1000000000);
+
+  nanosleep(&req, NULL);
+}
+
+#else
+
+void mynssleep(uint64_t until, uint64_t since)
+{
+  until -= since;
+
+  SDL_Delay(until/UINT64_C(1000000));
+}
+
 #endif
