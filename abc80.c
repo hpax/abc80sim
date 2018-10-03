@@ -13,8 +13,8 @@
 
 #include <SDL_main.h>
 
-double ns_per_tstate;		/* Nanosection per tstate (clock cycle) */
-bool limit_speed;
+double ns_per_tstate = 1000.0/3.0; /* Nanosection per tstate (clock cycle) */
+bool limit_speed = true;
 
 static const char version_string[] = VERSION;
 const char *program_name;
