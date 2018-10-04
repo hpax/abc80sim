@@ -13,7 +13,8 @@
 
 #include <SDL_main.h>
 
-double ns_per_tstate = 1000.0/3.0; /* Nanosection per tstate (clock cycle) */
+double ns_per_tstate = 1000.0/3.0; /* Nanoseconds per tstate (clock cycle) */
+double tstate_per_ns = 3.0/1000.0; /* Inverse of the above = freq in GHz */
 bool limit_speed = true;
 
 static const char version_string[] = VERSION;
@@ -208,6 +209,7 @@ static void set_speed(const char *arg)
     } else {
 	limit_speed = true;
 	ns_per_tstate = 1000.0/mhz;
+	tstate_per_ns = mhz/1000.0;
     }
 }
 

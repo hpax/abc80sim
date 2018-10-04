@@ -12,8 +12,9 @@ static struct abctimer *ctc_timer[4];
  * Initialize the time for next event
  */
 struct abctimer {
-  uint64_t last;
-  uint64_t period;
+  uint64_t period;		/* Period in ns */
+  uint64_t last;		/* Last checkpoint in ns */
+  uint64_t ltst;		/* TSTATE value for last checkpoint */
   void (*func)(void);
 };
 
@@ -35,6 +36,7 @@ static struct abctimer *create_timer(uint64_t period, void (*func)(void))
   t->period = period;
   t->func = func;
   t->last = nstime();
+  t->ltst = TSTATE;
 
   return t;
 }
@@ -120,6 +122,8 @@ void z80_poll_external(void)
 	  /* Missed tick(s), advance to skip missed */
 	  t->last = now - (now - t->last) % t->period;
 	}
+	/* TSTATE value corresponding to t->last */
+	t->ltst = TSTATE - (now - t->last)*tstate_per_ns;
 	t->func();
 	sleepy = false;		/* Just in case "now" is too far behind now */
       } else if (next > tnext) {
@@ -181,22 +185,24 @@ void abc800_ctc_out(uint8_t port, uint8_t v)
 
 uint8_t abc800_ctc_in(uint8_t port)
 {
-  uint8_t v;
+  uint8_t v, div;
+  const struct abctimer *t;
 
-  switch (port & 3) {
-  case 0:
-  case 1:
-  case 2:
-    v = 0xff;
-    break;
+  port &= 3;
+  t = ctc_timer[port];
+  div = ctc_div[port];
 
-  case 3:
-    {
-      uint64_t now = nstime();
-      v = ((ctc_timer[3]->last + ctc_timer[3]->period - now) * ctc_div[3])
-	/ ctc_timer[3]->period;
-      break;
-    }
+  if (!t)
+    return -1;
+
+  if (limit_speed) {
+    /* Interpolate based on TSTATEs (virtual time) */
+    v = ((int64_t)t->period -
+	 (int64_t)(((TSTATE - t->ltst)*ns_per_tstate)) * div) /
+      t->period;
+  } else {
+    /* Interpolate based on nanoseconds (real time) */
+    v = ((t->period - (nstime() - t->last)) * div) / t->period;
   }
 
   return v;
