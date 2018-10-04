@@ -55,7 +55,7 @@ static int redirect_stdio(const char *in, const char *out)
     return err;
 }
 
-#ifdef HAVE_ATTACHCONSOLE
+#ifdef __WIN32__
 
 /* A Windows GUI app detaches from the console by default */
 void attach_console(void)
@@ -78,7 +78,7 @@ void detach_console(void)
     FreeConsole();
 }
 
-#else
+#else /* not __WIN32__ */
 
 void attach_console(void)
 {

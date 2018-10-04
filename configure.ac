@@ -108,7 +108,6 @@ AC_CHECK_FUNCS(nanosleep)
 AC_CHECK_FUNCS(gettimeofday)
 
 dnl Console handling
-AC_CHECK_FUNCS(AttachConsole)
 AC_CHECK_FUNCS(setsid)
 AC_FUNC_FORK
 
