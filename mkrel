@@ -1,0 +1,42 @@
+#!/bin/bash -xe
+
+project=abc80sim
+pv="$(git describe --abbrev=4)"
+
+mkdir -p rel/"$pv"
+cd rel/"$pv"
+
+( cd ../.. && git archive --format=tar --prefix="$pv"/ HEAD ) | \
+    tar xvvf -
+cd "$pv"
+./autogen.sh
+cd ..
+tar cvvf "$pv".tar "$pv"
+xz -9ek "$pv".tar
+gzip -9 "$pv".tar
+
+for target in x86_64-w64-mingw32 i686-w64-mingw32; do
+    mkdir "$target"
+    cd "$target"
+    dlldir="/usr/$target/sys-root/mingw/bin"
+    tar xfz ../"$pv".tar.gz
+    cd "$pv"
+    ./configure --host="$target"
+    make clean
+    make -j
+    cd ..
+    mv "$pv" _build
+    mkdir "$pv"
+    cp $(find _build -type f -name '*.exe') "$pv"/
+    for f in $(find _build -type f name '*.txt'); do
+	todos < "$f" > "$pv"/"$(basename "$f")"
+    done
+    for d in SDL.dll libwinpthread-1.dll libpng16-16.dll zlib1.dll; do
+	cp "$dlldir"/"$d" "$pv"/
+    done
+    zip -9r -o "$pv".zip "$pv"
+    cd ..
+done
+
+ln x86_64-w64-mingw32/"$pv".zip "$pv"-win64.zip
+ln i686-w64-mingw32/"$pv".zip   "$pv"-win32.zip
