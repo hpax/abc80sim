@@ -22,7 +22,7 @@ Options:
   -Df, --filedir dir       set directory for file sharing (default abcdir)
   -Ds, --scrndir dir       set directory for screen shots (default .)
   -Dd, --dumpdir dir       set directory for memory dumps (default .)
-   -Cp, --printcmd cmd      set command to launch a print job (* = filename)
+  -Cp, --printcmd cmd      set command to launch a print job (* = filename)
   -Fc, --casfile file      input file for cassette (CAS:)
   -Lc, --caslist file      read list of files for the cassette from a file
   -e,  --console           enable console output device (PRC:)
@@ -35,13 +35,17 @@ Options for ABC80 only:
       --11273             same as --old-basic
       --new-basic         run BASIC 1.2 (checksum 9913)
       --9913              same as --new-basic
+      --faketype          fake short keystrokes (default > 12.5 MHz)
+      --realtype          true key up/down emulation (default < 12.5 MHz)
 
 Options for ABC802 only:
  -Fm, --memfile file      load a file into the ABC802 MEM: device
+
 The simulator supports the following hotkeys:
-  Alt-q                quit the simulator
-  Alt-s                take a screenshot
-  Alt-r                CPU reset
-  Alt-n                send NMI
-  Alt-m                dump memory as currently seen from the CPU
-  Alt-u                dump underlying RAM only (even nonexistent)
+  Alt-q    quit the simulator
+  Alt-s    take a screenshot
+  Alt-r    CPU reset
+  Alt-n    send NMI
+  Alt-m    dump memory as currently seen from the CPU
+  Alt-u    dump underlying RAM only (even nonexistent)
+  Alt-f    turn faketype on or off
