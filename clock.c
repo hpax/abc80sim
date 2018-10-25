@@ -104,30 +104,50 @@ static void consider_napping(uint64_t now, uint64_t next)
   ref_tstate = TSTATE;
 }
 
+/*
+ * Even on systems where it is highly optimized, nstime() can take
+ * quite a while to run. Therefore, only check wall time after
+ * a certain number of simulated T-states.
+ */
+#define CHECK_FREQUENCY 64
+
 /* Poll for timers - these the only external event we look for */
 void z80_poll_external(void)
 {
-  uint64_t now = nstime();
-  uint64_t next = ~UINT64_C(0);
+  uint64_t now;
+  static uint64_t next = 0;
   int i;
   bool sleepy = limit_speed;
+  static uint64_t next_check_tstate;
 
-  for (i = 0; i < ntimers; i++) {
-    struct abctimer *t = &timers[i];
-    if (t->period) {
-      uint64_t tnext = t->last + t->period;
-      if (unlikely(now >= tnext)) {
-	t->last += t->period;
+  if (likely(TSTATE < next_check_tstate))
+    return;
+
+  next_check_tstate += CHECK_FREQUENCY;
+
+  now = nstime();
+
+  if (unlikely(now >= next)) {
+    next = UINT64_MAX;
+
+    for (i = 0; i < ntimers; i++) {
+      struct abctimer *t = &timers[i];
+      if (t->period) {
+	uint64_t tnext = t->last + t->period;
 	if (unlikely(now >= tnext)) {
-	  /* Missed tick(s), advance to skip missed */
-	  t->last = now - (now - t->last) % t->period;
+	  t->last += t->period;
+	  if (unlikely(now >= tnext)) {
+	    /* Missed tick(s), advance to skip missed */
+	    t->last = now - (now - t->last) % t->period;
+	    tnext = t->last + t->period;
+	  }
+	  /* TSTATE value corresponding to t->last */
+	  t->ltst = TSTATE - (now - t->last)*tstate_per_ns;
+	  t->func();
+	  sleepy = false;		/* Just in case "now" is too far behind now */
 	}
-	/* TSTATE value corresponding to t->last */
-	t->ltst = TSTATE - (now - t->last)*tstate_per_ns;
-	t->func();
-	sleepy = false;		/* Just in case "now" is too far behind now */
-      } else if (next > tnext) {
-	next = tnext;		/* The next event is closer than you thought */
+	if (next > tnext)
+	  next = tnext;		/* The next event is closer than you thought */
       }
     }
   }

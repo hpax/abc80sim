@@ -46,6 +46,10 @@ dnl Some environments abuse __STRICT_ANSI__ to disable some
 dnl function declarations
 PA_ADD_CPPFLAGS([-U__STRICT_ANSI__])
 
+dnl Add -O3 unless disabled; seems to help this program quite a bit
+PA_ARG_DISABLED([O3], [don't compile with -O3 optimization],
+ [], [PA_ADD_CFLAGS(-O3)])
+
 dnl Don't put things in common if we can avoid it.  We don't want to
 dnl assume all compilers support common, and this will help find those
 dnl problems.  This also works around an OSX linker problem.

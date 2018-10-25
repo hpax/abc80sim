@@ -1,4 +1,4 @@
 dnl --------------------------------------------------------------------------
-dnl PA_ARG_ENABLED(option,helptext,enabled_action,disabled_action)
+dnl PA_ARG_DISABLED(option,helptext,disabled_action,enabled_action)
 dnl --------------------------------------------------------------------------
-AC_DEFUN([PA_ARG_ENABLED],[PA_ARG_BOOL([$1],[$2],no,[$3],[$4])])
+AC_DEFUN([PA_ARG_DISABLED],[PA_ARG_BOOL([$1],[$2],yes,[$4],[$3])])
