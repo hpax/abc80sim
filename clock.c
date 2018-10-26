@@ -41,9 +41,17 @@ static struct abctimer *create_timer(uint64_t period, void (*func)(void))
   return t;
 }
 
+static unsigned int poll_tstate_period;
+#define MAX_TSTATE_PERIOD 512
+
 void timer_init(void)
 {
   nstime_init();
+
+  /* Limit polling to once every μs simulated time */
+  poll_tstate_period = 1000*ns_per_tstate;
+  if (!limit_speed || poll_tstate_period > MAX_TSTATE_PERIOD)
+    poll_tstate_period = MAX_TSTATE_PERIOD;
 
   switch (model) {
   case MODEL_ABC80:
@@ -123,7 +131,7 @@ void z80_poll_external(void)
   if (likely(TSTATE < next_check_tstate))
     return;
 
-  next_check_tstate += CHECK_FREQUENCY;
+  next_check_tstate = TSTATE + poll_tstate_period;
 
   now = nstime();
 
