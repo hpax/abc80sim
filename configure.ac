@@ -86,7 +86,7 @@ dnl Useful functions which we may lack
 AC_CHECK_FUNCS([mempcpy])
 AC_CHECK_FUNCS([asprintf])
 
-dnl These types are POSIX-specific, and Windows does it differently...
+dnl Windows stat functions are a bit different, sigh...
 AC_CHECK_TYPES([struct _stat64])
 AC_CHECK_TYPES([struct stat])
 AC_CHECK_FUNCS([stat _stat64])
@@ -104,6 +104,9 @@ AC_CHECK_FUNCS([mkstemp tempnam])
 
 dnl Windows file attributes
 AC_CHECK_FUNCS([_setmode])
+
+dnl How to set file size
+AC_CHECK_FUNCS([ftruncate _chsize_s _chsize])
 
 dnl Memory mapping
 PA_ADD_HEADERS(sys/mman.h)

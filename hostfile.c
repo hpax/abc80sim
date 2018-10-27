@@ -331,7 +331,11 @@ static size_t page_mask;
 
 static inline size_t page_size(void)
 {
-#if defined(HAVE_SYSCONF) && defined(_SC_PAGESIZE)
+#ifdef __WIN32__
+    SYSTEM_INFO si;
+    GetSystemInfo(&si);
+    return si.dwPageSize;
+#elif defined(HAVE_SYSCONF) && defined(_SC_PAGESIZE)
     return sysconf(_SC_PAGESIZE);
 #elif defined(HAVE_SYSCONF) && defined(_SC_PAGE_SIZE)
     return sysconf(_SC_PAGESIZE);
@@ -340,9 +344,148 @@ static inline size_t page_size(void)
 #elif defined(PAGE_SIZE)
     return PAGE_SIZE;
 #else
-    return 1;			/* Bogus, but... */
+    return 1;			/* Bogus, but maybe good enough */
 #endif
 }
+
+#ifdef HAVE_FTRUNCATE
+# define set_file_size(fd,size) ftruncate(fd,size)
+#elif defined(HAVE__CHSIZE_S)
+# define set_file_size(fd,size) _chsize_s(fd,size)
+#elif defined(HAVE__CHSIZE)
+# define set_file_size(fd,size) _chsize(fd,size)
+#else
+static int set_file_size(int fd, size_t size)
+{
+    (void)fd; (void)size;
+    return -1;
+}
+#endif
+
+/*
+ * Wrappers around mmap, munmap and msync.  The Windows API for this
+ * requires some additional storage.
+ */
+#ifdef HAVE_MMAP
+
+static void *do_map_file(struct host_file *hf)
+{
+    int prot;
+    size_t flen;
+    size_t mlen = hf->mlen;
+    uint8_t *map;
+
+    prot = (file_rdok(hf) ? PROT_READ : 0) | (file_wrok(hf) ? PROT_WRITE : 0);
+    flen = (hf->flen + page_mask) & ~page_mask;
+
+    /*
+     * Use mlen here, even if the file is too small.  Otherwise we may not
+     * reserve enough address space.
+     */
+    map = mmap(NULL, mlen, prot, MAP_SHARED, fileno(hf->f), 0);
+    if (map == MAP_FAILED)
+	return NULL;
+
+    /*
+     * If the file is smaller than we wanted (due to being readonly,
+     * lack of space or so on), then try to mmap anonymous memory
+     * over the rest of the mapping to avoid SIGBUS.
+     */
+    if (flen < mlen)
+	mmap(map + flen, mlen - flen, prot,
+	     MAP_PRIVATE|MAP_ANONYMOUS|MAP_FIXED, -1, 0);
+
+    return hf->map = map;
+}
+
+static void do_unmap_file(struct host_file *hf)
+{
+    if (!hf->map)
+	return;
+
+    munmap(hf->map, hf->mlen);
+    hf->map = NULL;
+}
+
+static void do_msync_file(struct host_file *hf)
+{
+#ifdef HAVE_MSYNC
+    if (!hf->map || !file_wrok(hf))
+	return;
+
+    msync(hf->map, hf->mlen, MS_SYNC);
+#else
+    (void)hf;
+#endif
+}
+
+#elif defined(__WIN32__)
+
+static void *do_map_file(struct host_file *hf)
+{
+    HANDLE hfile = (HANDLE)_get_osfhandle(fileno(hf->f));
+    HANDLE mapping;
+    void *map;
+    DWORD prot;
+
+    mapping =
+	CreateFileMapping(hfile, NULL,
+			  file_wrok(hf) ? PAGE_READWRITE : PAGE_READONLY,
+			  (DWORD)(hf->mlen >> 32), (DWORD)(hf->mlen), NULL);
+    if (!mapping)
+	return NULL;
+
+    prot = (file_rdok(hf) ? FILE_MAP_READ : 0) |
+	(file_wrok(hf) ? FILE_MAP_WRITE : 0);
+    map = MapViewOfFile(mapping, prot, 0, 0, hf->mlen);
+
+    if (!map) {
+	CloseHandle(mapping);
+	return NULL;
+    }
+
+     hf->mappvt = mapping;
+     return (hf->map = map);
+}
+
+static void do_unmap_file(struct host_file *hf)
+{
+    if (!hf->map)
+	return;
+
+    UnmapViewOfFile(hf->map);
+    hf->map = NULL;
+
+    CloseHandle(hf->mappvt);
+}
+
+static void do_msync_file(struct host_file *hf)
+{
+    if (!hf->map || !file_wrok(hf))
+	return;
+
+    FlushViewOfFile(hf->map, hf->mlen);
+}
+
+#else  /* No memory mapping technique known */
+
+static void *do_map_file(struct host_file *hf)
+{
+    (void)hf;
+    return NULL;
+}
+
+static void do_unmap_file(struct host_file *hf)
+{
+    (void)hf;
+}
+
+static void do_msync_file(struct host_file *hf)
+{
+    (void)hf;
+}
+
+#endif
 
 /*
  * Map a file into memory, if possible; otherwise create a memory buffer
@@ -351,12 +494,8 @@ static inline size_t page_size(void)
  */
 void *map_file(struct host_file *hf, size_t mlen)
 {
-#ifdef HAVE_MMAP
-    size_t flen;
-    uint8_t *map;
     struct stat st;
     int fd;
-    int prot;
     size_t page_mask;
 
     if (!hf || !hf->f || mode_type(hf->mode) != HF_BINARY)
@@ -368,63 +507,31 @@ void *map_file(struct host_file *hf, size_t mlen)
     fflush(hf->f);
 
     fd = fileno(hf->f);
-    prot = (file_rdok(hf) ? PROT_READ : 0) | (file_wrok(hf) ? PROT_WRITE : 0);
 
     if (fstat(fd, &st))
 	return NULL;
 
-    if (st.st_size < (off_t)mlen && (prot & PROT_WRITE)) {
-	ftruncate(fd, mlen);	/* Try to extend file */
+    if (st.st_size < (off_t)mlen && file_wrok(hf)) {
+	set_file_size(fd, mlen);	/* Try to extend file */
 	fstat(fd, &st);
     }
 
-    hf->flen = flen = (st.st_size < (off_t)mlen) ? (size_t)st.st_size : mlen;
+    hf->flen = (st.st_size < (off_t)mlen) ? (size_t)st.st_size : mlen;
 
     /* Round up to a size in pages */
     page_mask = page_size() - 1;
-    mlen = (mlen + page_mask) & ~page_mask;
-    flen = (flen + page_mask) & ~page_mask;
+    hf->mlen = (mlen + page_mask) & ~page_mask;
 
-    /*
-     * Use mlen here, even if the file is too small.  Otherwise we may not
-     * reserve enough address space.
-     */
-    map = mmap(NULL, mlen, prot, MAP_SHARED, fd, 0);
-    if (map == MAP_FAILED)
-	return NULL;
-    hf->map  = map;
-    hf->mlen = mlen;
-
-    /*
-     * If the file is smaller than we wanted (due to being readonly,
-     * lack of space or so on), then try to mmap anonymous memory
-     * over the rest of the mapping to avoid SIGBUS.
-     */
-    if (flen < mlen)
-	mmap(map + flen, mlen - flen, prot,
-	     MAP_PRIVATE|MAP_ANONYMOUS|MAP_FIXED, -1, 0);
-
-    return hf->map;
-
-#else  /* HAVE_MMAP */
-    (void)hf;
-    (void)mlen;
-    return NULL;
-
-#endif
+    return do_map_file(hf);
 }
 
 void flush_file(struct host_file *hf)
 {
-    if (!hf || !hf->f || (hf->openflags & O_ACCMODE) == O_RDONLY)
+    if (!hf || !hf->f || !file_wrok(hf))
 	return;			/* Nothing to sync */
 
     fflush(hf->f);
-
-#ifdef HAVE_MSYNC
-    if (hf->map)
-	msync(hf->map, hf->flen, MS_SYNC);
-#endif
+    do_msync_file(hf);
 }
 
 /* This function returns errno on failure, the errno variable is preserved */
@@ -448,13 +555,7 @@ int close_file(struct host_file **filep)
 	    err = err ? err : errno;
     } else {
 	flush_file(file);
-
-	if (file->map) {
-#ifdef HAVE_MMAP
-	    munmap(file->map, file->mlen);
-#endif
-	    file->map = NULL;
-	}
+	do_unmap_file(file);
 
 	if (file->f) {
 	    if (fclose(file->f))
