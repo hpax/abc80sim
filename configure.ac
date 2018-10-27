@@ -102,8 +102,15 @@ AC_CHECK_FUNCS([_findfirst _findfirst64])
 dnl Temporary file functions
 AC_CHECK_FUNCS([mkstemp tempnam])
 
-dnl File attributes
+dnl Windows file attributes
 AC_CHECK_FUNCS([_setmode])
+
+dnl Memory mapping
+PA_ADD_HEADERS(sys/mman.h)
+AC_CHECK_FUNCS([sysconf])
+AC_CHECK_FUNCS([getpagesize])
+AC_CHECK_FUNCS([mmap])
+AC_CHECK_FUNCS([msync])
 
 dnl Timekeeping...
 AC_CHECK_FUNCS(clock_gettime)

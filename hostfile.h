@@ -29,6 +29,9 @@ struct host_file {
     int openflags;
     bool nuke;
     enum host_file_mode mode;
+    uint8_t *map;	       /* Memory-mapped contents */
+    size_t mlen;	       /* Length of memory map */
+    size_t flen;	       /* Length of true file in memory map */
     char filename[1];
 };
 
@@ -52,10 +55,28 @@ static inline bool is_path_separator(char c)
   }
 }
 
+#ifndef O_ACCMODE
+# define O_ACCMODE (O_RDONLY|O_WRONLY|O_RDWR) /* Hope this works */
+#endif
+
+static inline bool file_rdok(struct host_file *hf)
+{
+  return (hf->openflags & O_ACCMODE) != O_WRONLY;
+}
+
+static inline bool file_wrok(struct host_file *hf)
+{
+  return (hf->openflags & O_ACCMODE) != O_RDONLY;
+}
+
 /* Open a host filesystem file */
 extern struct host_file *
 open_host_file(enum host_file_mode mode, const char *dir,
 	       const char *filename, int openflags);
+
+/* Map (or read) the file contents into memory */
+extern void *
+map_file(struct host_file *file, size_t len);
 
 /* Create a numbered dump file */
 extern struct host_file *
@@ -64,6 +85,9 @@ dump_file(enum host_file_mode mode, const char *dir, const char *pattern);
 /* Create a temporary file */
 extern struct host_file *
 temp_file(enum host_file_mode mode, const char *prefix);
+
+/* Write contents back to disk if necessary */
+extern void flush_file(struct host_file *file);
 
 /* Close and optionally delete a host file */
 extern int close_file(struct host_file **temp);

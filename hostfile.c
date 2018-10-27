@@ -5,6 +5,10 @@
 #include "compiler.h"
 #include "hostfile.h"
 
+#ifdef HAVE_SYS_MMAN_H
+# include <sys/mman.h>
+#endif
+
 static inline enum host_file_mode mode_type(enum host_file_mode mode)
 {
     return mode & HF_TYPE_MASK;
@@ -30,10 +34,6 @@ static inline enum host_file_mode mode_type(enum host_file_mode mode)
 # define UNICODE_O_FLAGS _O_U16TEXT
 #else
 # define UNICODE_O_FLAGS O_TEXT
-#endif
-
-#ifndef O_ACCMODE
-# define O_ACCMODE (O_RDONLY|O_WRONLY|O_RDWR) /* Hope this works */
 #endif
 
 #ifndef O_NOFOLLOW
@@ -324,6 +324,109 @@ err:
     return NULL;
 }
 
+/*
+ * Page size, on systems that support such a thing
+ */
+static size_t page_mask;
+
+static inline size_t page_size(void)
+{
+#if defined(HAVE_SYSCONF) && defined(_SC_PAGESIZE)
+    return sysconf(_SC_PAGESIZE);
+#elif defined(HAVE_SYSCONF) && defined(_SC_PAGE_SIZE)
+    return sysconf(_SC_PAGESIZE);
+#elif defined(HAVE_GETPAGESIZE)
+    return getpagesize();
+#elif defined(PAGE_SIZE)
+    return PAGE_SIZE;
+#else
+    return 1;			/* Bogus, but... */
+#endif
+}
+
+/*
+ * Map a file into memory, if possible; otherwise create a memory buffer
+ * containing the full file contents that gets written back on flush_file()
+ * or close_file().
+ */
+void *map_file(struct host_file *hf, size_t mlen)
+{
+#ifdef HAVE_MMAP
+    size_t flen;
+    uint8_t *map;
+    struct stat st;
+    int fd;
+    int prot;
+    size_t page_mask;
+
+    if (!hf || !hf->f || mode_type(hf->mode) != HF_BINARY)
+	return NULL;		/* Not a mappable file */
+
+    if (hf->map)
+	return hf->map;		/* Already mapped */
+
+    fflush(hf->f);
+
+    fd = fileno(hf->f);
+    prot = (file_rdok(hf) ? PROT_READ : 0) | (file_wrok(hf) ? PROT_WRITE : 0);
+
+    if (fstat(fd, &st))
+	return NULL;
+
+    if (st.st_size < (off_t)mlen && (prot & PROT_WRITE)) {
+	ftruncate(fd, mlen);	/* Try to extend file */
+	fstat(fd, &st);
+    }
+
+    hf->flen = flen = (st.st_size < (off_t)mlen) ? (size_t)st.st_size : mlen;
+
+    /* Round up to a size in pages */
+    page_mask = page_size() - 1;
+    mlen = (mlen + page_mask) & ~page_mask;
+    flen = (flen + page_mask) & ~page_mask;
+
+    /*
+     * Use mlen here, even if the file is too small.  Otherwise we may not
+     * reserve enough address space.
+     */
+    map = mmap(NULL, mlen, prot, MAP_SHARED, fd, 0);
+    if (map == MAP_FAILED)
+	return NULL;
+    hf->map  = map;
+    hf->mlen = mlen;
+
+    /*
+     * If the file is smaller than we wanted (due to being readonly,
+     * lack of space or so on), then try to mmap anonymous memory
+     * over the rest of the mapping to avoid SIGBUS.
+     */
+    if (flen < mlen)
+	mmap(map + flen, mlen - flen, prot,
+	     MAP_PRIVATE|MAP_ANONYMOUS|MAP_FIXED, -1, 0);
+
+    return hf->map;
+
+#else  /* HAVE_MMAP */
+    (void)hf;
+    (void)mlen;
+    return NULL;
+
+#endif
+}
+
+void flush_file(struct host_file *hf)
+{
+    if (!hf || !hf->f || (hf->openflags & O_ACCMODE) == O_RDONLY)
+	return;			/* Nothing to sync */
+
+    fflush(hf->f);
+
+#ifdef HAVE_MSYNC
+    if (hf->map)
+	msync(hf->map, hf->flen, MS_SYNC);
+#endif
+}
+
 /* This function returns errno on failure, the errno variable is preserved */
 int close_file(struct host_file **filep)
 {
@@ -344,6 +447,15 @@ int close_file(struct host_file **filep)
 	if (closedir(file->d))
 	    err = err ? err : errno;
     } else {
+	flush_file(file);
+
+	if (file->map) {
+#ifdef HAVE_MMAP
+	    munmap(file->map, file->mlen);
+#endif
+	    file->map = NULL;
+	}
+
 	if (file->f) {
 	    if (fclose(file->f))
 		err = err ? err : errno;
@@ -381,6 +493,7 @@ static void hostfile_cleanup(void)
 void hostfile_init(void)
 {
     atexit(hostfile_cleanup);
+    page_mask = page_size() - 1;
 }
 
 /*

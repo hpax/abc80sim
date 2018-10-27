@@ -107,11 +107,16 @@ static inline int file_pos(struct ctl_state *state)
 
 static void disk_reset_state(struct ctl_state *state)
 {
+  int i;
+
   state->state = disk_k0;
   state->status = state->aux_status = 0;
   state->in_ptr  = -1;
   state->out_ptr = 0;
   state->notready_ctr = 4;
+
+  for (i = 0; i < 8; i++)
+    flush_file(state->files[i]);
 }
 
 static void disk_init(struct ctl_state *state)
@@ -129,6 +134,9 @@ static void disk_init(struct ctl_state *state)
       /* Try open RDWR first, then RDONLY, but don't create */
       state->files[i] =
 	open_host_file(HF_BINARY|HF_RETRY, disk_path, devname, O_RDWR);
+
+      /* Try to memory-map the file */
+      map_file(state->files[i], state->sectors << 8);
     }
   }
   disk_reset_state(state);
@@ -136,12 +144,17 @@ static void disk_init(struct ctl_state *state)
 
 static void do_next_command(struct ctl_state *state)
 {
-  FILE *file = state->files[state->k[1] & 7]->f;
+  struct host_file *hf = state->files[state->k[1] & 7];
+  uint8_t *buf = state->buf[state->k[1] >> 6]; /* If applicable */
 
   if ( state->k[0] & 0x01 ) {
     /* READ SECTOR */
-    fseek(file, file_pos(state), SEEK_SET);
-    fread(state->buf[state->k[1] >> 6], 1, 256, file);
+    if (hf->map) {
+      memcpy(buf, hf->map + file_pos(state), 256);
+    } else {
+      fseek(hf->f, file_pos(state), SEEK_SET);
+      fread(buf, 1, 256, hf->f);
+    }
     state->k[0] &= ~0x01;	/* Command done */
   }
   if ( state->k[0] & 0x02 ) {
@@ -160,12 +173,19 @@ static void do_next_command(struct ctl_state *state)
   }
   if ( state->k[0] & 0x08 ) {
     /* WRITE SECTOR */
-    clearerr(file);
-    fseek(file, file_pos(state), SEEK_SET);
-    fwrite(state->buf[state->k[1] >> 6], 1, 256, file);
-    if (ferror(file)) {
-      state->status = 0x08; /* Error */
-      state->aux_status = 0x40; /* Write protect */
+    if (!file_wrok(hf)) {
+      state->status = 0x80;	/* Error */
+      state->aux_status = 0x40;	/* Write protect */
+    } else if (hf->map) {
+      memcpy(hf->map + file_pos(state), buf, 256);
+    } else {
+      clearerr(hf->f);
+      fseek(hf->f, file_pos(state), SEEK_SET);
+      fwrite(state->buf[state->k[1] >> 6], 1, 256, hf->f);
+      if (ferror(hf->f)) {
+	state->status = 0x08; /* Error */
+	state->aux_status = 0x40; /* Write protect */
+      }
     }
     state->k[0] &= ~0x08;	/* Command done */
   }
