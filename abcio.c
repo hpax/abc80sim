@@ -226,6 +226,11 @@ static void abc802_out(uint8_t port, uint8_t value)
     dart_keyb_out(port, value);
     break;
 
+  case 54:
+  case 55:
+    abc806_rtc_out(port, value);
+    break;
+
   case 56:
   case 57:
     crtc_out(port, value);
@@ -357,6 +362,11 @@ static uint8_t abc802_in(uint8_t port)
   case 34:
   case 35:
     v = dart_keyb_in(port);
+    break;
+
+  case 54:
+  case 55:
+    v = abc806_rtc_in(port);
     break;
 
   case 56:
