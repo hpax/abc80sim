@@ -14,7 +14,15 @@
 ;
 ; Convert FF -> FF FF and send FF 00 on CLOSE.
 ;
+
+;
+; To auto-initialize this, we need to patch the jump table entry
+; in the DOS, and then return to the original entry point in DOS.
+; Because the DOS ROM is basically full, hard-code the offset here.
+;
 	defc selcode=60			; ABC-bus select code
+	defc DOSINIT=6543h		; Where to chain to in DOS
+	defc DEVLIST=65034		; BASIC device list
 
 	org 0x7800
 
@@ -32,7 +40,7 @@ pr_jptable:
 
 prabc_jp_init:
 	call prabc_init
-	jp 0x6543			; Initialize DOS
+	jp DOSINIT
 
 pr_print:
 	call select
@@ -466,34 +474,55 @@ prc_skip:
 	inc hl
 	jr prc_print_loop
 
-; Abuse part of this "ROM" address space as RAM
-	defc ram_devlst=7B00h	; Device descriptors (linked list!)
-	defc ram_select=7B15h	; Previous select code
-	defc ram_cmd=7B16h	; Latest sent command
-	defc ram_serial=7B17h	; Latest serial number
-	defc ram_dummy=7B18h	; Scratch byte
-
 prabc_init:
-	ld hl,prabc_device
-	ld de,ram_devlst
-	ld bc,7*3
+	ld hl,prc_device_rom-2
+	ld de,prc_device
+	ld bc,7
 	ldir
-	ld hl,(65034)		; Device list
-	ld (ram_devlst+14),hl
-	ld hl,ram_devlst
-	ld (65034),hl
+	ld hl,(DEVLIST)		; Device list
+	ld (prc_device),hl
+	ld hl,device_list
+	ld (DEVLIST),hl
 	call select
 	ld a,0xA9		; CLOSE ALL NO REPLY
 	call send_cmd
 	jp done
 
-prabc_device:
-	defw ram_devlst+7
+device_list:
+;pr_device:
+;	defw pra_device
+;	defm "PR "
+;	defw pr_jptable
+pra_device:
+	defw prb_device
 	defm "PRA"
 	defw pra_jptable
-	defw ram_devlst+14
+prb_device:
+	defw prc_device
 	defm "PRB"
 	defw prb_jptable
-	defw 0
+prc_device_rom:
 	defm "PRC"
 	defw prc_jptable
+
+_padding:
+	defs (0x3C0 - _padding), 0xff
+
+; Abuse part of this "ROM" address space as RAM - to make it a plausive
+; hardware hack, it is uninitialized (64 bytes)
+_data:
+prc_device:
+	defs 7			; Needs to be in RAM due to linked list
+
+ram_select:
+	defs 1			; Previous select code
+ram_cmd:
+	defs 1			; Latest sent command
+ram_serial:
+	defs 1			; Latest serial number
+ram_dummy:
+	defs 1			; Scratch byte
+
+; Pad with FF to the full 1K size
+_pad:
+	defs 1024-_pad, 0

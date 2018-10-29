@@ -64,6 +64,14 @@ abc80$(X): $(OBJS)
 %.s: %.c $(HDRS)
 	$(CC) $(CFLAGS) -S -o $@ $<
 
+.PHONY: roms
+roms:
+	$(MAKE) -C roms
+
+.PHONY: asmsrc
+asmsrc:
+	$(MAKE) -C asmsrc
+
 clean:
 	$(RM_F) abc80$(X) *.$(O) *~ core *.lst *.i *.s *~
 	$(RM_F) roms/*.c
