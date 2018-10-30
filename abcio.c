@@ -1,24 +1,35 @@
 #include "compiler.h"
 
 #include "z80.h"
+#include "z80irq.h"
 #include "screen.h"
 #include "abcio.h"
 #include "clock.h"
 #include "trace.h"
 
-#define READ_MODE   0
-#define WRITE_MODE  1
-
 /* Select code for ABC/4680 bus */
 static int8_t abcbus_select = -1;
 
 /* Keyboard IRQ vector */
-static uint8_t keyb_irq = 0xff;	/* = no IRQ vector set */
-static uint8_t keyb_data;
-static bool keyb_new, keyb_down;
+static volatile unsigned int keyb_data;
+static uint8_t keyb_fakedata;
+
+/* These constants are designed to make dart_keyb_in() as simple as possible */
+#define KEYB_NEW  0x100
+#define KEYB_DOWN 0x800
 
 /* Fake minimal-touch input */
 bool faketype;
+
+static int keyb_intack_fake(unsigned int prio, struct z80_irq *irq);
+static struct z80_irq *keyb_irq;
+
+static struct z80_irq keyb_irq_80 =
+  { NULL, NULL, NULL, -1, IRQ80_PIOA };
+static struct z80_irq keyb_irq_fake =
+  { keyb_intack_fake, NULL, NULL, -1, IRQ80_PIOA };
+static struct z80_irq keyb_irq_800 =
+  { NULL, NULL, NULL, -1, IRQ800_DARTA };
 
 static inline uint8_t abc800_mangle_port(uint8_t port)
 {
@@ -90,7 +101,7 @@ static void abc80_out(uint8_t port, uint8_t value)
 
   case (57 & 0x17):		/* Keyboard control port */
     if (!(value & 1)) {
-      keyb_irq = value;
+      keyb_irq->vector = value;
     }
     break;
 
@@ -135,7 +146,7 @@ static void dart_keyb_out(uint8_t port, uint8_t value)
       vsync = false;
       break;
     case 3:
-      keyb_irq = -1;
+      keyb_irq->vector = -1;
       memset(dart_keyb_ctl, 0, sizeof dart_keyb_ctl);
       return;
     case 4:
@@ -153,49 +164,69 @@ static void dart_keyb_out(uint8_t port, uint8_t value)
   }
 
   if ((dart_keyb_ctl[1] & 0x18) == 0) {
-    keyb_irq = 0;
+    keyb_irq->vector = 0;
   } else {
     if (dart_keyb_ctl[1] & 0x04) {
       /* Status affects vector */
-      keyb_irq = (dart_keyb_ctl[2] & ~0x0f) | 0x04;
+      keyb_irq->vector = (dart_keyb_ctl[2] & ~0x0f) | 0x04;
     } else {
-      keyb_irq = (dart_keyb_ctl[1] & ~0x01);
+      keyb_irq->vector = (dart_keyb_ctl[1] & ~0x01);
     }
   }
+}
+
+/* Get the keyboard data, clearing the KEYB_NEW flag */
+static unsigned int get_key(void)
+{
+  unsigned int rv, kbd;
+
+  rv = kbd = keyb_data;
+  cmpxchg(&keyb_data, &kbd, kbd & ~KEYB_NEW);
+
+  return rv;
+}
+
+static int keyb_intack_fake(unsigned int prio, struct z80_irq *irq)
+{
+  unsigned int data = get_key();
+
+  (void)prio;
+
+  keyb_fakedata = (data & 0x7f) | ((data & KEYB_NEW) ? 0x80 : 0x00);
+
+  return irq->vector;
 }
 
 static uint8_t dart_keyb_in(uint8_t port)
 {
   uint8_t v, reg;
 
-  if ((port & 1) == 0) {
-    /* Data register */
-    keyb_new = false;
-    v = keyb_data;
-    return keyb_data;
-  }
-
-  /* Control register */
-
-  reg = dart_keyb_ctl[0] & 7;
-  dart_keyb_ctl[0] &= ~7;	/* Restore register 0 */
-
-  switch (reg) {
-  case 0:
-    v = ((keyb_new) << 0) +
-      (1 << 2) +		/* Transmit buffer empty */
-      (keyb_down << 3) +	/* DCD -> key down */
-      (dart_keyb_vsync << 4) +	/* RI -> vsync */
-      (1 << 5);			/* CTS -> 60 Hz */
+  switch (port & 1) {
+  case 0:    /* Data register */
+    v = get_key();
     break;
-  case 1:
-    v = (1 << 0);		/* All sent */
-    break;
-  case 2:
-    v = dart_keyb_ctl[2];
-    break;
-  default:
-    v = 0;
+
+  case 1: /* Control register */
+    reg = dart_keyb_ctl[0] & 7;
+    dart_keyb_ctl[0] &= ~7;	/* Restore register 0 */
+
+    switch (reg) {
+    case 0:
+      v = (keyb_data >> 8) +
+	(1 << 2) +		/* Transmit buffer empty */
+	(dart_keyb_vsync << 4) +	/* RI -> vsync */
+	(1 << 5);			/* CTS -> 60 Hz */
+      break;
+    case 1:
+      v = (1 << 0);		/* All sent */
+      break;
+    case 2:
+      v = dart_keyb_ctl[2];
+      break;
+    default:
+      v = 0;
+      break;
+    }
     break;
   }
 
@@ -324,9 +355,13 @@ static uint8_t abc80_in(uint8_t port)
     break;
 
   case (56 & 0x17):
-    v = keyb_data;
-    if (faketype)
-      keyb_data &= ~0x80;     /* Hack to avoid insanely fast repeat */
+    if (faketype) {
+      v = keyb_fakedata;
+      keyb_fakedata &= ~0x80;
+    } else {
+      unsigned int kbd = keyb_data;
+      v = (kbd & 0x7f) | ((kbd & KEYB_DOWN) ? 0x80 : 0);
+    }
     break;
 
   case (58 & 0x17):
@@ -410,39 +445,26 @@ int z80_in(int port)
   return v;
 }
 
+/* This is called in the event handler thread context! */
 void keyboard_down(int sym)
 {
-  keyb_down = true;
-
-  switch (model) {
-  case MODEL_ABC80:
-    if (sym <= 127) {
-      keyb_data = sym | 0x80;
-      z80_interrupt(keyb_irq);
-    }
-    break;
-
-  case MODEL_ABC802:
-    keyb_data = sym;
-    keyb_new  = true;
-    z80_interrupt(keyb_irq);
-    break;
+  if (model == MODEL_ABC80) {
+    if (sym & ~127)
+      return;
   }
+
+  keyb_data = sym | KEYB_NEW | KEYB_DOWN;
+  z80_interrupt(keyb_irq->prio);
 }
 
-void keyboard_up(void)
+unsigned int keyboard_up(void)
 {
-  keyb_down = false;
+  unsigned int rv, kbd;
 
-  switch (model) {
-  case MODEL_ABC80:
-    keyb_data &= ~0x80;
-    break;
+  rv = kbd = keyb_data;
+  cmpxchg(&keyb_data, &kbd, kbd & ~KEYB_DOWN);
 
-  case MODEL_ABC802:
-    /* Do nothing? */
-    break;
-  }
+  return rv;
 }
 
 void io_init(void)
@@ -451,10 +473,17 @@ void io_init(void)
     case MODEL_ABC80:
       do_out = abc80_out;
       do_in  = abc80_in;
+      keyb_data = 0;
+      z80_register_irq(keyb_irq = faketype ? &keyb_irq_fake : &keyb_irq_80);
+      abc80_cas_init();
       break;
     case MODEL_ABC802:
       do_out = abc802_out;
       do_in  = abc802_in;
       keyb_data = 0xff;
+      z80_register_irq(keyb_irq = &keyb_irq_800);
+      abc800_cas_init();
+      abc800_ctc_init();
+      break;
     }
 }

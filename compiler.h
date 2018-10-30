@@ -186,4 +186,19 @@ typedef int mode_t;
 # define is_constant(x) false
 #endif
 
+/* Simple atomic operations */
+#ifdef __GNUC__
+# define atomic_load(p)    __atomic_load_n((p), __ATOMIC_ACQUIRE)
+# define atomic_store(p,v) __atomic_store_n((p), (v), __ATOMIC_RELEASE)
+# define cmpxchg(p, e, d)					\
+    likely(__atomic_compare_exchange_n((p), (e), (d), false,	\
+           __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE))
+# define xchg(p, v)						\
+    __atomic_exchange_n((p), (v), __ATOMIC_ACQ_REL)
+#define barrier() __atomic_thread_fence(__ATOMIC_ACQ_REL)
+
+#else
+/* ? */
+#endif
+
 #endif /* COMPILER_H */

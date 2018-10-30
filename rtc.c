@@ -11,7 +11,7 @@ static int ptr;
  * ASCII string - will be converted to BCD
  * __ is a placeholder for the command phase
  */
-static uint8_t e05time[9*2+1];	/* __ HH MM dd mm YY ?? SS ?? */
+static uint8_t e05time[17*2];	/* __ HH MM dd mm YY ?? SS ?? */
 static unsigned int e05bit;
 static uint8_t e05cmd;
 

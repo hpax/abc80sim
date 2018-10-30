@@ -26,9 +26,7 @@
  * please do send a report.
  */
 #include "z80.h"
-#include "screen.h"
-
-#include <setjmp.h>
+#include "z80irq.h"
 
 /*
  * The state of our Z-80 registers is kept in this structure:
@@ -1219,6 +1217,11 @@ static void do_im2(void)
 
 static void do_nmi(void)
 {
+    bool nminterrupt = xchg(&z80_state.nminterrupt, false);
+
+    if (!nminterrupt)
+	return;
+
     /* handle a non-maskable interrupt */
     if (tracing(TRACE_IO|TRACE_CPU)) {
 	fprintf(tracef, "[%12"PRIu64"] NMI: PC=%04x\n", TSTATE, REG_PC);
@@ -1229,7 +1232,6 @@ static void do_nmi(void)
     z80_state.iff2 = z80_state.iff1;
     z80_state.iff1 = false;
     z80_state.nmi_in_progress = true;
-    z80_state.nminterrupt = false;
     REG_PC = 0x66;
     inc_r();
     TSTATE += 11;
@@ -1240,6 +1242,11 @@ do_int(void)
 {
     uint16_t old_pc = REG_PC;
     uint64_t when = TSTATE;
+    int i_vector;
+
+    i_vector = z80_intack();
+    if (i_vector < 0)
+	return;
 
     switch (z80_state.interrupt_mode) {
     case 0:
@@ -1247,7 +1254,7 @@ do_int(void)
 	do_di();
 	REG_SP -= 2;
 	mem_write_word(REG_SP, REG_PC);
-	REG_PC = z80_state.i_vector & 0x38;
+	REG_PC = i_vector & 0x38;
 	TSTATE += 11;
 	break;
 
@@ -1263,7 +1270,7 @@ do_int(void)
         do_di();
         REG_SP -= 2;
         mem_write_word(REG_SP, REG_PC);
-        REG_PC = mem_read_word((z80_state.i << 8) | (z80_state.i_vector & ~1));
+        REG_PC = mem_read_word((z80_state.i << 8) | (i_vector & ~1));
 	TSTATE += 19;
         break;
 
@@ -1271,34 +1278,15 @@ do_int(void)
         break;
     }
 
-    z80_state.interrupt = false;
     z80_state.iff1 = false;
-    z80_state.int_in_progress = z80_state.i_vector & ~1;
 
     if (tracing(TRACE_CPU|TRACE_IO)) {
 	fprintf(tracef, "[%12"PRIu64"] INT: "
 		"vector 0x%02x (%3d) I=%02x PC=%04x -> %04x\n",
-		when,
-		z80_state.i_vector, z80_state.i_vector,
-		z80_state.i, old_pc, REG_PC);
+		when, i_vector, i_vector, z80_state.i, old_pc, REG_PC);
     }
 
     inc_r();
-}
-
-
-void z80_interrupt_eoi(uint8_t vector, eoifunc do_eoi, void *eoi_arg)
-{
-    if (!(vector & 1) && z80_state.int_in_progress != vector) {
-	if (tracing(TRACE_CPU|TRACE_IO)) {
-	    fprintf(tracef, "IRQ: interrupt pending, vector 0x%02x (%3u)\n",
-		    vector, vector);
-	}
-	z80_state.interrupt = true;
-	z80_state.i_vector  = vector;
-	z80_state.eoi.func = do_eoi;
-	z80_state.eoi.arg = eoi_arg;
-    }
 }
 
 static uint16_t get_hl_addr(wordregister *ix)
@@ -2436,8 +2424,7 @@ static void do_ED_instruction(wordregister *ix)
 	  REG_PC = mem_read_word(REG_SP);
 	  REG_SP += 2;
 	  z80_state.iff1 = z80_state.iff2;
-	  z80_state.eoi.trigger = z80_state.int_in_progress;
-	  z80_state.int_in_progress = -1;
+	  z80_state.signal_eoi = true; /* Send EOI before next instruction */
 	}
 	break;
 
@@ -2478,6 +2465,16 @@ static void do_ED_instruction(wordregister *ix)
     }
 }
 
+
+static inline void check_eoi(void)
+{
+    if (!likely(z80_state.signal_eoi))
+	return;
+
+    z80_state.signal_eoi = false;
+    z80_eoi();
+}
+
 int z80_run(bool continuous, bool halted)
 {
     uint8_t instruction;
@@ -2486,42 +2483,33 @@ int z80_run(bool continuous, bool halted)
 
     /* loop to do a z80 instruction */
     do {
-	  if (tracing(TRACE_CPU)) {
+      if (tracing(TRACE_CPU)) {
 	      diffstate();
 	      tracemem();
 	      fputc('\n', tracef);
 	  }
-	  if (z80_state.eoi.trigger >= 0) {
-	    struct eoi eoi = z80_state.eoi;
-
-	    /* We need to set these back *before* calling eoi.func */
-	    z80_state.eoi.func = NULL;
-	    z80_state.eoi.trigger = -1;
-
-	    if (tracing(TRACE_CPU|TRACE_IO)) {
-	      fprintf(tracef, "EOI: vector 0x%02x (%3u) PC=%04x\n",
-		      eoi.trigger, eoi.trigger, REG_PC);
-	    }
-	    if (eoi.func)
-	      eoi.func(eoi.trigger, eoi.arg);
-	  }
+      check_eoi();
 	  for (;;) {
 	    /* Poll for external event */
-	    z80_poll_external();
+	    if (z80_poll_external())
+	      return halted;
 
 	    /* Check for an interrupt */
 	    if (z80_state.nminterrupt && !z80_state.nmi_in_progress) {
-	      halted = false;
-	      do_nmi();
-	    } else if (z80_state.interrupt && z80_state.iff1 &&
-		       !z80_state.ei_shadow) {
-	      halted = false;
-	      do_int();
+		halted = false;
+		do_nmi();
+	    } else if (z80_state.iff1 && !z80_state.ei_shadow &&
+		       poll_irq()) {
+		halted = false;
+		do_int();
 	    }
 	    z80_state.ei_shadow = false;
 	    if (!halted)
 		break;
 	    TSTATE += 4;
+
+	    if (!continuous)
+		return halted;
 	  }
 
 	  if (tracing(TRACE_CPU)) {
@@ -3686,9 +3674,7 @@ z80_reset(void)
     z80_state.ei_shadow = false;
     z80_state.interrupt_mode = 0;
     z80_state.nmi_in_progress = false;
-    z80_state.interrupt = false;
-    z80_state.int_in_progress = -1;
-    z80_state.eoi.trigger = -1;
+    z80_state.signal_eoi = false;
     /* z80_state.r = 0; */
 }
 

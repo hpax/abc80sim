@@ -5,6 +5,7 @@
 #include "hostfile.h"
 #include "abcio.h"
 #include "z80.h"
+#include "z80irq.h"
 #include "abcfile.h"
 #include "trace.h"
 
@@ -169,6 +170,7 @@ static bool cas_edge(void)
 /*
  * ABC80 PIO interfacing
  */
+static inline int pio_eoi(unsigned int, struct z80_irq *);
 
 enum pioctl_state {
     pcs_init,
@@ -179,18 +181,22 @@ enum pioctl_state {
 struct pio {
     uint8_t out, in, mask;
     uint8_t mode;
-    uint8_t irq, irqmask, irqctl, irqprev;
+    uint8_t irqmask, irqctl, irqprev;
     enum pioctl_state ctlstate;
+    struct z80_irq irq;
 };
-
-static struct pio portb = { .in = 0xff };
+static struct pio portb = {
+    .in = 0xff,
+    .irq.eoi = pio_eoi,
+    .irq.pvt = &portb,
+    .irq.vector = -1,
+    .irq.prio = IRQ80_PIOB
+};
 
 static inline uint8_t pio_readval(const struct pio *pio)
 {
     return (pio->out & pio->mask) | (pio->in & ~pio->mask);
 }
-
-static void pio_eoi(uint8_t vector, void *arg);
 
 static void pio_check_interrupt(struct pio *pio)
 {
@@ -207,15 +213,16 @@ static void pio_check_interrupt(struct pio *pio)
 	(pio->irqctl & 0x40) ? (masked == pio->irqmask) : (masked != 0);
 
     if (trigger)
-	z80_interrupt_eoi(pio->irq, pio_eoi, (void *)pio);
+	z80_interrupt(pio->irq.prio);
     else
-	z80_clear_interrupt(pio->irq);
+	z80_clear_interrupt(pio->irq.prio);
 }
 
-static void pio_eoi(uint8_t vector, void *arg)
+static int pio_eoi(unsigned int prio, struct z80_irq *irq)
 {
-    (void)vector;
-    pio_check_interrupt((struct pio *)arg);
+    (void)prio;
+    pio_check_interrupt((struct pio *)(irq->pvt));
+    return 0;
 }
 
 static void pio_control(struct pio *pio, uint8_t v)
@@ -248,7 +255,7 @@ static void pio_control(struct pio *pio, uint8_t v)
 	    break;
 	default:
 	    if ((v & 1) == 0)
-		pio->irq = v;
+		pio->irq.vector = v;
 	    break;
 	}
 	break;
@@ -307,6 +314,11 @@ uint8_t abc80_piob_in(void)
     return pio_readval(&portb);
 }
 
+void abc80_cas_init(void)
+{
+    z80_register_irq(&portb.irq);
+}
+
 /*
  * ABC800 SIO/2 cassette interface
  *
@@ -317,8 +329,13 @@ uint8_t abc80_piob_in(void)
  * - At end of block either hardware or software go back to need sync
  */
 
+static int sio_cas_eoi(unsigned int prio, struct z80_irq *irq);
+
 static uint8_t sio_cas_ctl[8];
 static bool cas_first_rx_armed = true;
+
+static struct z80_irq sio_cas_irq =
+{ NULL, sio_cas_eoi, NULL, -1, IRQ800_SIOB };
 
 static inline bool cas_have_sync(void)
 {
@@ -337,12 +354,13 @@ static inline bool cas_rx_interrupt(bool huntok)
 
 static void cas_poll_interrupt(void);
 
-static void sio_cas_eoi(uint8_t vector, void *dummy)
+static int sio_cas_eoi(unsigned int prio, struct z80_irq *irq)
 {
-    (void)vector;
-    (void)dummy;
+    (void)prio;
+    (void)irq;
 
     cas_poll_interrupt();
+    return 0;
 }
 
 static void cas_poll_interrupt(void)
@@ -353,8 +371,8 @@ static void cas_poll_interrupt(void)
     /* Actually signal a receive data interrupt */
     sio_cas_ctl[3] &= ~0x10;	/* Not hunting anymore */
     cas_first_rx_armed = false;
-    z80_interrupt_eoi((sio_cas_ctl[2] & ~0x0f) | 0x04,
-		      sio_cas_eoi, NULL);
+    sio_cas_irq.vector = (sio_cas_ctl[2] & ~0x0f) | 0x04;
+    z80_interrupt(sio_cas_irq.prio);
 }
 
 void abc800_sio_cas_out(uint8_t port, uint8_t v)
@@ -479,4 +497,9 @@ uint8_t abc800_sio_cas_in(uint8_t port)
 
     cas_poll_interrupt();
     return v;
+}
+
+void abc800_cas_init(void)
+{
+    z80_register_irq(&sio_cas_irq);
 }

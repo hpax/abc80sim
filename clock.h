@@ -9,4 +9,6 @@ extern double ns_per_tstate;
 extern double tstate_per_ns;
 extern bool limit_speed;
 
+extern volatile bool z80_quit;
+
 #endif /* CLOCK_H */

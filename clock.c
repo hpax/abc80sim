@@ -1,4 +1,6 @@
+#include "compiler.h"
 #include "z80.h"
+#include "z80irq.h"
 #include "screen.h"
 #include "abcio.h"
 #include "clock.h"
@@ -97,8 +99,8 @@ static void consider_napping(uint64_t now, uint64_t next)
   behind = now - when;
   ahead = when - next;
 
-  /* Sanity range check: 250 ms behind or 100 ms ahead of schedule */
-  if (unlikely(behind >= MS(250) || ahead >= MS(100)))
+  /* Sanity range check: 100 ms behind or 100 ms ahead of schedule */
+  if (unlikely(behind >= MS(200) || ahead >= MS(100)))
     goto weird;
 
   /* If we are ahead of the next event, hold off and wait for it */
@@ -120,7 +122,9 @@ static void consider_napping(uint64_t now, uint64_t next)
 #define CHECK_FREQUENCY 64
 
 /* Poll for timers - these the only external event we look for */
-void z80_poll_external(void)
+volatile bool z80_quit;
+
+bool z80_poll_external(void)
 {
   uint64_t now;
   static uint64_t next = 0;
@@ -128,8 +132,11 @@ void z80_poll_external(void)
   bool sleepy = limit_speed;
   static uint64_t next_check_tstate;
 
+  if (z80_quit)
+    return true;		/* Terminate CPU loop */
+
   if (likely(TSTATE < next_check_tstate))
-    return;
+    return false;
 
   next_check_tstate = TSTATE + poll_tstate_period;
 
@@ -162,6 +169,8 @@ void z80_poll_external(void)
 
   if (sleepy)
     consider_napping(now, next);
+
+  return false;
 }
 
 /*
@@ -173,18 +182,22 @@ static void abc80_clock_tick(void)
   z80_nmi();
 }
 
-static uint8_t ctc_ctl[4], ctc_div[4], ctc_vector;
-
 /*
  * ABC800: Clock interrupt through the CTC
  */
-
-static uint8_t ctc_ctl[4], ctc_div[4], ctc_vector;
+static uint8_t ctc_ctl[4], ctc_div[4];
+static struct z80_irq ctc_irq[4] =
+{
+    { NULL, NULL, NULL, -1, IRQ800_CTC0 },
+    { NULL, NULL, NULL, -1, IRQ800_CTC1 },
+    { NULL, NULL, NULL, -1, IRQ800_CTC2 },
+    { NULL, NULL, NULL, -1, IRQ800_CTC3 }
+};
 
 static void abc800_clock_tick(void)
 {
-  if ((ctc_ctl[3] & 0xc0) == 0x80)
-    z80_interrupt(ctc_vector | (3 << 1)); /* 3 = channel */
+    if ((ctc_ctl[3] & 0xc0) == 0x80)
+	z80_interrupt(IRQ800_CTC3);
 }
 
 /*
@@ -192,10 +205,13 @@ static void abc800_clock_tick(void)
  */
 void abc800_ctc_out(uint8_t port, uint8_t v)
 {
-  if ((v & 1) == 0) {
-    ctc_vector = v;
-    return;
-  }
+    if ((v & 1) == 0) {
+	int i;
+	v &= ~7;
+	for (i = 0; i <= 3; i++)
+	    ctc_irq[i].vector = v | (i << 1);
+	return;
+    }
 
   port &= 3;			/* Get channel */
 
@@ -234,4 +250,11 @@ uint8_t abc800_ctc_in(uint8_t port)
   }
 
   return v;
+}
+
+void abc800_ctc_init(void)
+{
+    int i;
+    for (i = 0; i < 4; i++)
+	z80_register_irq(&ctc_irq[i]);
 }

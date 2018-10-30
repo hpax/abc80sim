@@ -33,7 +33,7 @@
 
 extern const unsigned char abc_font[256][FONT_YSIZE];
 
-static void check_event(void);
+static void trigger_refresh(bool);
 
 #define NCOLORS 8
 
@@ -48,9 +48,25 @@ static struct argb { uint8_t a, r, g, b; } rgbcolors[NCOLORS] = {
   {0x00,0xff,0xff,0xff},	/* white */
 };
 
+/* Mutex for interaction with the CPU thread */
+static SDL_mutex *screen_mutex;
+
 #define VRAM_SIZE 2048
 #define VRAM_MASK (VRAM_SIZE-1)
+
+/* Video RAM accessed by the CPU */
 unsigned char video_ram[VRAM_SIZE];
+
+/*
+ * Buffer for passing video RAM between the CPU and screen threads,
+ * protected by screen_mutex
+ */
+static unsigned char vram_queue[VRAM_SIZE]; /* CPU->screen video RAM copy */
+
+/*
+ * Copy of video RAM used to draw on screen (or screenshot)
+ */
+static unsigned char vram_shadow[VRAM_SIZE]; /* Screen accessed video RAM */
 
 union crtc {
   uint8_t regs[18];
@@ -73,17 +89,13 @@ union crtc {
     uint8_t curl;		/* Low half of cursor address */
   } r;
 };
-static union crtc crtc;
+static union crtc crtc, crtc_shadow;
 static uint8_t crtc_addr;
 static uint16_t startaddr, curaddr;
 struct xy {
   uint8_t x, y;
 };
 static struct xy addr_to_xy_tbl[2][2048];
-
-struct do_event {
-  void (*func)(void);
-};
 
 /* A local abstraction of a drawing surface */
 struct surface {
@@ -96,15 +108,15 @@ struct surface {
 };
 
 static struct surface rscreen;
-static bool blink_on = true;
-static bool mode40;
+static volatile bool blink_on = true;
+static volatile bool mode40, mode40_cpu;
 
 /*
- * Give the x,y coordinates for a given location in video RAM
+ * Give the x,y coordinates for a given location in shadow video RAM
  */
 static inline struct xy addr_to_xy(const uint8_t *p)
 {
-  uint16_t addr = p - video_ram;
+  uint16_t addr = p - vram_shadow;
   addr = (addr - startaddr) & VRAM_MASK;
   return addr_to_xy_tbl[mode40][addr];
 }
@@ -140,7 +152,7 @@ static inline unsigned int screenoffs(uint8_t y, uint8_t x)
  */
 static inline uint8_t screendata(uint8_t y, uint8_t x)
 {
-  return video_ram[screenoffs(y,x) & VRAM_MASK];
+  return vram_shadow[screenoffs(y,x) & VRAM_MASK];
 }
 
 /*
@@ -199,7 +211,7 @@ put_screen(struct surface *s, unsigned int tx, unsigned int ty, bool blink)
   }
 
   voffs = screenoffs(ty,tx);
-  cc = video_ram[voffs & VRAM_MASK];
+  cc = vram_shadow[voffs & VRAM_MASK];
   fontp = abc_font[(cc & 0x7f) + gmode];
   invmask = (blink || model != MODEL_ABC80) ? 0x80 : 0;
   invmask = (cc & invmask) ? 7 : 0;
@@ -220,9 +232,9 @@ put_screen(struct surface *s, unsigned int tx, unsigned int ty, bool blink)
 
   curmask = 0;
   if (unlikely(voffs == curaddr)) {
-    if (blink | (crtc.r.curstart & 0x40)) {
-      curmask = (~0U << (crtc.r.curstart & 0x1f));
-      curmask &= (2U << (crtc.r.curend & 0x1f))-1;
+    if (blink | (crtc_shadow.r.curstart & 0x40)) {
+      curmask = (~0U << (crtc_shadow.r.curstart & 0x1f));
+      curmask &= (2U << (crtc_shadow.r.curend & 0x1f))-1;
     }
   }
 
@@ -288,10 +300,17 @@ static void screen_dirty(struct surface *s)
 static void refresh_screen(struct surface *s, bool blink)
 {
   unsigned int x, y;
-  unsigned int width = TS_WIDTH >> mode40;
+  unsigned int width;
 
   screen_dirty(s);
 
+  SDL_mutexP(screen_mutex);
+  memcpy(vram_shadow, vram_queue, sizeof vram_shadow);
+  crtc_shadow = crtc;
+  mode40 = mode40_cpu;
+  SDL_mutexV(screen_mutex);
+
+  width = TS_WIDTH >> mode40;
   lock_screen(s);
 
   for (y = 0; y < TS_HEIGHT; y++)
@@ -336,77 +355,18 @@ void write_screen(uint8_t *p, uint8_t v)
 
 static void do_set_mode40(bool m)
 {
-  mode40 = m;
-
-  refresh_screen(&rscreen, blink_on);
-  if (model == MODEL_ABC80)
-    abc80_mem_mode40(m);
+    mode40 = m;
+    refresh_screen(&rscreen, blink_on);
 }
 
+/* Called from the CPU thread */
 void setmode40(bool m)
 {
-  if (m != mode40)
-    do_set_mode40(m);
-}
-
-/*
- * This routine switches the blink status, then goes around the screen
- * and updates all characters which has any kind of blink.  Returns the
- * previous value.
- */
-static bool set_blink(bool to_what)
-{
-  struct xy xy;
-  int x, y;
-  int width = TS_WIDTH >> mode40;
-
-  if (likely(to_what == blink_on))
-    return to_what;
-
-  blink_on = to_what;
-
-  lock_screen(&rscreen);
-
-  switch (model) {
-  case MODEL_ABC80:
-    for ( y = 0 ; y < TS_HEIGHT ; y++ ) {
-      for ( x = 0 ; x < width ; x++ ) {
-	if ( screendata(y,x) & 0x80 )
-	  put_screen(&rscreen, x, y, blink_on);
-      }
+    if (m != mode40_cpu) {
+	mode40_cpu = m;
+	if (model == MODEL_ABC80)
+	    abc80_mem_mode40(m);
     }
-    break;
-
-  case MODEL_ABC802:
-    if (!(crtc.r.curstart & 0x40)) {
-      xy = addr_to_xy(curaddr + video_ram);
-      put_screen(&rscreen, xy.x, xy.y, blink_on);
-    }
-    break;
-  }
-
-  unlock_screen(&rscreen);
-
-  return !to_what;		/* We just flipped it... */
-}
-
-/* Called from the timer that corresponds to the simulated vsync */
-void vsync_screen(void)
-{
-  const int blink_rate = 400/20; /* 400 ms/20 ms = 2.5 Hz */
-  static int blink_ctr;
-
-  check_event();		/* Poll for an SDL event */
-
-  if (!blink_ctr--) {
-    set_blink(!blink_on);
-    blink_ctr += blink_rate;
-  }
-
-  update_screen(&rscreen);
-
-  if (traceflags)
-    fflush(tracef);		/* So we don't buffer indefinitely */
 }
 
 /*
@@ -489,6 +449,8 @@ void screen_init(bool width40, bool color)
   crtc.r.vscantotal = 24;
   crtc.r.vdisplay = 24;
   crtc.r.curstart = 0x1f;	/* No CRTC cursor */
+  crtc_shadow = crtc;
+
   startaddr = curaddr = 0;
 
   /* Initialize reverse mapping table */
@@ -504,14 +466,17 @@ void screen_init(bool width40, bool color)
     }
   }
 
+  /* Create interlock mutex */
+  screen_mutex = SDL_CreateMutex();
+
+  if (!init_surface(&rscreen))
+    return;
+
   /* Enable keyboard decoding */
   SDL_EnableUNICODE(1);
 
   /* Enable keyboard repeat */
   SDL_EnableKeyRepeat(SDL_DEFAULT_REPEAT_DELAY, SDL_DEFAULT_REPEAT_INTERVAL);
-
-  if (!init_surface(&rscreen))
-    return;
 
   /* Forcibly set the screen width and load the appropriate BASIC */
   do_set_mode40(width40);
@@ -526,12 +491,9 @@ void screen_reset(void)
 }
 
 /*
- * Handle events.  This is called from vsync_screen(), because
- * SDL_PollEvent() might be expensive on some platforms.
+ * Event-handling loop; main loop of the event/screen thread.
  */
-int keyboard_code;		/* Keyboard code exported to PIO/DART */
-
-static void check_event(void)
+void event_loop(void)
 {
   SDL_Event event;
   static int keyboard_scan = -1; /* No key currently down */
@@ -541,7 +503,7 @@ static void check_event(void)
     KSH_ALT   = 4
   } kshift;
 
-  while ( SDL_PollEvent(&event) ) {
+  while ( SDL_WaitEvent(&event) ) {
     switch ( event.type ) {
     case SDL_KEYDOWN:
       kshift = \
@@ -555,7 +517,7 @@ static void check_event(void)
 	switch (event.key.keysym.sym) {
 	case SDLK_END:
 	case SDLK_q:
-	  exit(0);
+	  return;		/* Return to main() and exit simulator */
 
 	case SDLK_s:
 	  abc_screenshot();
@@ -712,15 +674,55 @@ static void check_event(void)
 	if ( event.key.keysym.scancode == keyboard_scan )
 	  keyboard_up();
       break;
+    case SDL_USEREVENT:
+	/* Time to update the screen */
+	refresh_screen(&rscreen, blink_on);
+	break;
     case SDL_QUIT:
-      exit(1);
-      break;
+      return;			/* Return to main(), terminate */
     default:
       break;
     }
   }
 }
 
+/*
+ * Called from the timer that corresponds to the simulated vsync
+ * in the CPU thread context
+ */
+void vsync_screen(void)
+{
+  const int blink_rate = 400/20; /* 400 ms/20 ms = 2.5 Hz */
+  static int blink_ctr;
+  bool blink;
+
+  blink = !blink_ctr--;
+  if (blink)
+      blink_ctr = blink_rate;
+
+  trigger_refresh(blink);
+
+  if (traceflags)
+    fflush(tracef);		/* So we don't buffer indefinitely */
+}
+
+/* Used from the CPU thread context to cause a screen redraw */
+static void trigger_refresh(bool toggle_blink)
+{
+    SDL_Event trigger_redraw;
+
+    memset(&trigger_redraw, 0, sizeof trigger_redraw);
+    trigger_redraw.type = SDL_USEREVENT;
+
+    SDL_mutexP(screen_mutex);
+    memcpy(vram_queue, video_ram, sizeof vram_queue);
+    if (toggle_blink)
+	blink_on = !blink_on;
+    SDL_mutexV(screen_mutex);
+    SDL_PushEvent(&trigger_redraw);
+}
+
+/* Called in the CPU thread context */
 void crtc_out(uint8_t port, uint8_t data)
 {
   if (!(port & 1)) {
@@ -731,12 +733,14 @@ void crtc_out(uint8_t port, uint8_t data)
   if (crtc_addr >= sizeof crtc.regs)
     return;
 
+  SDL_mutexP(screen_mutex);
+
   crtc.regs[crtc_addr] = data;
 
   startaddr = ((crtc.r.starth & 0x3f) << 8) + crtc.r.startl;
   curaddr   = ((crtc.r.curh & 0x3f) << 8)   + crtc.r.curl;
 
-  refresh_screen(&rscreen, blink_on);
+  SDL_mutexV(screen_mutex);
 }
 
 uint8_t crtc_in(uint8_t port)

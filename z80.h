@@ -19,6 +19,8 @@
 #include "compiler.h"
 #include "trace.h"
 
+#include <SDL.h>
+
 struct twobyte
 {
 #if WORDS_LITTLEENDIAN
@@ -42,6 +44,8 @@ struct eoi {
     int trigger;		/* Vector to call EOI for, otherwise -1 */
 };
 
+struct z80_irq;
+
 struct z80_state_struct
 {
     wordregister af;
@@ -63,16 +67,10 @@ struct z80_state_struct
     uint8_t rf; /* fixed part of register R (bit 7) */
 
     uint8_t interrupt_mode;
-    bool iff1, iff2, ei_shadow;
+    bool iff1, iff2, ei_shadow, signal_eoi;
 
     bool nmi_in_progress;	/* to prevent multiple simultaneous NMIs */
-
-    bool nminterrupt;	/* used to signal a non maskable interrupt */
-    bool interrupt;	/* used to signal an interrupt */
-
-    uint8_t i_vector;     /* offset into interrupt-page from _external_ device */
-    uint8_t int_in_progress;	/* interrupt being serviced */
-    struct eoi eoi;		/* EOI (= RETI) callback */
+    volatile bool nminterrupt;	/* used to signal a non maskable interrupt */
 
     uint64_t tc;		/* T-state (clock cycle) counter */
 };
@@ -190,29 +188,12 @@ extern void z80_out(int, uint8_t);
 extern int z80_in(int);
 extern int disassemble(int);
 extern int DAsm(uint16_t pc, char *T, int *target);
-extern void z80_poll_external(void);
+extern bool z80_poll_external(void);
 
 extern uint8_t ram[];		/* Array for plain RAM */
 
 extern void mem_init(unsigned int flags, const char *memfile);
 #define MEMFL_NOBASIC	1
 #define MEMFL_NODEV	2
-
-/* Signal an interrupt. If passed an odd value, e.g. -1, ignore. */
-extern void z80_interrupt_eoi(uint8_t vector, eoifunc do_eoi, void *eoi_arg);
-
-static inline void z80_interrupt(uint8_t vector)
-{
-    z80_interrupt_eoi(vector, NULL, NULL);
-}
-
-static inline void z80_clear_interrupt(uint8_t vector)
-{
-    if (!(vector & 1) && z80_state.interrupt == vector) {
-	z80_state.interrupt = false;
-	if (z80_state.int_in_progress & 1)
-	    z80_state.eoi.func = NULL;
-    }
-}
 
 #endif /* Z80_H */

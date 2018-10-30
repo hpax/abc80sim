@@ -11,7 +11,7 @@ extern void  screen_write(int, int);
 extern void  screen_flush(void);
 extern void  setmode40(bool);
 
-extern void  get_event(void);
+extern void  event_loop(void);
 extern void  key_check(void);
 
 extern volatile int event_pending;

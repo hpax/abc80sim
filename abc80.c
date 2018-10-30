@@ -12,6 +12,9 @@
 #include "clock.h"
 
 #include <SDL_main.h>
+#include <SDL_thread.h>
+
+static int z80_thread(void *);
 
 double ns_per_tstate = 1000.0/3.0; /* Nanoseconds per tstate (clock cycle) */
 double tstate_per_ns = 3.0/1000.0; /* Inverse of the above = freq in GHz */
@@ -321,6 +324,7 @@ int main(int argc, char **argv)
     bool color = true;
     bool console = false;
     bool faketype_set = false;
+    SDL_Thread *cpu_thread;
 
     attach_console();
 
@@ -525,11 +529,23 @@ int main(int argc, char **argv)
     /*
      * Off we go...
      */
+    cpu_thread = SDL_CreateThread(z80_thread, NULL);
+    event_loop();		/* Handling external events and screen */
+    z80_quit = true;
+    SDL_WaitThread(cpu_thread, NULL);
+
+    screen_reset();
+    exit(0);
+}
+
+int z80_thread(void *data)
+{
+    (void)data;
+
     z80_reset();
     timer_init();
 
     z80_run(true, false);
 
-    screen_reset();
-    exit(0);
+    return 0;
 }

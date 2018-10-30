@@ -1,5 +1,6 @@
 #include "abcprintd.h"
 #include "abcio.h"
+#include "z80irq.h"
 
 #define BUF_SIZE 512
 
@@ -40,6 +41,8 @@ static bool abcprint_poll(void)
   return output_head != output_tail;
 }
 
+static struct z80_irq dart_pr_irq;
+
 void printer_reset(void)
 {
   static bool init = false;
@@ -47,6 +50,8 @@ void printer_reset(void)
   if (!init) {
     init = true;
     abcprint_init();
+    if (model != MODEL_ABC80)
+      z80_register_irq(&dart_pr_irq);
   }
 }
 
@@ -95,6 +100,8 @@ int printer_in(int sel, int port)
 
 /* Hardware-like interface via the ABC800 PR: port */
 static uint8_t dart_pr_ctl[8];
+
+static struct z80_irq dart_pr_irq = { NULL, NULL, NULL, -1, IRQ800_DARTB };
 
 void dart_pr_out(uint8_t port, uint8_t v)
 {
