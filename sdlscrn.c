@@ -118,7 +118,7 @@ static inline struct xy addr_to_xy(const uint8_t *p)
 }
 
 /*
- * Compute the raw offset for a specific x,y coordinates
+ * Compute the screen offset for a specific x,y coordinates
  */
 static inline unsigned int screenoffs(uint8_t y, uint8_t x, bool m40)
 {
@@ -137,7 +137,7 @@ static inline unsigned int screenoffs(uint8_t y, uint8_t x, bool m40)
     break;
   }
 
-  return offs + vdu.startaddr;	/* CRTC value, not masked */
+  return offs;
 }
 
 /*
@@ -145,7 +145,7 @@ static inline unsigned int screenoffs(uint8_t y, uint8_t x, bool m40)
  */
 static inline uint8_t screendata(uint8_t y, uint8_t x)
 {
-    return vdu.vram[screenoffs(y,x,vdu.mode40) & VRAM_MASK];
+    return vdu.vram[(screenoffs(y,x,vdu.mode40) + vdu.startaddr) & VRAM_MASK];
 }
 
 /*
@@ -203,7 +203,7 @@ put_screen(struct surface *s, unsigned int tx, unsigned int ty, bool blink)
     }
   }
 
-  voffs = screenoffs(ty,tx,vdu.mode40);
+  voffs = screenoffs(ty,tx,vdu.mode40) + vdu.startaddr;
   cc = vdu.vram[voffs & VRAM_MASK];
   fontp = abc_font[(cc & 0x7f) + gmode];
   invmask = (blink || model != MODEL_ABC80) ? 0x80 : 0;
