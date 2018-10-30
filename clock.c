@@ -37,8 +37,8 @@ static struct abctimer *create_timer(uint64_t period, void (*func)(void))
 
   t->period = period;
   t->func = func;
-  t->last = nstime();
-  t->ltst = TSTATE;
+  t->last = 0;
+  t->ltst = 0;
 
   return t;
 }
