@@ -114,13 +114,6 @@ static void consider_napping(uint64_t now, uint64_t next)
   ref_tstate = TSTATE;
 }
 
-/*
- * Even on systems where it is highly optimized, nstime() can take
- * quite a while to run. Therefore, only check wall time after
- * a certain number of simulated T-states.
- */
-#define CHECK_FREQUENCY 64
-
 /* Poll for timers - these the only external event we look for */
 volatile bool z80_quit;
 
@@ -137,8 +130,6 @@ bool z80_poll_external(void)
 
   if (likely(TSTATE < next_check_tstate))
     return false;
-
-  next_check_tstate = TSTATE + poll_tstate_period;
 
   now = nstime();
 
@@ -165,6 +156,13 @@ bool z80_poll_external(void)
 	  next = tnext;		/* The next event is closer than you thought */
       }
     }
+  }
+
+  next_check_tstate = TSTATE + poll_tstate_period;
+  if (limit_speed) {
+    uint64_t next_ev = TSTATE + (next - now) * tstate_per_ns;
+    if (next_ev < next_check_tstate)
+      next_check_tstate = next_ev;
   }
 
   if (sleepy)
