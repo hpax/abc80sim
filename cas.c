@@ -331,7 +331,7 @@ static uint8_t sio_cas_ctl[8];
 static bool cas_first_rx_armed = true;
 
 static struct z80_irq sio_cas_irq =
-    IRQ(IRQ800_SIOB, NULL, sio_cas_eoi, NULL);
+    IRQ(IRQ800_SIOA, NULL, sio_cas_eoi, NULL);
 
 static inline bool cas_have_sync(void)
 {
@@ -360,8 +360,10 @@ static int sio_cas_eoi(struct z80_irq *irq)
 
 static void cas_poll_interrupt(void)
 {
-    if (!cas_rx_interrupt(true))
+    if (!cas_rx_interrupt(true)) {
+	z80_clear_interrupt(&sio_cas_irq);
 	return;
+    }
 
     /* Actually signal a receive data interrupt */
     sio_cas_ctl[3] &= ~0x10;	/* Not hunting anymore */

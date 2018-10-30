@@ -188,10 +188,10 @@ static void abc80_clock_tick(void)
 static uint8_t ctc_ctl[4], ctc_div[4];
 static struct z80_irq ctc_irq[4] =
 {
-    { NULL, NULL, NULL, -1, IRQ800_CTC0 },
-    { NULL, NULL, NULL, -1, IRQ800_CTC1 },
-    { NULL, NULL, NULL, -1, IRQ800_CTC2 },
-    { NULL, NULL, NULL, -1, IRQ800_CTC3 }
+    IRQ(IRQ800_CTC0, NULL, NULL, NULL),
+    IRQ(IRQ800_CTC1, NULL, NULL, NULL),
+    IRQ(IRQ800_CTC2, NULL, NULL, NULL),
+    IRQ(IRQ800_CTC3, NULL, NULL, NULL),
 };
 
 static void abc800_clock_tick(void)

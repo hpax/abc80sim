@@ -29,7 +29,7 @@ static struct z80_irq keyb_irq_80 = \
 static struct z80_irq keyb_irq_fake = \
   IRQ(IRQ80_PIOA, keyb_intack_fake, NULL, NULL);
 static struct z80_irq keyb_irq_800 = \
-  IRQ(IRQ800_DARTA, NULL, NULL, NULL);
+  IRQ(IRQ800_DARTB, NULL, NULL, NULL);
 
 static inline uint8_t abc800_mangle_port(uint8_t port)
 {
@@ -164,7 +164,7 @@ static void dart_keyb_out(uint8_t port, uint8_t value)
   }
 
   if ((dart_keyb_ctl[1] & 0x18) == 0) {
-    keyb_irq->vector = 0;
+    keyb_irq->vector = -1;
   } else {
     if (dart_keyb_ctl[1] & 0x04) {
       /* Status affects vector */
