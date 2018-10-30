@@ -31,7 +31,13 @@ static inline bool poll_irq(void)
 void z80_register_irq(struct z80_irq *irq);
 int z80_intack(void);
 void z80_eoi(void);
-bool z80_interrupt(struct z80_irq *irq);
-bool z80_clear_interrupt(struct z80_irq *irq);
+static inline void z80_interrupt(struct z80_irq *irq)
+{
+  atomic_set_bit(&irq_pending, irq->prio);
+}
+static inline void z80_clear_interrupt(struct z80_irq *irq)
+{
+  atomic_clear_bit(&irq_pending, irq->prio);
+}
 
 #endif /* Z80IRQ_H */

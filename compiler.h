@@ -195,9 +195,28 @@ typedef int mode_t;
            __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE))
 # define xchg(p, v)						\
     __atomic_exchange_n((p), (v), __ATOMIC_ACQ_REL)
-#define barrier() __atomic_thread_fence(__ATOMIC_ACQ_REL)
+# define barrier() __atomic_thread_fence(__ATOMIC_ACQ_REL)
 
-#else
+# if defined(__i386__) || defined(__x86_64__)
+static inline void atomic_set_bit(volatile unsigned int *p, int v)
+{
+  asm volatile("lock btsl %1,%0" : "+m" (*p) : "rN" (v));
+}
+static inline void atomic_clear_bit(volatile unsigned int *p, int v)
+{
+  asm volatile("lock btrl %1,%0" : "+m" (*p) : "rN" (v));
+}
+# else
+static inline void atomic_set_bit(volatile unsigned int *p, int v)
+{
+  __atomic_or_fetch(p, 1U << v, __ATOMIC_ACQ_REL);
+}
+static inline void atomic_clear_bit(volatile unsigned int *p, int v)
+{
+  __atomic_and_fetch(p, ~(1U << v), __ATOMIC_ACQ_REL);
+}
+# endif
+#else /* __GNUC__ */
 /* ? */
 #endif
 
