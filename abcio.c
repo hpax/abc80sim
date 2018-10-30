@@ -21,7 +21,7 @@ static uint8_t keyb_fakedata;
 /* Fake minimal-touch input */
 bool faketype;
 
-static int keyb_intack_fake(unsigned int prio, struct z80_irq *irq);
+static int keyb_intack_fake(struct z80_irq *irq);
 static struct z80_irq *keyb_irq;
 
 static struct z80_irq keyb_irq_80 =
@@ -186,11 +186,9 @@ static unsigned int get_key(void)
   return rv;
 }
 
-static int keyb_intack_fake(unsigned int prio, struct z80_irq *irq)
+static int keyb_intack_fake(struct z80_irq *irq)
 {
   unsigned int data = get_key();
-
-  (void)prio;
 
   keyb_fakedata = (data & 0x7f) | ((data & KEYB_NEW) ? 0x80 : 0x00);
 
@@ -454,7 +452,7 @@ void keyboard_down(int sym)
   }
 
   keyb_data = sym | KEYB_NEW | KEYB_DOWN;
-  z80_interrupt(keyb_irq->prio);
+  z80_interrupt(keyb_irq);
 }
 
 unsigned int keyboard_up(void)

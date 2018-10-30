@@ -170,7 +170,7 @@ static bool cas_edge(void)
 /*
  * ABC80 PIO interfacing
  */
-static inline int pio_eoi(unsigned int, struct z80_irq *);
+static inline int pio_eoi(struct z80_irq *);
 
 enum pioctl_state {
     pcs_init,
@@ -213,14 +213,13 @@ static void pio_check_interrupt(struct pio *pio)
 	(pio->irqctl & 0x40) ? (masked == pio->irqmask) : (masked != 0);
 
     if (trigger)
-	z80_interrupt(pio->irq.prio);
+	z80_interrupt(&pio->irq);
     else
-	z80_clear_interrupt(pio->irq.prio);
+	z80_clear_interrupt(&pio->irq);
 }
 
-static int pio_eoi(unsigned int prio, struct z80_irq *irq)
+static int pio_eoi(struct z80_irq *irq)
 {
-    (void)prio;
     pio_check_interrupt((struct pio *)(irq->pvt));
     return 0;
 }
@@ -329,7 +328,7 @@ void abc80_cas_init(void)
  * - At end of block either hardware or software go back to need sync
  */
 
-static int sio_cas_eoi(unsigned int prio, struct z80_irq *irq);
+static int sio_cas_eoi(struct z80_irq *irq);
 
 static uint8_t sio_cas_ctl[8];
 static bool cas_first_rx_armed = true;
@@ -354,9 +353,8 @@ static inline bool cas_rx_interrupt(bool huntok)
 
 static void cas_poll_interrupt(void);
 
-static int sio_cas_eoi(unsigned int prio, struct z80_irq *irq)
+static int sio_cas_eoi(struct z80_irq *irq)
 {
-    (void)prio;
     (void)irq;
 
     cas_poll_interrupt();
@@ -372,7 +370,7 @@ static void cas_poll_interrupt(void)
     sio_cas_ctl[3] &= ~0x10;	/* Not hunting anymore */
     cas_first_rx_armed = false;
     sio_cas_irq.vector = (sio_cas_ctl[2] & ~0x0f) | 0x04;
-    z80_interrupt(sio_cas_irq.prio);
+    z80_interrupt(&sio_cas_irq);
 }
 
 void abc800_sio_cas_out(uint8_t port, uint8_t v)

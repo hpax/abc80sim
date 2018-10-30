@@ -4,14 +4,14 @@
 #include "compiler.h"
 #include "z80.h"
 
-typedef int (*irq_func)(unsigned int prio, struct z80_irq *irq);
+typedef int (*irq_func)(struct z80_irq *irq);
 
 struct z80_irq {
     irq_func intack;
     irq_func eoi;
     void *pvt;			/* Available for user */
     int vector;			/* Available for user if intack defined */
-    unsigned int prio;		/* Available for user after register_irq */
+    unsigned int prio;		/* Priority level */
 };
 
 #define MAX_IRQ 32
@@ -25,7 +25,7 @@ static inline bool poll_irq(void)
 void z80_register_irq(struct z80_irq *irq);
 int z80_intack(void);
 void z80_eoi(void);
-bool z80_interrupt(unsigned int prio);
-bool z80_clear_interrupt(unsigned int prio);
+bool z80_interrupt(struct z80_irq *irq);
+bool z80_clear_interrupt(struct z80_irq *irq);
 
 #endif /* Z80IRQ_H */

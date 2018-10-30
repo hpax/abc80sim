@@ -197,7 +197,7 @@ static struct z80_irq ctc_irq[4] =
 static void abc800_clock_tick(void)
 {
     if ((ctc_ctl[3] & 0xc0) == 0x80)
-	z80_interrupt(IRQ800_CTC3);
+	z80_interrupt(&ctc_irq[3]);
 }
 
 /*

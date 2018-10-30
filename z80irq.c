@@ -5,7 +5,6 @@
 volatile unsigned int irq_pending;	/* Quick way to poll */
 static struct z80_irq *irqs[MAX_IRQ];
 static struct z80_irq *current_irq;
-static unsigned int current_prio;
 
 void z80_register_irq(struct z80_irq *irq)
 {
@@ -36,13 +35,12 @@ int z80_intack(void)
 	irq = irqs[prio];
 
 	if (unlikely(irq->intack))
-	    vector = irq->intack(prio, irq);
+	    vector = irq->intack(irq);
 	else
 	    vector = irq->vector;
     } while (vector < 0);
 
     current_irq = irq;
-    current_prio = prio;
 
     return vector;
 }
@@ -58,10 +56,10 @@ void z80_eoi(void)
     if (!irq)
 	return;			/* No known interrupt to EOI */
 
-    if (irq->eoi)
-	irq->eoi(current_prio, irq);
-
     current_irq = NULL;
+
+    if (irq->eoi)
+	irq->eoi(irq);
 }
 
 /*
@@ -71,38 +69,35 @@ void z80_eoi(void)
  */
 #if defined(__GNUC__) && (defined(__i386__) || defined(__x86_64__))
 
-bool z80_interrupt(unsigned int prio)
+bool z80_interrupt(struct z80_irq *irq)
 {
     bool raised;
 
     asm volatile("lock btsl %2,%0"
 		 : "+m" (irq_pending), "=@ccnc" (raised)
-		 : "ri" (prio));
+		 : "rN" (irq->prio));
 
     return raised;
 }
 
-bool z80_clear_interrupt(unsigned int prio)
+bool z80_clear_interrupt(struct z80_irq *irq)
 {
     bool cleared;
 
     asm volatile("lock btrl %2,%0"
 		 : "+m" (irq_pending), "=@ccc" (cleared)
-		 : "ri" (prio));
+		 : "rN" (irq->prio));
 
     return cleared;
 }
 
 #else
 
-bool z80_interrupt(unsigned int prio)
+bool z80_interrupt(struct z80_irq *irq)
 {
     unsigned int irqmask, irqpend;
 
-    if (prio >= MAX_IRQ)
-	return false;
-
-    irqmask = 1U << prio;
+    irqmask = 1U << irq->prio;
     irqpend = irq_pending;
     do {
 	if (irqpend & irqmask)
@@ -112,14 +107,11 @@ bool z80_interrupt(unsigned int prio)
     return true;
 }
 
-bool z80_clear_interrupt(unsigned int prio)
+bool z80_clear_interrupt(struct z80_irq *irq)
 {
     unsigned int irqmask, irqpend;
 
-    if (prio >= MAX_IRQ)
-	return false;
-
-    irqmask = 1U << prio;
+    irqmask = 1U << irq->prio;
     irqpend = irq_pending;
     do {
 	if (!(irqpend & irqmask))
