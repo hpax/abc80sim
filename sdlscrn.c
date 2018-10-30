@@ -33,7 +33,7 @@
 
 extern const unsigned char abc_font[256][FONT_YSIZE];
 
-static void trigger_refresh(bool);
+static void trigger_refresh(void);
 
 #define NCOLORS 8
 
@@ -53,20 +53,6 @@ static SDL_mutex *screen_mutex;
 
 #define VRAM_SIZE 2048
 #define VRAM_MASK (VRAM_SIZE-1)
-
-/* Video RAM accessed by the CPU */
-unsigned char video_ram[VRAM_SIZE];
-
-/*
- * Buffer for passing video RAM between the CPU and screen threads,
- * protected by screen_mutex
- */
-static unsigned char vram_queue[VRAM_SIZE]; /* CPU->screen video RAM copy */
-
-/*
- * Copy of video RAM used to draw on screen (or screenshot)
- */
-static unsigned char vram_shadow[VRAM_SIZE]; /* Screen accessed video RAM */
 
 union crtc {
   uint8_t regs[18];
@@ -89,9 +75,23 @@ union crtc {
     uint8_t curl;		/* Low half of cursor address */
   } r;
 };
-static union crtc crtc, crtc_shadow;
-static uint8_t crtc_addr;
-static uint16_t startaddr, curaddr;
+
+/*
+ * Total video state. We keep three copies: one for the CPU to access,
+ * one to hand over protected by screen_mutex, and one for the screen
+ * generation.
+ */
+struct video_state {
+  union crtc crtc;
+  uint16_t startaddr;		/* Position of the first character */
+  uint16_t curaddr;		/* Memory position of the CRTC cursor */
+  bool mode40;
+  bool blink_on;
+  uint8_t vram[VRAM_SIZE];
+};
+static struct video_state cpu, xfr, vdu;
+uint8_t * const video_ram = cpu.vram;
+
 struct xy {
   uint8_t x, y;
 };
@@ -101,50 +101,43 @@ static struct xy addr_to_xy_tbl[2][2048];
 struct surface {
     SDL_Surface *surf;		/* SDL_Surface object */
     Uint32 colors[NCOLORS];
-    /* Keep track of what the dirty rectangle is */
-    unsigned int upd_x0, upd_y0, upd_x1, upd_y1;
     int lock_count;		/* Lock nesting count */
     uint64_t updated;		/* Time stamp of last update */
 };
 
-static struct surface rscreen;
-static volatile bool blink_on = true;
-static volatile bool mode40, mode40_cpu;
+static struct surface rscreen;	/* The "physical" screen surface */
 
 /*
  * Give the x,y coordinates for a given location in shadow video RAM
  */
 static inline struct xy addr_to_xy(const uint8_t *p)
 {
-  uint16_t addr = p - vram_shadow;
-  addr = (addr - startaddr) & VRAM_MASK;
-  return addr_to_xy_tbl[mode40][addr];
+  uint16_t addr = p - vdu.vram;
+  addr = (addr - vdu.startaddr) & VRAM_MASK;
+  return addr_to_xy_tbl[vdu.mode40][addr];
 }
 
 /*
  * Compute the raw offset for a specific x,y coordinates
  */
-static inline unsigned int screenoffs(uint8_t y, uint8_t x)
+static inline unsigned int screenoffs(uint8_t y, uint8_t x, bool m40)
 {
-  size_t offs;
+    size_t offs = -1;
 
   switch (model) {
   case MODEL_ABC80:
-    if (mode40)
+    if (m40)
       offs = 1024 + (((y >> 3)*5) << 3) + ((y & 7) << 7) + x;
     else
       offs = (((y >> 3)*5) << 4) + ((y & 7) << 8) + x;
     break;
 
   case MODEL_ABC802:
-    offs = (y * 80) + (x << mode40);
+    offs = (y * 80) + (x << m40);
     break;
-
-  default:
-    abort();
   }
 
-  return offs + startaddr;
+  return offs + vdu.startaddr;	/* CRTC value, not masked */
 }
 
 /*
@@ -152,7 +145,7 @@ static inline unsigned int screenoffs(uint8_t y, uint8_t x)
  */
 static inline uint8_t screendata(uint8_t y, uint8_t x)
 {
-  return vram_shadow[screenoffs(y,x) & VRAM_MASK];
+    return vdu.vram[screenoffs(y,x,vdu.mode40) & VRAM_MASK];
 }
 
 /*
@@ -192,9 +185,9 @@ put_screen(struct surface *s, unsigned int tx, unsigned int ty, bool blink)
   uint32_t curmask;
   unsigned char gmode, fg, bg;
   unsigned char cc, invmask;
-  unsigned int xdup = FONT_XDUP << mode40;
+  unsigned int xdup = FONT_XDUP << vdu.mode40;
 
-  if (tx >= (unsigned int)(TS_WIDTH >> mode40) ||
+  if (tx >= (unsigned int)(TS_WIDTH >> vdu.mode40) ||
       ty >= (unsigned int)TS_HEIGHT)
     return;
 
@@ -210,8 +203,8 @@ put_screen(struct surface *s, unsigned int tx, unsigned int ty, bool blink)
     }
   }
 
-  voffs = screenoffs(ty,tx);
-  cc = vram_shadow[voffs & VRAM_MASK];
+  voffs = screenoffs(ty,tx,vdu.mode40);
+  cc = vdu.vram[voffs & VRAM_MASK];
   fontp = abc_font[(cc & 0x7f) + gmode];
   invmask = (blink || model != MODEL_ABC80) ? 0x80 : 0;
   invmask = (cc & invmask) ? 7 : 0;
@@ -221,20 +214,15 @@ put_screen(struct surface *s, unsigned int tx, unsigned int ty, bool blink)
   bgp = s->colors[bg];
   fgp = s->colors[fg];
 
-  if (tx < s->upd_x0) s->upd_x0 = tx;
-  if (tx > s->upd_x1) s->upd_x1 = tx;
-  if (ty < s->upd_y0) s->upd_y0 = ty;
-  if (ty > s->upd_y1) s->upd_y1 = ty;
-
   pixelp = ((uint32_t *) s->surf->pixels) +
     ty*PX_WIDTH*FONT_YSIZE*FONT_YDUP +
-    ((tx*FONT_XSIZE*FONT_XDUP) << mode40);
+    ((tx*FONT_XSIZE*FONT_XDUP) << vdu.mode40);
 
   curmask = 0;
-  if (unlikely(voffs == curaddr)) {
-    if (blink | (crtc_shadow.r.curstart & 0x40)) {
-      curmask = (~0U << (crtc_shadow.r.curstart & 0x1f));
-      curmask &= (2U << (crtc_shadow.r.curend & 0x1f))-1;
+  if (unlikely(voffs == vdu.curaddr)) {
+    if (blink | (vdu.crtc.r.curstart & 0x40)) {
+      curmask = (~0U << (vdu.crtc.r.curstart & 0x1f));
+      curmask &= (2U << (vdu.crtc.r.curend & 0x1f))-1;
     }
   }
 
@@ -257,60 +245,31 @@ put_screen(struct surface *s, unsigned int tx, unsigned int ty, bool blink)
   }
 }
 
-/*
- * Refresh rectangle and unlock screen
- */
-#define MIN_UPDATE_INTERVAL (10000000) /* 10 ms */
-
 static void update_screen(struct surface *s)
 {
-  uint64_t now;
-
   if (s->lock_count > 0)
     return;
 
-  if (s->upd_x0 == UINT_MAX)
-    return;			/* Screen unchanged */
-
-  now = nstime();
-
-  if (s->surf->flags & SDL_DOUBLEBUF)
-    SDL_Flip(s->surf);
-  else
-    SDL_UpdateRect(s->surf,
-		   (s->upd_x0*FONT_XSIZE*FONT_XDUP) << mode40,
-		   s->upd_y0*FONT_YSIZE*FONT_YDUP,
-		   ((s->upd_x1-s->upd_x0+1)*FONT_XSIZE*FONT_XDUP) << mode40,
-		   (s->upd_y1-s->upd_y0+1)*FONT_YSIZE*FONT_YDUP);
-
-  s->updated = now;
-  s->upd_x0 = s->upd_y0 = UINT_MAX;
-  s->upd_x1 = s->upd_y1 = 0;
+  SDL_Flip(s->surf);
 }
 
-/* Mark the whole screen dirty */
-static void screen_dirty(struct surface *s)
-{
-  s->upd_x0 = s->upd_y0 = 0;
-  s->upd_x1 = (TS_WIDTH-1) >> mode40;
-  s->upd_y1 = TS_HEIGHT-1;
-}
-
-/* Refresh the entire screen or recreate the screen on another surface */
-static void refresh_screen(struct surface *s, bool blink)
+/*
+ * Refresh the entire screen or recreate the screen on another surface.
+ * If "force_blink" is true, always draw blinking elements visible.
+ */
+static void refresh_screen(struct surface *s, bool force_blink)
 {
   unsigned int x, y;
   unsigned int width;
-
-  screen_dirty(s);
+  bool blink;
 
   SDL_mutexP(screen_mutex);
-  memcpy(vram_shadow, vram_queue, sizeof vram_shadow);
-  crtc_shadow = crtc;
-  mode40 = mode40_cpu;
+  vdu = xfr;
   SDL_mutexV(screen_mutex);
 
-  width = TS_WIDTH >> mode40;
+  width = TS_WIDTH >> vdu.mode40;
+  blink = force_blink | vdu.blink_on;
+  
   lock_screen(s);
 
   for (y = 0; y < TS_HEIGHT; y++)
@@ -321,52 +280,12 @@ static void refresh_screen(struct surface *s, bool blink)
   update_screen(s);
 }
 
-/*
- * Called whenever something is written to the screen
- */
-void write_screen(uint8_t *p, uint8_t v)
+/* Called in CPU thread context */
+void setmode40(bool m40)
 {
-  struct xy xy;
-  uint8_t oldv;
-  int width = TS_WIDTH >> mode40;
-
-  oldv = *p;
-  if (v == oldv)
-    return;			/* Nothing to do */
-
-  *p = v;
-
-  xy = addr_to_xy(p);
-  if ( xy.y >= TS_HEIGHT )
-    return;			/* Nothing to do */
-
-  lock_screen(&rscreen);
-
-  put_screen(&rscreen, xy.x, xy.y, blink_on);
-
-  if ( (oldv & 0x68) == 0 || (v & 0x68) == 0 ) {
-    /* Graphics control character change */
-    for ( ; xy.x < width ; xy.x++ )
-      put_screen(&rscreen, xy.x, xy.y, blink_on);
-  }
-
-  unlock_screen(&rscreen);
-}
-
-static void do_set_mode40(bool m)
-{
-    mode40 = m;
-    refresh_screen(&rscreen, blink_on);
-}
-
-/* Called from the CPU thread */
-void setmode40(bool m)
-{
-    if (m != mode40_cpu) {
-	mode40_cpu = m;
-	if (model == MODEL_ABC80)
-	    abc80_mem_mode40(m);
-    }
+    cpu.mode40 = m40;
+    if (model == MODEL_ABC80)
+	abc80_mem_mode40(m40);
 }
 
 /*
@@ -378,11 +297,6 @@ static struct surface *init_surface(struct surface *s)
 
   if (unlikely(!s || !s->surf))
     return NULL;
-
-  /* The whole surface is dirty right now */
-  s->upd_x0 = s->upd_y0 = 0;
-  s->upd_x1 = (TS_WIDTH-1) >> mode40;
-  s->upd_y1 = TS_HEIGHT-1;
 
   /* Convert colors to preferred machine representation */
   for ( i = 0 ; i < NCOLORS ; i++ ) {
@@ -443,23 +357,21 @@ void screen_init(bool width40, bool color)
   }
 
   /* Initialize CRTC values to something sensible (also used by ABC80) */
-  memset(&crtc, 0, sizeof crtc);
-  crtc.r.htotal = 80;
-  crtc.r.hdisp  = 80;
-  crtc.r.vscantotal = 24;
-  crtc.r.vdisplay = 24;
-  crtc.r.curstart = 0x1f;	/* No CRTC cursor */
-  crtc_shadow = crtc;
-
-  startaddr = curaddr = 0;
-
+  memset(&cpu, 0, sizeof cpu);
+  cpu.crtc.r.htotal = 80;
+  cpu.crtc.r.hdisp  = 80;
+  cpu.crtc.r.vscantotal = 24;
+  cpu.crtc.r.vdisplay = 24;
+  cpu.crtc.r.curstart = 0x1f;	/* No CRTC cursor */
+  setmode40(width40);
+  vdu = xfr = cpu;
+  
   /* Initialize reverse mapping table */
   memset(addr_to_xy_tbl, -1, sizeof addr_to_xy_tbl);
   for ( i = 0 ; i < 2 ; i++ ) {
-    mode40 = i;
     for ( y = 0 ; y < TS_HEIGHT ; y++ ) {
       for ( x = 0 ; x < (TS_WIDTH >> i); x++ ) {
-	size_t p = screenoffs(y,x);
+	size_t p = screenoffs(y,x,i);
 	addr_to_xy_tbl[i][p].x = x;
 	addr_to_xy_tbl[i][p].y = y;
       }
@@ -478,8 +390,8 @@ void screen_init(bool width40, bool color)
   /* Enable keyboard repeat */
   SDL_EnableKeyRepeat(SDL_DEFAULT_REPEAT_DELAY, SDL_DEFAULT_REPEAT_INTERVAL);
 
-  /* Forcibly set the screen width and load the appropriate BASIC */
-  do_set_mode40(width40);
+  /* Draw initial screen */
+  refresh_screen(&rscreen, false);
 }
 
 /*
@@ -676,7 +588,7 @@ void event_loop(void)
       break;
     case SDL_USEREVENT:
 	/* Time to update the screen */
-	refresh_screen(&rscreen, blink_on);
+	refresh_screen(&rscreen, false);
 	break;
     case SDL_QUIT:
       return;			/* Return to main(), terminate */
@@ -694,35 +606,35 @@ void vsync_screen(void)
 {
   const int blink_rate = 400/20; /* 400 ms/20 ms = 2.5 Hz */
   static int blink_ctr;
-  bool blink;
 
-  blink = !blink_ctr--;
-  if (blink)
+  if (!blink_ctr--) {
       blink_ctr = blink_rate;
+      cpu.blink_on = !cpu.blink_on;
+  }
 
-  trigger_refresh(blink);
+  trigger_refresh();
 
   if (traceflags)
-    fflush(tracef);		/* So we don't buffer indefinitely */
+      fflush(tracef);		/* So we don't buffer indefinitely */
 }
 
 /* Used from the CPU thread context to cause a screen redraw */
-static void trigger_refresh(bool toggle_blink)
+static void trigger_refresh(void)
 {
     SDL_Event trigger_redraw;
 
+    SDL_mutexP(screen_mutex);
+    xfr = cpu;
+    SDL_mutexV(screen_mutex);
+
     memset(&trigger_redraw, 0, sizeof trigger_redraw);
     trigger_redraw.type = SDL_USEREVENT;
-
-    SDL_mutexP(screen_mutex);
-    memcpy(vram_queue, video_ram, sizeof vram_queue);
-    if (toggle_blink)
-	blink_on = !blink_on;
-    SDL_mutexV(screen_mutex);
     SDL_PushEvent(&trigger_redraw);
 }
 
 /* Called in the CPU thread context */
+static uint8_t crtc_addr;
+
 void crtc_out(uint8_t port, uint8_t data)
 {
   if (!(port & 1)) {
@@ -730,15 +642,14 @@ void crtc_out(uint8_t port, uint8_t data)
     return;
   }
 
-  if (crtc_addr >= sizeof crtc.regs)
+  if (crtc_addr >= sizeof cpu.crtc.regs)
     return;
 
   SDL_mutexP(screen_mutex);
 
-  crtc.regs[crtc_addr] = data;
-
-  startaddr = ((crtc.r.starth & 0x3f) << 8) + crtc.r.startl;
-  curaddr   = ((crtc.r.curh & 0x3f) << 8)   + crtc.r.curl;
+  cpu.crtc.regs[crtc_addr] = data;
+  cpu.startaddr = ((cpu.crtc.r.starth & 0x3f) << 8) + cpu.crtc.r.startl;
+  cpu.curaddr   = ((cpu.crtc.r.curh & 0x3f) << 8)   + cpu.crtc.r.curl;
 
   SDL_mutexV(screen_mutex);
 }
@@ -748,8 +659,8 @@ uint8_t crtc_in(uint8_t port)
   if (!(port & 1))
     return crtc_addr;
 
-  if (crtc_addr >= sizeof crtc.regs)
+  if (crtc_addr >= sizeof cpu.crtc.regs)
     return 0xff;
 
-  return crtc.regs[crtc_addr];
+  return cpu.crtc.regs[crtc_addr];
 }

@@ -17,7 +17,7 @@ struct mem_page {
 
 static void write_rom(uint8_t *p, uint8_t v);
 static void write_ram(uint8_t *p, uint8_t v);
-extern void write_screen(uint8_t *p, uint8_t v);
+#define write_screen write_ram
 
 #define PAGE_SHIFT	10
 #define PAGE_SIZE	(1U << PAGE_SHIFT)

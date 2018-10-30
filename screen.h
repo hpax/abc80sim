@@ -20,8 +20,7 @@ Uint32 post_periodic(Uint32 interval, void *param);
 extern void crtc_out(uint8_t, uint8_t);
 extern uint8_t crtc_in(uint8_t);
 
-/* For memory read/write for video RAM */
-extern uint8_t video_ram[];
-extern void write_screen(uint8_t *, uint8_t);
+/* Pointer into video RAM */
+extern uint8_t * const video_ram;
 
 #endif /* _SCREEN_H */
