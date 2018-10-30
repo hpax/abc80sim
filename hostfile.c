@@ -431,7 +431,8 @@ static void *do_map_file(struct host_file *hf)
     mapping =
 	CreateFileMapping(hfile, NULL,
 			  file_wrok(hf) ? PAGE_READWRITE : PAGE_READONLY,
-			  (DWORD)(hf->mlen >> 32), (DWORD)(hf->mlen), NULL);
+			  (DWORD)((uint64_t)hf->mlen >> 32),
+			  (DWORD)(hf->mlen), NULL);
     if (!mapping)
 	return NULL;
 
