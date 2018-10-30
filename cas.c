@@ -187,10 +187,7 @@ struct pio {
 };
 static struct pio portb = {
     .in = 0xff,
-    .irq.eoi = pio_eoi,
-    .irq.pvt = &portb,
-    .irq.vector = -1,
-    .irq.prio = IRQ80_PIOB
+    .irq = IRQ(IRQ80_PIOB, NULL, pio_eoi, &portb),
 };
 
 static inline uint8_t pio_readval(const struct pio *pio)
@@ -334,7 +331,7 @@ static uint8_t sio_cas_ctl[8];
 static bool cas_first_rx_armed = true;
 
 static struct z80_irq sio_cas_irq =
-{ NULL, sio_cas_eoi, NULL, -1, IRQ800_SIOB };
+    IRQ(IRQ800_SIOB, NULL, sio_cas_eoi, NULL);
 
 static inline bool cas_have_sync(void)
 {

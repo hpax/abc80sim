@@ -2471,6 +2471,10 @@ static inline void check_eoi(void)
     if (!likely(z80_state.signal_eoi))
 	return;
 
+    if (tracing(TRACE_IO)) {
+	fprintf(tracef, "[%12"PRIu64"] EOI: RETI executed\n", TSTATE);
+    }
+
     z80_state.signal_eoi = false;
     z80_eoi();
 }

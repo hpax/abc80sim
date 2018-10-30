@@ -24,12 +24,12 @@ bool faketype;
 static int keyb_intack_fake(struct z80_irq *irq);
 static struct z80_irq *keyb_irq;
 
-static struct z80_irq keyb_irq_80 =
-  { NULL, NULL, NULL, -1, IRQ80_PIOA };
-static struct z80_irq keyb_irq_fake =
-  { keyb_intack_fake, NULL, NULL, -1, IRQ80_PIOA };
-static struct z80_irq keyb_irq_800 =
-  { NULL, NULL, NULL, -1, IRQ800_DARTA };
+static struct z80_irq keyb_irq_80 = \
+  IRQ(IRQ80_PIOA, NULL, NULL, NULL);
+static struct z80_irq keyb_irq_fake = \
+  IRQ(IRQ80_PIOA, keyb_intack_fake, NULL, NULL);
+static struct z80_irq keyb_irq_800 = \
+  IRQ(IRQ800_DARTA, NULL, NULL, NULL);
 
 static inline uint8_t abc800_mangle_port(uint8_t port)
 {
@@ -472,16 +472,17 @@ void io_init(void)
       do_out = abc80_out;
       do_in  = abc80_in;
       keyb_data = 0;
-      z80_register_irq(keyb_irq = faketype ? &keyb_irq_fake : &keyb_irq_80);
       abc80_cas_init();
+      keyb_irq = faketype ? &keyb_irq_fake : &keyb_irq_80;
       break;
     case MODEL_ABC802:
       do_out = abc802_out;
       do_in  = abc802_in;
       keyb_data = 0xff;
-      z80_register_irq(keyb_irq = &keyb_irq_800);
       abc800_cas_init();
       abc800_ctc_init();
+      keyb_irq = &keyb_irq_800;
       break;
     }
+    z80_register_irq(keyb_irq);
 }

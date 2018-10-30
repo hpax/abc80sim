@@ -10,16 +10,22 @@ struct z80_irq {
     irq_func intack;
     irq_func eoi;
     void *pvt;			/* Available for user */
-    int vector;			/* Available for user if intack defined */
-    unsigned int prio;		/* Priority level */
+    int16_t vector;		/* Available for user if intack defined */
+    uint8_t prio;		/* Priority level */
+    bool handled;		/* In handler (between INTACK and EOI) */
 };
+
+#define IRQ(prio, intack, eoi, pvt) \
+    { (intack), (eoi), (pvt), -1, (prio), false }
 
 #define MAX_IRQ 32
 
 extern volatile unsigned int irq_pending;
+extern unsigned int irq_mask;	/* 0 = inside handler (irq->handled == true) */
+
 static inline bool poll_irq(void)
 {
-    return unlikely(irq_pending != 0);
+    return unlikely(irq_pending & irq_mask);
 }
 
 void z80_register_irq(struct z80_irq *irq);
