@@ -4,6 +4,7 @@
 #include "abcio.h"
 #include "rom.h"
 #include "hostfile.h"
+#include "abcfile.h"
 
 #define MEMORY_SIZE	Z80_ADDRESS_LIMIT
 
@@ -263,29 +264,36 @@ static void load_memfile(const char *memfile)
 {
     struct host_file *hf;
     uint8_t *rp;
-    size_t bytes, blk;
+    unsigned int blk;
+    struct abcdata abc;
+    const unsigned int max_blocks = (K(30) >> 8) - 1;
 
     if (!memfile)
 	return;
 
+    rp = ram;
+
     hf = open_host_file(HF_BINARY, NULL, memfile, O_RDONLY);
     if (!hf)
-	return;
+	goto exit;
+    if (!map_file(hf, 0))
+	goto exit;
 
-    rp = ram;
+    init_abcdata(&abc, hf->map, hf->flen);
     blk = 0;
-    for (blk = 0; blk < K(30)/256; blk++) {
-	bytes = fread(rp+3, 1, 253, hf->f);
-	if (!bytes)
-	    break;		/* Nothing left at all */
+    while (blk < max_blocks) {
+	bool done;
 	rp[0] = 0x53;
 	rp[1] = 0;
-	rp[2] = blk;
+	rp[2] = blk++;
+	done = get_abc_block(rp+3, &abc);
 	rp += 256;
-	if (bytes < 253)
-	    break;		/* Partial read = last block */
+	if (done)
+	    break;
     }
 
+exit:
+    memset(rp, 0, 3);		/* Avoid possible stray magic */
     close_file(&hf);
 }
 
