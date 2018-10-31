@@ -146,13 +146,12 @@ static void dart_keyb_out(uint8_t port, uint8_t value)
       vsync = false;
       break;
     case 3:
-      keyb_irq->vector = -1;
       memset(dart_keyb_ctl, 0, sizeof dart_keyb_ctl);
-      return;
+      break;
     case 4:
       break;			/* Allow IRQ to be enabled */
     default:
-      return;
+      break;
     }
     break;
   case 5:
@@ -165,13 +164,12 @@ static void dart_keyb_out(uint8_t port, uint8_t value)
 
   if ((dart_keyb_ctl[1] & 0x18) == 0) {
     keyb_irq->vector = -1;
+  } else if (dart_keyb_ctl[1] & 0x04) {
+    /* Status affects vector */
+    keyb_irq->vector = (dart_keyb_ctl[2] & ~0x0f) | 0x04;
   } else {
-    if (dart_keyb_ctl[1] & 0x04) {
-      /* Status affects vector */
-      keyb_irq->vector = (dart_keyb_ctl[2] & ~0x0f) | 0x04;
-    } else {
-      keyb_irq->vector = (dart_keyb_ctl[1] & ~0x01);
-    }
+    /* Fixed vector */
+      keyb_irq->vector = (dart_keyb_ctl[2] & ~0x01);
   }
 }
 
