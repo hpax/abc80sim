@@ -88,6 +88,8 @@ static void cas_enable(bool enable)
     if (!enable)
 	return;
 
+    memset(block.data, 0, 253);
+
     /* Do we have a filename list? */
     while (!hf) {
 	/* Empty filename or file not found */
@@ -207,7 +209,6 @@ static void cas_enable(bool enable)
 	return;
     }
 
-    memset(block.data+11, 0, sizeof block.data - 11);
     cas_format_block();
 }
 
