@@ -269,7 +269,7 @@ static void refresh_screen(struct surface *s, bool force_blink)
 
   width = TS_WIDTH >> vdu.mode40;
   blink = force_blink | vdu.blink_on;
-  
+
   lock_screen(s);
 
   for (y = 0; y < TS_HEIGHT; y++)
@@ -365,7 +365,7 @@ void screen_init(bool width40, bool color)
   cpu.crtc.r.curstart = 0x1f;	/* No CRTC cursor */
   setmode40(width40);
   vdu = xfr = cpu;
-  
+
   /* Initialize reverse mapping table */
   memset(addr_to_xy_tbl, -1, sizeof addr_to_xy_tbl);
   for ( i = 0 ; i < 2 ; i++ ) {
@@ -405,6 +405,14 @@ void screen_reset(void)
 /*
  * Event-handling loop; main loop of the event/screen thread.
  */
+enum dump_memory_type {
+  DUMP_NONE,
+  DUMP_MEM,
+  DUMP_RAM
+};
+
+static volatile enum dump_memory_type dump_memory_now;
+
 void event_loop(void)
 {
   SDL_Event event;
@@ -444,11 +452,11 @@ void event_loop(void)
 	  break;
 
 	case SDLK_m:
-	  dump_memory(false);
+	  dump_memory_now = DUMP_MEM;
 	  break;
 
 	case SDLK_u:
-	  dump_memory(true);
+	  dump_memory_now = DUMP_RAM;
 	  break;
 
 	case SDLK_f:
@@ -606,6 +614,7 @@ void vsync_screen(void)
 {
   const int blink_rate = 400/20; /* 400 ms/20 ms = 2.5 Hz */
   static int blink_ctr;
+  enum dump_memory_type dm;
 
   if (!blink_ctr--) {
       blink_ctr = blink_rate;
@@ -613,6 +622,12 @@ void vsync_screen(void)
   }
 
   trigger_refresh();
+
+  if (unlikely(dump_memory_now)) {
+    dm = xchg(&dump_memory_now, DUMP_NONE);
+    if (dm)
+      dump_memory(dm == DUMP_RAM);
+  }
 
   if (traceflags)
       fflush(tracef);		/* So we don't buffer indefinitely */
