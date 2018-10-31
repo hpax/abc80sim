@@ -101,7 +101,7 @@ int printer_in(int sel, int port)
 /* Hardware-like interface via the ABC800 PR: port */
 static uint8_t dart_pr_ctl[8];
 
-static struct z80_irq dart_pr_irq = IRQ(IRQ800_DARTB, NULL, NULL, NULL);
+static struct z80_irq dart_pr_irq = IRQ(IRQ800_DARTA, NULL, NULL, NULL);
 
 void dart_pr_out(uint8_t port, uint8_t v)
 {
