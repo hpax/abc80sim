@@ -198,26 +198,44 @@ typedef int mode_t;
 # define barrier() __atomic_thread_fence(__ATOMIC_ACQ_REL)
 
 # if defined(__i386__) || defined(__x86_64__)
-static inline void atomic_set_bit(volatile unsigned int *p, int v)
+static inline bool
+atomic_test_set_bit(volatile unsigned int *p, unsigned int v)
 {
-  asm volatile("lock btsl %1,%0" : "+m" (*p) : "rN" (v));
+  bool b;
+  asm volatile("lock btsl %2,%0"
+	       : "+m" (*p), "=@ccc" (b)
+	       : "rN" (v)
+	       : "memory");
+  return b;
 }
-static inline void atomic_clear_bit(volatile unsigned int *p, int v)
+static inline bool
+atomic_test_clear_bit(volatile unsigned int *p, unsigned int v)
 {
-  asm volatile("lock btrl %1,%0" : "+m" (*p) : "rN" (v));
+  bool b;
+  asm volatile("lock btrl %2,%0"
+	       : "+m" (*p), "=@ccc" (b)
+	       : "rN" (v)
+	       : "memory");
+  return b;
 }
 # else
-static inline void atomic_set_bit(volatile unsigned int *p, int v)
+static inline bool
+atomic_test_set_bit(volatile unsigned int *p, unsigned int v)
 {
-  __atomic_or_fetch(p, 1U << v, __ATOMIC_ACQ_REL);
+  return (__atomic_fetch_or(p, 1U << v, __ATOMIC_ACQ_REL) >> v) & 1;
 }
-static inline void atomic_clear_bit(volatile unsigned int *p, int v)
+static inline bool
+atomic_test_clear_bit(volatile unsigned int *p, unsigned int v)
 {
-  __atomic_and_fetch(p, ~(1U << v), __ATOMIC_ACQ_REL);
+  return (__atomic_fetch_and(p, ~(1U << v), __ATOMIC_ACQ_REL) >> v) & 1;
 }
 # endif
+
+#define atomic_set_bit(p,v) ((void)atomic_test_set_bit(p,v))
+#define atomic_clear_bit(p,v) ((void)atomic_test_clear_bit(p,v))
+
 #else /* __GNUC__ */
-/* ? */
+# error "Define atomic operations for your compiler here"
 #endif
 
 #endif /* COMPILER_H */
