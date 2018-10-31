@@ -22,4 +22,14 @@ static inline bool tracing(enum tracing flags)
     return unlikely(traceflags & flags);
 }
 
+extern void
+trace_dump_data(const char *prefix, const void *data, unsigned int l);
+
+static inline void
+trace_dump(enum tracing flags, const char *prefix, const void *data, size_t l)
+{
+    if (tracing(flags))
+	trace_dump_data(prefix, data, l);
+}
+
 #endif /* TRACE_H */
