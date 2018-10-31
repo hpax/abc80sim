@@ -269,7 +269,7 @@ static void refresh_screen(struct surface *s, bool force_blink)
 
   width = TS_WIDTH >> vdu.mode40;
   blink = force_blink | vdu.blink_on;
-  
+
   lock_screen(s);
 
   for (y = 0; y < TS_HEIGHT; y++)
@@ -365,7 +365,7 @@ void screen_init(bool width40, bool color)
   cpu.crtc.r.curstart = 0x1f;	/* No CRTC cursor */
   setmode40(width40);
   vdu = xfr = cpu;
-  
+
   /* Initialize reverse mapping table */
   memset(addr_to_xy_tbl, -1, sizeof addr_to_xy_tbl);
   for ( i = 0 ; i < 2 ; i++ ) {
