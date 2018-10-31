@@ -1,5 +1,5 @@
 /*
- * Filename conversion functions
+ * Filename and file data conversion functions
  */
 
 #include "abcfile.h"
@@ -135,23 +135,31 @@ int mangle_for_readdir(char *dst, const char *src)
  * is assumed to be binary.
  *
  * Initialize a struct abcdata with the resulting information.
+ * Returns the number of ABC blocks that this buffer will produce.
  */
-void init_abcdata(struct abcdata *abc, const void *data, size_t len)
+unsigned int init_abcdata(struct abcdata *abc, const void *data, size_t len)
 {
     const uint8_t *p = data;
+    size_t left = len;
+    size_t cc = 0;
 
     abc->data = data;
     abc->len  = len;
     abc->is_text = false;
 
-    while (len--) {
+    cc = 0;
+    while (left--) {
 	uint8_t c = *p++;
 
-	if (c >= 0x80 || c == 0 || c == 3)
-	    return;
+	if (c >= 0x80 || c == 0 || c == 3) {
+	    /* Binary file */
+	    return (len + 252)/253; /* Just the data */
+	}
+	cc += (c != '\r');
     }
 
     abc->is_text = true;
+    return (cc + 251)/252 + 1;	/* Each block will need ETX + EOF block */
 }
 
 /*
