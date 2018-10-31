@@ -189,6 +189,13 @@ static void cas_enable(bool enable)
     map_file(hf, 0);
     if (hf->map) {
 	init_abcdata(&abc, hf->map, hf->flen);
+	if (!abc.is_text) {
+	    /*
+	     * Binary file, add ABC-klubben length byte as used
+	     * by the CASDISK series of programs.
+	     */
+	    block.data[251] = (hf->flen + 252)/253;
+	}
 	if (tracing(TRACE_CAS)) {
 	    fprintf(tracef, "CAS: file is a %s file\n",
 		    abc.is_text ? "text" : "binary");
