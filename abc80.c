@@ -104,7 +104,7 @@ static no_return help(void)
     printf("Usage: %s [options] [ihex_files...]\n"
 	   "Simulate a microcomputer from the Luxor ABC series.\n"
 	   "\n"
-	   "\nOptions:\n"
+	   "Options (defaults in brackets):\n"
 	   "       --abc80             simulate an ABC80 (default)\n"
 	   "       --abc802            simulate an ABC802\n"
 	   "  -4,  --40                start in 40-column mode\n"
@@ -117,16 +117,17 @@ static no_return help(void)
 	   "  -Ft, --tracefile file    redirect trace output to a file\n"
 	   "  -v, - -version           print the version string\n"
 	   "  -h,  --help              print this help message\n"
-	   "  -s,  --speed #.#|max     set the CPU frequency to #.# MHz (default 3.0)\n"
+	   "  -s,  --speed #.#|max     set the CPU frequency to #.# MHz [3.0]\n"
 	   "       --color             allow ABC800C-style color (default)\n"
 	   "       --no-color          black and white only\n"
-	   "  -Dd, --diskdir dir       set directory for disk images (default abcdisk)\n"
-	   "  -Df, --filedir dir       set directory for file sharing (default abcdir)\n"
-	   "  -Ds, --scrndir dir       set directory for screen shots (default .)\n"
-	   "  -Dd, --dumpdir dir       set directory for memory dumps (default .)\n"
+	   "  -Dd, --diskdir dir       set directory for disk images [abcdisk]\n"
+	   "  -Df, --filedir dir       set directory for file sharing [abcdir]\n"
+	   "  -Ds, --scrndir dir       set directory for screen shots [.]\n"
+	   "  -Dd, --dumpdir dir       set directory for memory dumps [.]\n"
 	   "  -Cp, --printcmd cmd      set command to launch a print job (* = filename)\n"
 	   "  -Fc, --casfile file      input file for cassette (CAS:)\n"
 	   "  -Lc, --caslist file      read list of files for the cassette from a file\n"
+	   "  -Dc, --casdir dir        set directory for named cassette files [= filedir]\n"
 	   "  -e,  --console           enable console output device (PRC:)\n"
 	   "  -Fe, --consolefile file  enable console output device to a file\n"
 	   "       --detach            detach from console if run from a command line\n"
@@ -246,6 +247,7 @@ static const struct path_option path_options[] = {
     { { "Fe", "-consolefile" },	&console_filename,	NULL },
     { { "Fc", "-casfile" },	NULL,			add_casfile },
     { { "Lc", "-caslist" },	NULL,			add_caslist },
+    { { "Dc", "-casdir" },      &cas_path,              NULL },
 };
 
 static int set_path(const char *opt, const char *what)
@@ -469,6 +471,10 @@ int main(int argc, char **argv)
 
     if (!faketype_set)
 	faketype = !limit_speed || (ns_per_tstate < 1000.0/12.5);
+
+    /* If no --casdir has been given, default to --filedir */
+    if (!cas_path)
+	cas_path = fileop_path;
 
     hostfile_init();
 

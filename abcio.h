@@ -78,7 +78,7 @@ enum abc800_irq {
 };
 
 /* Directory and filenames */
-extern const char *fileop_path, *disk_path, *screen_path, *memdump_path;
+extern const char *fileop_path, *disk_path, *screen_path, *memdump_path, *cas_path;
 extern struct file_list cas_files;
 
 /* Program name for error messages */
