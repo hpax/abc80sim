@@ -17,8 +17,8 @@ struct mem_page {
 };
 
 static void write_rom(uint8_t *p, uint8_t v);
-static void write_ram(uint8_t *p, uint8_t v);
-#define write_screen write_ram
+#define write_ram	NULL		/* Optimized fast path */
+#define write_screen	write_ram
 
 #define PAGE_SHIFT	10
 #define PAGE_SIZE	(1U << PAGE_SHIFT)
@@ -166,17 +166,17 @@ static void write_rom(uint8_t *p, uint8_t v)
     /* Do nothing */
     (void)p; (void) v;
 }
-static void write_ram(uint8_t *p, uint8_t v)
-{
-    *p = v;
-}
-
 static void do_mem_write(uint16_t address, uint8_t value)
 {
     const struct mem_page *page;
+    uint8_t *p;
 
     page = get_page(address);
-    page->write(&page->data[address & PAGE_MASK], value);
+    p = &page->data[address & PAGE_MASK];
+    if (likely(!page->write))
+      *p = value;
+    else
+      page->write(p, value);
 }
 
 void mem_write(uint16_t address, uint8_t value)
