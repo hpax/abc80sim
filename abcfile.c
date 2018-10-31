@@ -126,3 +126,92 @@ int mangle_for_readdir(char *dst, const char *src)
 
   return d - dst;
 }
+
+/*
+ * Check a memory-mapped file or memory buffer to see if it appears to
+ * be a conventional text file, as opposed to a binary file or a text
+ * file in ABC-binary format.  The heuristic used is that a file
+ * that contains a NUL or ETX byte, or any byte with the high bit set
+ * is assumed to be binary.
+ *
+ * Initialize a struct abcdata with the resulting information.
+ */
+void init_abcdata(struct abcdata *abc, const void *data, size_t len)
+{
+    const uint8_t *p = data;
+
+    abc->data = data;
+    abc->len  = len;
+    abc->is_text = false;
+
+    while (len--) {
+	uint8_t c = *p++;
+
+	if (c >= 0x80 || c == 0 || c == 3)
+	    return;
+    }
+
+    abc->is_text = true;
+}
+
+/*
+ * Build an ABC data block from a memory buffer containing either
+ * a binary file or a conventional text file in memory.
+ * Return true if this is the final (EOF) block.
+ */
+bool get_abc_block(void *block, struct abcdata *abc)
+{
+    size_t l = abc->len;
+    const uint8_t *p = abc->data;
+    uint8_t *q = block;
+    size_t ob;
+    bool done;
+
+    if (!abc->is_text) {
+	/* It is a binary file */
+
+	ob = l < 253 ? l : 253;
+
+	memcpy(q, p, ob);
+	p += ob;
+	l -= ob;
+	done = !l;		/* If no more data this is the last block */
+    } else {
+	/* It is a text file */
+
+	ob = 0;
+	done = false;
+
+	while (l && ob < 252) {
+	    uint8_t c = *p++;
+	    l--;
+
+	    /* Convert CR LF or LF -> CR */
+	    switch (c) {
+	    case '\r':
+		break;
+	    case '\n':
+		c = '\r';
+		/* fall through */
+	    default:
+		q[ob++] = c;
+		break;
+	    }
+	}
+
+	if (!ob) {
+	    /* This is apparently the EOF block */
+	    memset(q, 0, ob = 6);
+	    done = true;
+	}
+
+	q[ob++] = 0x03;		/* ETX = end of block */
+    }
+
+    if (ob < 253)
+	memset(q+ob, 0, 253-ob);
+
+    abc->data = p;
+    abc->len = l;
+    return done;
+}
