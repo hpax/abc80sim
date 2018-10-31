@@ -10,6 +10,7 @@
 #include "trace.h"
 
 struct file_list cas_files;
+const char *cas_path;
 
 /*
  * Cassette I/O
@@ -30,6 +31,7 @@ static struct cas_block block;
 static unsigned int bitctr;	/* Bit counter for ABC80 */
 static unsigned int bytectr;	/* Byte counter for ABC800 */
 static int block_nr = -1;
+static struct abcdata abc;
 
 /* True if there is nothing on the "tape" right now */
 static inline bool cas_idle(void)
@@ -59,8 +61,11 @@ static void cas_format_block(void)
     block.csum[0] = csum;
     block.csum[1] = csum >> 8;
 
-    if (tracing(TRACE_CAS))
+    if (tracing(TRACE_CAS)) {
 	fprintf(tracef, "CAS: block %3d ready\n", block_nr);
+	trace_dump_data("CAS", &block.blktype,
+			sizeof block - offsetof(struct cas_block, blktype));
+    }
 
     block_nr++;
     bitctr = bytectr = 0;
@@ -68,8 +73,6 @@ static void cas_format_block(void)
 
 static void cas_enable(bool enable)
 {
-    char *casfile;
-
     if (tracing(TRACE_CAS))
 	fprintf(tracef, "CAS: motor %s\n", enable ? "on" : "off");
 
@@ -85,26 +88,126 @@ static void cas_enable(bool enable)
     if (!enable)
 	return;
 
-    casfile = filelist_pop(&cas_files);
-    if (!casfile) {
+    memset(block.data, 0, 253);
+
+    /* Do we have a filename list? */
+    while (!hf) {
+	/* Empty filename or file not found */
+	char *casfile = filelist_pop(&cas_files);
+	if (!casfile)
+	    break;		/* Nothing more in the filename list */
+	mangle_filename((char *)block.data, casfile);
+	hf = open_host_file(HF_BINARY, NULL, casfile, O_RDONLY);
+	if (tracing(TRACE_CAS)) {
+	    fprintf(tracef, "CAS: listed file %s (%8.8s.%3.3s) %s\n",
+		    casfile, block.data, block.data+8, hf ? "opened" : "not found");
+	}
+	free(casfile);
+    }
+
+    if (!hf) {
+	/*
+	 * HACK: if a specific filename has been given, try to snoop memory
+	 * to figure out what file the user wanted.
+	 */
+	char casfile[64];
+	uint16_t fnaddr;
+	int i;
+
+	switch (model) {
+	case MODEL_ABC80:
+	    /* ABC80: a pointer to the filename can be found at (SP+4) */
+	    fnaddr = mem_fetch_word(REG_SP + 4);
+	    break;
+
+	case MODEL_ABC802:
+	    /*
+	     * ABC800: a pointer to the filename can (apparently?)
+	     * be found at DE
+	     */
+	    fnaddr = REG_DE;
+	    break;
+
+	default:
+	    fnaddr = -1;
+	    break;
+	}
+
+	for (i = 0; i < 11; i++) {
+	    uint8_t c = mem_fetch(fnaddr++);
+	    if (fnaddr == 0 ||
+		(c != ' ' && (c < '0' || c > '9') && (c < 'A' || c > ']'))) {
+		/*
+		 * Invalid character for an ABC filename or memory wraparound
+		 * - we must be off in the weeds
+		 */
+		block.data[0] = ' '; /* Make the test below fail */
+		break;
+	    }
+	    block.data[i] = c;
+	}
+	block.data[11] = '\0';
+
+	if (block.data[0] != ' ') {
+	    bool isbac;
+
+	    /* Successfully snooped a non-empty filename */
+	    unmangle_filename(casfile, (char *)block.data);
+	    isbac = !memcmp(block.data+8, "BAC", 3);
+
+	    for (;;) {
+		hf = open_host_file(HF_BINARY, cas_path, casfile, O_RDONLY);
+		if (tracing(TRACE_CAS)) {
+		    fprintf(tracef, "CAS: snooped file %s (%8.8s.%3.3s) %s\n",
+			    casfile, block.data, block.data+8,
+			    hf ? "opened" : "not found");
+		}
+
+		if (hf)
+		    break;
+
+		if (!isbac)
+		    break;
+
+		block.data[10] = 'S'; /* BAC -> BAS */
+		unmangle_filename(casfile, (char *)block.data);
+		/*
+		 * We have to tell ABC that the filename is .bac,
+		 * or it won't be able to find it on cassette;
+		 * unlike how it works on disk.
+		 */
+		block.data[10] = 'C'; /* BAS -> BAC */
+		isbac = false;
+	    }
+	}
+    }
+
+    if (!hf) {
 	if (tracing(TRACE_CAS))
 	    fprintf(tracef, "CAS: no more files\n");
 	return;
     }
 
-    hf = open_host_file(HF_BINARY, NULL, casfile, O_RDONLY);
-    if (hf) {
-	mangle_filename((char *)block.data, casfile);
-	memset(block.data+11, 0, sizeof block.data - 11);
-	if (tracing(TRACE_CAS))
-	    fprintf(tracef, "CAS: opening file %s (%8.8s.%3.3s)\n",
-		    casfile, (char *)block.data, (char *)block.data+8);
-	cas_format_block();
+    map_file(hf, 0);
+    if (hf->map) {
+	/*
+	 * ABC-klubben standard: block count encoded in the header
+	 */
+	unsigned int blks = init_abcdata(&abc, hf->map, hf->flen);
+	block.data[251] = blks;
+	block.data[252] = blks >> 8;
+	if (tracing(TRACE_CAS)) {
+	    fprintf(tracef, "CAS: file is a %s file, %u blocks\n",
+		    abc.is_text ? "text" : "binary", blks);
+	}
     } else {
+	close_file(&hf);
 	if (tracing(TRACE_CAS))
-	    fprintf(tracef, "CAS: failed to open file %s\n", casfile);
+	    fprintf(tracef, "CAS: file mapping failed\n");
+	return;
     }
-    free(casfile);
+
+    cas_format_block();
 }
 
 static void cas_next_block(void)
@@ -112,13 +215,8 @@ static void cas_next_block(void)
     if (!hf) {
 	block_nr = -1;	/* Finished EOF block, cassette idle */
     } else {
-	size_t len = fread(block.data, 1, sizeof block.data, hf->f);
-	memset(block.data + len, 0, sizeof block.data - len);
-	if (len == 0)
-	    block.data[6] = 0x03; /* Make an EOF block */
-
-	if (!memcmp(block.data, "\0\0\0\0\0\0\3", 7)) {
-	    /* It is an EOF block */
+	if (get_abc_block(block.data, &abc)) {
+	    /* If get_abc_block() returned true, this is the last block */
 	    close_file(&hf);
 	}
 
@@ -331,7 +429,7 @@ static uint8_t sio_cas_ctl[8];
 static bool cas_first_rx_armed = true;
 
 static struct z80_irq sio_cas_irq =
-    IRQ(IRQ800_SIOA, NULL, sio_cas_eoi, NULL);
+    IRQ(IRQ800_SIOB, NULL, sio_cas_eoi, NULL);
 
 static inline bool cas_have_sync(void)
 {
@@ -445,8 +543,12 @@ uint8_t abc800_sio_cas_in(uint8_t port)
 	    }
 	    v = ((const uint8_t *)&block)[bytectr];
 	    if (tracing(TRACE_CAS)) {
-		fprintf(tracef, "CAS: block %3d byte %3d = %02x\n",
+		fprintf(tracef, "CAS: block %3d byte %3d = %02x ",
 			block_nr-1, bytectr, v);
+		if (v < ' ' || v > '~')
+		    fprintf(tracef, "%3u\n", v);
+		else
+		    fprintf(tracef, "\'%c\'\n", v);
 	    }
 	    bytectr++;
 	    if (bytectr >= sizeof block) {

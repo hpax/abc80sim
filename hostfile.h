@@ -24,15 +24,18 @@ struct host_file {
     FILE *f;
     DIR *d;
     struct host_file **prevp, *next;
+    off_t filesize;
     size_t namelen;
     int fd;
     int openflags;
     bool nuke;
     enum host_file_mode mode;
-    void *mappvt;	       /* OS-specific map handling data */
     uint8_t *map;	       /* Memory-mapped contents */
     size_t mlen;	       /* Length of memory map */
     size_t flen;	       /* Length of true file in memory map */
+#ifdef __WIN32__
+    HANDLE maphandle;		/* Special Windows drain bramage */
+#endif
     char filename[1];
 };
 

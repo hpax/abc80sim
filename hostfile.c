@@ -277,8 +277,19 @@ struct host_file *temp_file(enum host_file_mode mode)
 
 #endif
 
-/* Common routine to finish the job once we have a name and fd */
+/* Update hf->filesize, return -1 on failure */
+static int update_filesize(struct host_file *hf)
+{
+    struct stat st;
 
+    if (fstat(hf->fd, &st))
+	return -1;
+
+    hf->filesize = st.st_size;
+    return 0;
+}
+
+/* Common routine to finish the job once we have a name and fd */
 static struct host_file *finish_host_file(struct host_file *hf)
 {
     const char *opt;
@@ -291,6 +302,9 @@ static struct host_file *finish_host_file(struct host_file *hf)
 	    goto err;
     } else {
 	if (hf->fd < 0)
+	    goto err;
+
+	if (update_filesize(hf))
 	    goto err;
 
 	switch (hf->openflags & O_ACCMODE) {
@@ -445,7 +459,7 @@ static void *do_map_file(struct host_file *hf)
 	return NULL;
     }
 
-     hf->mappvt = mapping;
+     hf->maphandle = mapping;
      return (hf->map = map);
 }
 
@@ -457,7 +471,7 @@ static void do_unmap_file(struct host_file *hf)
     UnmapViewOfFile(hf->map);
     hf->map = NULL;
 
-    CloseHandle(hf->mappvt);
+    CloseHandle(hf->maphandle);
 }
 
 static void do_msync_file(struct host_file *hf)
@@ -493,11 +507,12 @@ static void do_msync_file(struct host_file *hf)
  * containing the full file contents that gets written back on flush_file()
  * or close_file().
  */
+#define MAX_MAP_FILE ((off_t)128*1024*1024)
+
 void *map_file(struct host_file *hf, size_t mlen)
 {
-    struct stat st;
-    int fd;
     size_t page_mask;
+    off_t mleno;
 
     if (!hf || !hf->f || mode_type(hf->mode) != HF_BINARY)
 	return NULL;		/* Not a mappable file */
@@ -505,19 +520,21 @@ void *map_file(struct host_file *hf, size_t mlen)
     if (hf->map)
 	return hf->map;		/* Already mapped */
 
-    fflush(hf->f);
-
-    fd = fileno(hf->f);
-
-    if (fstat(fd, &st))
+    if (update_filesize(hf))
 	return NULL;
 
-    if (st.st_size < (off_t)mlen && file_wrok(hf)) {
-	set_file_size(fd, mlen);	/* Try to extend file */
-	fstat(fd, &st);
+    mleno = mlen;
+    if (!mleno)
+	mleno = hf->filesize;
+    mleno = mlen = (mleno > MAX_MAP_FILE) ? MAX_MAP_FILE : (size_t)mleno;
+
+    if (hf->filesize < mleno && file_wrok(hf)) {
+	set_file_size(hf->fd, mleno);	/* Try to extend file */
+	if (update_filesize(hf))
+	    return NULL;
     }
 
-    hf->flen = (st.st_size < (off_t)mlen) ? (size_t)st.st_size : mlen;
+    hf->flen = (hf->filesize < mleno) ? (size_t)hf->filesize : mlen;
 
     /* Round up to a size in pages */
     page_mask = page_size() - 1;
