@@ -159,6 +159,7 @@ static void do_open(uint16_t ix, char *name)
 
   hf = open_host_file(mode, fileop_path, path_buf, openflags);
   filemap[ix].hf = hf;
+  filemap[ix].binary = cmd[0] & 1;
 
   switch (errno) {
 #if 0				/* Enable this? */
@@ -540,8 +541,8 @@ bool file_op(unsigned char c)
   case st_op:
     switch (cmd[0]) {
     case 0xA0:			/* OPEN TEXT */
-    case 0xA1:			/* PREPARE TEXT */
-    case 0xA2:			/* OPEN BINARY */
+    case 0xA1:			/* OPEN BINARY */
+    case 0xA2:			/* PREPARE TEXT */
     case 0xA3:			/* PREPARE BINARY */
       byte_count = 11;
       state = st_open;
