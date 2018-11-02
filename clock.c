@@ -203,19 +203,19 @@ static void abc800_clock_tick(void)
  */
 void abc800_ctc_out(uint8_t port, uint8_t v)
 {
-    if ((v & 1) == 0) {
-	int i;
-	v &= ~7;
-	for (i = 0; i <= 3; i++)
-	    ctc_irq[i].vector = v | (i << 1);
-	return;
-    }
-
   port &= 3;			/* Get channel */
 
   if (ctc_ctl[port] & 4) {
     ctc_div[port] = v;
     ctc_ctl[port] &= ~4;
+    return;
+  }
+
+  if ((v & 1) == 0) {
+    int i;
+    v &= ~7;
+    for (i = 0; i <= 3; i++)
+      ctc_irq[i].vector = v | (i << 1);
     return;
   }
 
