@@ -133,16 +133,16 @@ static no_return help(void)
 	   "       --detach            detach from console if run from a command line\n"
 	   "\n"
 	   "Options for ABC80 only:\n"
-	   "  -k, --kb #              set the memory size K (1-32 or 64)\n"
-	   "      --old-basic         run BASIC 1.0 (checksum 11273)\n"
-	   "      --11273             same as --old-basic\n"
-	   "      --new-basic         run BASIC 1.2 (checksum 9913)\n"
-	   "      --9913              same as --new-basic\n"
-	   "      --faketype          fake short keystrokes (default > 12.5 MHz)\n"
-	   "      --realtype          true key up/down emulation (default < 12.5 MHz)\n"
+	   "  -k,  --kb #              set the memory size K (1-32 or 64)\n"
+	   "       --old-basic         run BASIC 1.0 (checksum 11273)\n"
+	   "       --11273             same as --old-basic\n"
+	   "       --new-basic         run BASIC 1.2 (checksum 9913)\n"
+	   "       --9913              same as --new-basic\n"
+	   "       --faketype          fake short keystrokes (default > 12.5 MHz)\n"
+	   "       --realtype          true key up/down emulation (default < 12.5 MHz)\n"
 	   "\n"
 	   "Options for ABC802 only:\n"
-	   " -Fm, --memfile file      load a file into the ABC802 MEM: device\n"
+	   "  -Fm, --memfile file      load a file into the ABC802 MEM: device\n"
 	   "\n"
 	   "The simulator supports the following hotkeys:\n"
 	   "  Alt-q    quit the simulator\n"
@@ -245,6 +245,7 @@ static const struct path_option path_options[] = {
     { { "Dd", "-dumpdir" },	&memdump_path,		NULL },
     { { "Cp", "-printcmd" },	&lpr_command,		NULL },
     { { "Fe", "-consolefile" },	&console_filename,	NULL },
+    { { "Fm", "-memfile" },     &memfile,               NULL },
     { { "Fc", "-casfile" },	NULL,			add_casfile },
     { { "Lc", "-caslist" },	NULL,			add_caslist },
     { { "Dc", "-casdir" },      &cas_path,              NULL },
