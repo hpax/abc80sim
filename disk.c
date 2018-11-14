@@ -165,12 +165,13 @@ static void disk_init(struct ctl_state *state)
          * Smaller than the standard disk size?  Treat the sectors
          * beyond the end as bad.
          */
-        filesec = drv->hf->filesize >> 8;
-        drv->sectors = (filesec < state->maxsectors)
+	filesec = drv->hf->filesize >> 8;
+        drv->sectors = (filesec && filesec < state->maxsectors)
             ? filesec : state->maxsectors;
 
-        /* Try to memory-map the file */
-        map_file(drv->hf, drv->sectors << 8);
+        /* Try to memory-map the file if it seems to be an actual file */
+	if (filesec)
+	  map_file(drv->hf, drv->sectors << 8);
 
 	/* Interleaving parameters */
 #if INTERLEAVE
