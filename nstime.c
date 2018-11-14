@@ -9,7 +9,7 @@
 #include "nstime.h"
 
 #ifdef HAVE_UNISTD_H
-# include <unistd.h>
+#include <unistd.h>
 #endif
 
 #include <SDL.h>
@@ -17,25 +17,25 @@
 #ifdef _POSIX_TIMERS
 
 #ifdef _POSIX_MONOTONIC_CLOCK
-# define WHICHCLOCK CLOCK_MONOTONIC
+#define WHICHCLOCK CLOCK_MONOTONIC
 #else
-# define WHICHCLOCK CLOCK_REALTIME
+#define WHICHCLOCK CLOCK_REALTIME
 #endif
 
 static time_t tv_sec_zero;
 
 uint64_t nstime(void)
 {
-  struct timespec ts;
-  clock_gettime(WHICHCLOCK, &ts);
-  return ((ts.tv_sec - tv_sec_zero) * UINT64_C(1000000000)) + ts.tv_nsec;
+    struct timespec ts;
+    clock_gettime(WHICHCLOCK, &ts);
+    return ((ts.tv_sec - tv_sec_zero) * UINT64_C(1000000000)) + ts.tv_nsec;
 }
 
 void nstime_init(void)
 {
-  struct timespec ts;
-  clock_gettime(WHICHCLOCK, &ts);
-  tv_sec_zero = ts.tv_sec;
+    struct timespec ts;
+    clock_gettime(WHICHCLOCK, &ts);
+    tv_sec_zero = ts.tv_sec;
 }
 
 #elif defined(__WIN32__)
@@ -45,51 +45,53 @@ static HANDLE wait_timer;
 
 static inline uint64_t fromft(FILETIME ft)
 {
-  ULARGE_INTEGER q;
+    ULARGE_INTEGER q;
 
-  q.LowPart  = ft.dwLowDateTime;
-  q.HighPart = ft.dwHighDateTime;
-  return q.QuadPart;
+    q.LowPart = ft.dwLowDateTime;
+    q.HighPart = ft.dwHighDateTime;
+    return q.QuadPart;
 }
+
 static inline FILETIME toft(uint64_t t)
 {
-  FILETIME ft;
-  ULARGE_INTEGER q;
+    FILETIME ft;
+    ULARGE_INTEGER q;
 
-  q.QuadPart = t;
-  ft.dwLowDateTime  = q.LowPart;
-  ft.dwHighDateTime = q.HighPart;
-  return ft;
+    q.QuadPart = t;
+    ft.dwLowDateTime = q.LowPart;
+    ft.dwHighDateTime = q.HighPart;
+    return ft;
 }
 
 uint64_t nstime(void)
 {
-  FILETIME ft;
-  uint64_t t;
+    FILETIME ft;
+    uint64_t t;
 
-  GetSystemTimeAsFileTime(&ft);
-  t = fromft(ft);
-  return (t - tzero) * UINT64_C(100);
+    GetSystemTimeAsFileTime(&ft);
+    t = fromft(ft);
+    return (t - tzero) * UINT64_C(100);
 }
 
 void nstime_init(void)
 {
-  FILETIME ft;
+    FILETIME ft;
 
-  GetSystemTimeAsFileTime(&ft);
-  tzero = fromft(ft);
+    GetSystemTimeAsFileTime(&ft);
+    tzero = fromft(ft);
 
-  wait_timer = CreateWaitableTimer(NULL, TRUE, NULL);
+    wait_timer = CreateWaitableTimer(NULL, TRUE, NULL);
 }
 
 void mynssleep(uint64_t until, uint64_t since)
 {
-  LARGE_INTEGER q;
+    LARGE_INTEGER q;
 
-  q.QuadPart = (until+99)/UINT64_C(100);
-  SetWaitableTimer(wait_timer, &q, 0, NULL, NULL, FALSE);
-  WaitForSingleObject(wait_timer,
-		      (until-since+UINT64_C(1999999))/UINT64_C(1000000));
+    q.QuadPart = (until + 99) / UINT64_C(100);
+    SetWaitableTimer(wait_timer, &q, 0, NULL, NULL, FALSE);
+    WaitForSingleObject(wait_timer,
+                        (until - since +
+                         UINT64_C(1999999)) / UINT64_C(1000000));
 }
 
 #elif defined(HAVE_GETTIMEOFDAY)
@@ -98,59 +100,59 @@ static time_t tv_sec_zero;
 
 uint64_t nstime(void)
 {
-  struct timeval tv;
+    struct timeval tv;
 
-  gettimeofday(&tv, NULL);
-  return ((tv.tv_sec - tv_sec_zero) * UINT64_C(1000000000))
-    + (tv.tv_usec * UINT64_C(1000));
+    gettimeofday(&tv, NULL);
+    return ((tv.tv_sec - tv_sec_zero) * UINT64_C(1000000000))
+        + (tv.tv_usec * UINT64_C(1000));
 }
 
 void nstime_init(void)
 {
-  struct timeval tv;
+    struct timeval tv;
 
-  gettimeofday(&tv, NULL);
-  tv_sec_zero = tv.tv_sec;
+    gettimeofday(&tv, NULL);
+    tv_sec_zero = tv.tv_sec;
 }
 
 #else
-# error "Need to implement a different fine-grained timer function here"
+#error "Need to implement a different fine-grained timer function here"
 #endif
 
 #if defined(WHICHCLOCK) && defined(HAVE_CLOCK_NANOSLEEP)
 
 void mynssleep(uint64_t until, uint64_t since)
 {
-  (void)since;
-  struct timespec req;
+    (void)since;
+    struct timespec req;
 
-  req.tv_sec  = until / UINT64_C(1000000000) + tv_sec_zero;
-  req.tv_nsec = until % UINT64_C(1000000000);
+    req.tv_sec = until / UINT64_C(1000000000) + tv_sec_zero;
+    req.tv_nsec = until % UINT64_C(1000000000);
 
-  clock_nanosleep(WHICHCLOCK, TIMER_ABSTIME, &req, NULL);
+    clock_nanosleep(WHICHCLOCK, TIMER_ABSTIME, &req, NULL);
 }
 
 #elif defined(HAVE_NANOSLEEP)
 
 void mynssleep(uint64_t until, uint64_t since)
 {
-  struct timespec req;
+    struct timespec req;
 
-  until -= since;
+    until -= since;
 
-  req.tv_sec  = until / UINT64_C(1000000000);
-  req.tv_nsec = until % UINT64_C(1000000000);
+    req.tv_sec = until / UINT64_C(1000000000);
+    req.tv_nsec = until % UINT64_C(1000000000);
 
-  nanosleep(&req, NULL);
+    nanosleep(&req, NULL);
 }
 
 #elif !defined(__WIN32__)
 
 void mynssleep(uint64_t until, uint64_t since)
 {
-  until -= since;
+    until -= since;
 
-  SDL_Delay((until + UINT64_C(999999))/UINT64_C(1000000));
+    SDL_Delay((until + UINT64_C(999999)) / UINT64_C(1000000));
 }
 
 #endif

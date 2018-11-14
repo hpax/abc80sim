@@ -57,7 +57,6 @@ extern void abc800_sio_cas_out(uint8_t port, uint8_t v);
 extern uint8_t abc800_sio_cas_in(uint8_t port);
 extern void abc800_cas_init(void);
 
-
 /*
  * Z80 has fixed priorities based on the device daisy chain, but the vectors
  * can be different, so we identify interrupts by their priority level.
@@ -78,7 +77,8 @@ enum abc800_irq {
 };
 
 /* Directory and filenames */
-extern const char *fileop_path, *disk_path, *screen_path, *memdump_path, *cas_path;
+extern const char *fileop_path, *disk_path, *screen_path, *memdump_path,
+    *cas_path;
 extern struct file_list cas_files;
 
 /* Program name for error messages */

@@ -2,7 +2,7 @@
 #include "z80.h"
 #include "z80irq.h"
 
-volatile unsigned int irq_pending;	/* Quick way to poll */
+volatile unsigned int irq_pending;      /* Quick way to poll */
 unsigned int irq_mask = ~0U;
 static struct z80_irq *irqs[MAX_IRQ];
 
@@ -27,23 +27,23 @@ int z80_intack(void)
     struct z80_irq *irq;
 
     do {
-	/* Find the highest priority (lowest numeric) interrupt pending */
-	irqpend = irq_pending;
-	irqmasked = irqpend & irq_mask;
+        /* Find the highest priority (lowest numeric) interrupt pending */
+        irqpend = irq_pending;
+        irqmasked = irqpend & irq_mask;
 
-	if (unlikely(!irqmasked))
-	    return vector;	/* All interrupts went away... */
+        if (unlikely(!irqmasked))
+            return vector;      /* All interrupts went away... */
 
-	prio = __builtin_ctz(irqmasked);
-	if (unlikely(!atomic_test_clear_bit(&irq_pending, prio)))
-	    continue;		/* This particular interrupt went away on us? */
+        prio = __builtin_ctz(irqmasked);
+        if (unlikely(!atomic_test_clear_bit(&irq_pending, prio)))
+            continue;           /* This particular interrupt went away on us? */
 
-	irq = irqs[prio];
+        irq = irqs[prio];
 
-	if (unlikely(irq->intack))
-	    vector = irq->intack(irq);
-	else
-	    vector = irq->vector;
+        if (unlikely(irq->intack))
+            vector = irq->intack(irq);
+        else
+            vector = irq->vector;
     } while (unlikely(vector < 0));
 
     /* Inside the handler for this interrupt */
@@ -66,12 +66,12 @@ void z80_eoi(void)
 
     nirqmask = ~irq_mask;
     if (!nirqmask)
-	return;			/* No interrupts pending... */
+        return;                 /* No interrupts pending... */
 
     prio = __builtin_ctz(nirqmask);
     irq = irqs[prio];
     irq->handled = false;
     irq_mask |= 1U << prio;
     if (irq->eoi)
-	irq->eoi(irq);
+        irq->eoi(irq);
 }

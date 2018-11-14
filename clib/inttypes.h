@@ -18,18 +18,18 @@
 
 /* Some old versions of gcc <limits.h> omit LLONG_MAX */
 #ifndef LLONG_MAX
-# ifdef __LONG_LONG_MAX__
-#  define LLONG_MAX __LONG_LONG_MAX__
-# else
-#  define LLONG_MAX 0		/* Assume long long is unusable */
-# endif
+#ifdef __LONG_LONG_MAX__
+#define LLONG_MAX __LONG_LONG_MAX__
+#else
+#define LLONG_MAX 0             /* Assume long long is unusable */
+#endif
 #endif
 
 #if LONG_MAX == 9223372036854775807L
 
 /* long is 64 bits */
-typedef signed long		int64_t;
-typedef unsigned long		uint64_t;
+typedef signed long int64_t;
+typedef unsigned long uint64_t;
 #define _scn64			"l"
 #define _pri64			"l"
 #define INT64_C(x)		x ## L
@@ -38,8 +38,8 @@ typedef unsigned long		uint64_t;
 #elif LLONG_MAX == 9223372036854775807LL
 
 /* long long is 64 bits */
-typedef signed long long	int64_t;
-typedef unsigned long long	uint64_t;
+typedef signed long long int64_t;
+typedef unsigned long long uint64_t;
 #define _scn64			"ll"
 #define _pri64			"ll"
 #define INT64_C(x)		x ## LL
@@ -56,8 +56,8 @@ typedef unsigned long long	uint64_t;
 #if INT_MAX == 2147483647
 
 /* int is 32 bits */
-typedef signed int		int32_t;
-typedef unsigned int		uint32_t;
+typedef signed int int32_t;
+typedef unsigned int uint32_t;
 #define _scn32			""
 #define _pri32			""
 #define INT32_C(x)		x
@@ -66,8 +66,8 @@ typedef unsigned int		uint32_t;
 #elif LONG_MAX == 2147483647L
 
 /* long is 32 bits */
-typedef signed long		int32_t;
-typedef unsigned long		uint32_t;
+typedef signed long int32_t;
+typedef unsigned long uint32_t;
 #define _scn32			"l"
 #define _pri32			"l"
 #define INT32_C(x)		x ## L
@@ -84,8 +84,8 @@ typedef unsigned long		uint32_t;
 #if INT_MAX == 32767
 
 /* int is 16 bits */
-typedef signed int		int16_t;
-typedef unsigned int		uint16_t;
+typedef signed int int16_t;
+typedef unsigned int uint16_t;
 #define _scn16			""
 #define _pri16			""
 #define INT16_C(x)		x
@@ -94,8 +94,8 @@ typedef unsigned int		uint16_t;
 #elif SHRT_MAX == 32767
 
 /* short is 16 bits */
-typedef signed short		int16_t;
-typedef unsigned short		uint16_t;
+typedef signed short int16_t;
+typedef unsigned short uint16_t;
 #define _scn16			"h"
 #define _pri16			""
 #define INT16_C(x)		x
@@ -112,8 +112,8 @@ typedef unsigned short		uint16_t;
 #if SCHAR_MAX == 127
 
 /* char is 8 bits */
-typedef signed char		int8_t;
-typedef unsigned char		uint8_t;
+typedef signed char int8_t;
+typedef unsigned char uint8_t;
 #define _scn8			"hh"
 #define _pri8			""
 #define INT8_C(x)		x

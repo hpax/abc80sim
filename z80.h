@@ -21,8 +21,7 @@
 
 #include <SDL.h>
 
-struct twobyte
-{
+struct twobyte {
 #if WORDS_LITTLEENDIAN
     uint8_t low, high;
 #else
@@ -31,23 +30,21 @@ struct twobyte
 };
 
 /* for implementing registers which can be seen as bytes or words: */
-typedef union
-{
+typedef union {
     struct twobyte byte;
     uint16_t word;
 } wordregister;
 
-typedef void (*eoifunc)(uint8_t, void *);
+typedef void (*eoifunc) (uint8_t, void *);
 struct eoi {
     eoifunc func;
     void *arg;
-    int trigger;		/* Vector to call EOI for, otherwise -1 */
+    int trigger;                /* Vector to call EOI for, otherwise -1 */
 };
 
 struct z80_irq;
 
-struct z80_state_struct
-{
+struct z80_state_struct {
     wordregister af;
     wordregister bc;
     wordregister de;
@@ -62,17 +59,17 @@ struct z80_state_struct
     wordregister de_prime;
     wordregister hl_prime;
 
-    uint8_t i;	/* interrupt-page address register */
-    uint8_t rc; /* counting part of register R (bits 6-0) */
-    uint8_t rf; /* fixed part of register R (bit 7) */
+    uint8_t i;                  /* interrupt-page address register */
+    uint8_t rc;                 /* counting part of register R (bits 6-0) */
+    uint8_t rf;                 /* fixed part of register R (bit 7) */
 
     uint8_t interrupt_mode;
     bool iff1, iff2, ei_shadow, signal_eoi;
 
-    bool nmi_in_progress;	/* to prevent multiple simultaneous NMIs */
-    volatile bool nminterrupt;	/* used to signal a non maskable interrupt */
+    bool nmi_in_progress;       /* to prevent multiple simultaneous NMIs */
+    volatile bool nminterrupt;  /* used to signal a non maskable interrupt */
 
-    uint64_t tc;		/* T-state (clock cycle) counter */
+    uint64_t tc;                /* T-state (clock cycle) counter */
 };
 
 #define Z80_ADDRESS_LIMIT	(1 << 16)
@@ -169,11 +166,11 @@ extern struct z80_state_struct z80_state;
 /* Signal an NMI */
 static inline void z80_nmi(void)
 {
-  z80_state.nminterrupt = true;
+    z80_state.nminterrupt = true;
 }
 
 extern void z80_reset(void);
-extern int z80_run(bool,bool);
+extern int z80_run(bool, bool);
 extern uint8_t mem_read(uint16_t);
 extern uint8_t mem_fetch(uint16_t);
 extern uint8_t mem_fetch_m1(uint16_t);
@@ -190,7 +187,7 @@ extern int disassemble(int);
 extern int DAsm(uint16_t pc, char *T, int *target);
 extern bool z80_poll_external(void);
 
-extern uint8_t ram[];		/* Array for plain RAM */
+extern uint8_t ram[];           /* Array for plain RAM */
 
 extern void mem_init(unsigned int flags, const char *memfile);
 #define MEMFL_NOBASIC	1
