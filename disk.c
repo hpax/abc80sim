@@ -25,49 +25,57 @@ enum out_state {
     disk_download
 };
 
-struct ctl_state {
-    enum out_state state;
-    uint8_t k[4];
-    unsigned int secperclust;
+/* Per-drive state */
+struct drive_state {
+    struct host_file *hf;
+    char name[4];               /* Drive name */
     unsigned int sectors;
     uint8_t ilmsk, ilfac;       /* Interlacing parameters */
-    uint8_t new;                /* "New addressing" */
-    const char name[3];
+};
+
+/* Per-controller state */
+struct ctl_state {
+    enum out_state state;
+    uint8_t k[4];               /* Command bytes */
+    unsigned int clustshift;
+    unsigned int maxsectors;
+    unsigned int drives;        /* Number of drives present */
+    bool newaddr;
+    const char name[3];         /* Device type name with extra NUL */
+    uint8_t ilmsk, ilfac;	/* Software interleaving parameters */
     int out_ptr;                /* Pointer within buffer for out data */
     int in_ptr;                 /* Pointer within buffer for in data */
     int status;                 /* Primary status */
     int aux_status;             /* Auxilliary status */
     int notready_ctr;           /* How many times are we not ready? */
-    struct host_file *files[8]; /* File for this unit */
+    struct drive_state drv[8];  /* Per-drive  */
     unsigned char buf[4][256];  /* 4 buffers @ 256 bytes */
 };
 
 static struct ctl_state mo_state = {
-    .secperclust = 1,
-    .sectors = 40 * 1 * 16,
-#if INTERLEAVE
+    .clustshift = 0,
+    .maxsectors = 40 * 1 * 16,
     .ilmsk = 15,
     .ilfac = 7,
-#endif
     .name = "mo"
 };
 
 static struct ctl_state mf_state = {
-    .secperclust = 4,
-    .sectors = 80 * 2 * 16,
+    .clustshift = 2,
+    .maxsectors = 80 * 2 * 16,
     .name = "mf"
 };
 
 static struct ctl_state sf_state = {
-    .secperclust = 4,
-    .sectors = (77 * 2 - 1) * 26,       /* Spår 0, sida 0 används ej */
+    .clustshift = 2,
+    .maxsectors = (77 * 2 - 1) * 26, /* Track 0, side 0 not used */
     .name = "sf"
 };
 
 static struct ctl_state hd_state = {
-    .secperclust = 32,
-    .new = 1,                   /* Actually irrelevant when secperclust = 32 */
-    .sectors = 238 * 8 * 32,
+    .clustshift = 5,
+    .newaddr = true,            /* Actually irrelevant for clustshift = 5 */
+    .maxsectors = (239 * 32 - 1) * 32,     /* Maximum supported by UFD-DOS */
     .name = "hd"
 };
 
@@ -78,29 +86,42 @@ static struct ctl_state *const sel_to_state[64] = {
     [46] = &sf_state,
 };
 
+static inline struct drive_state *cur_drv(struct ctl_state *state)
+{
+    return &state->drv[state->k[1] & 7];
+}
+
 static inline unsigned int cur_sector(struct ctl_state *state)
 {
     uint8_t k2 = state->k[2], k3 = state->k[3];
 
-    if (state->new)
+    if (state->newaddr)
         return (k2 << 8) + k3;
     else
-        return (((k2 << 3) + (k3 >> 5)) * state->secperclust) + (k3 & 31);
+        return (((k2 << 3) + (k3 >> 5)) << state->clustshift) + (k3 & 31);
+}
+
+/* Get physical sector number, after interleaving */
+static inline unsigned int phys_sector(struct ctl_state *state)
+{
+    struct drive_state *drv = cur_drv(state);
+    unsigned int ilmsk = drv->ilmsk;
+    unsigned int ilfac = drv->ilfac;
+    unsigned int sector = cur_sector(state);
+
+    sector = (sector & ~ilmsk) | ((sector * ilfac) & ilmsk);
+    return sector;
 }
 
 static inline int file_pos_valid(struct ctl_state *state)
 {
-    return cur_sector(state) < state->sectors;
+
+    return phys_sector(state) < cur_drv(state)->sectors;
 }
 
 static inline int file_pos(struct ctl_state *state)
 {
-    unsigned int ilmsk = state->ilmsk;
-    unsigned int sector = cur_sector(state);
-
-    sector = (sector & ~ilmsk) | ((sector * state->ilfac) & ilmsk);
-
-    return sector << 8;
+    return phys_sector(state) << 8;
 }
 
 static void disk_reset_state(struct ctl_state *state)
@@ -114,36 +135,57 @@ static void disk_reset_state(struct ctl_state *state)
     state->notready_ctr = 4;
 
     for (i = 0; i < 8; i++)
-        flush_file(state->files[i]);
+        flush_file(state->drv[i].hf);
 }
 
 static void disk_init(struct ctl_state *state)
 {
-    char devname[4];
     int i;
 
-    /* If any of these don't exist we simply report device not ready */
-    if (disk_path) {
-        devname[0] = state->name[0];
-        devname[1] = state->name[1];
-        devname[3] = '\0';
-        for (i = 0; i < 8; i++) {
-            devname[2] = i + '0';
-            /* Try open RDWR first, then RDONLY, but don't create */
-            state->files[i] =
-                open_host_file(HF_BINARY | HF_RETRY, disk_path, devname,
-                               O_RDWR);
+    if (!disk_path)
+        return;                 /* Nowhere to get disk files */
 
-            /* Try to memory-map the file */
-            map_file(state->files[i], state->sectors << 8);
-        }
+    /* If any of these don't exist we simply report device not ready */
+    for (i = 0; i < 8; i++) {
+        struct drive_state *drv = &state->drv[i];
+        unsigned int filesec;
+
+        snprintf(drv->name, sizeof drv->name, "%-.2s%c", state->name, i + '0');
+
+        /* Try open RDWR first, then RDONLY, but don't create */
+        drv->hf =
+            open_host_file(HF_BINARY | HF_RETRY, disk_path, drv->name, O_RDWR);
+
+        if (!drv->hf)
+	    continue; /* File not present = drive not ready */
+
+        state->drives++;
+
+        /*
+         * Smaller than the standard disk size?  Treat the sectors
+         * beyond the end as bad.
+         */
+        filesec = drv->hf->filesize >> 8;
+        drv->sectors = (filesec < state->maxsectors)
+            ? filesec : state->maxsectors;
+
+        /* Try to memory-map the file */
+        map_file(drv->hf, drv->sectors << 8);
+
+	/* Interleaving parameters */
+#if INTERLEAVE
+	drv->ilfac = state->ilfac;
+	drv->ilmsk = state->ilmsk;
+#endif
     }
+
     disk_reset_state(state);
 }
 
 static void do_next_command(struct ctl_state *state)
 {
-    struct host_file *hf = state->files[state->k[1] & 7];
+    struct drive_state *drv = cur_drv(state);
+    struct host_file *hf = drv->hf;
     uint8_t *buf = state->buf[state->k[1] >> 6];        /* If applicable */
 
     if (state->k[0] & 0x01) {
@@ -212,6 +254,9 @@ void disk_out(int sel, int port, int value)
     if (state->state == disk_need_init)
         disk_init(state);
 
+    if (!state->drives)
+        return;                 /* No driver - simulate no controller */
+
     switch (port) {
     case 0:
         switch (state->state) {
@@ -223,7 +268,6 @@ void disk_out(int sel, int port, int value)
             state->state++;
             break;
         case disk_k3:
-            state->status = state->aux_status = 0;
             state->k[3] = value;
             state->state = disk_k0;
 
@@ -236,13 +280,14 @@ void disk_out(int sel, int port, int value)
             }
 
             /* Bad drive/sector? */
-            if (!state->files[state->k[1] & 7]) {
-                state->status = 0x08;   /* Error */
+            if (!cur_drv(state)) {
+                state->status = 0x08;		/* Error */
                 state->aux_status = 0x80;       /* Device not ready */
             } else if (!file_pos_valid(state)) {
-                state->status = 0x08;   /* Error */
+                state->status = 0x08;		/* Error */
                 state->aux_status = 0x10;       /* Seek error */
             } else {
+		state->status = state->aux_status = 0;
                 do_next_command(state);
             }
             break;
@@ -292,6 +337,9 @@ int disk_in(int sel, int port)
 
     if (state->state == disk_need_init)
         disk_init(state);
+
+    if (!state->drives)
+        return 0xff;            /* No drives - controller not present */
 
     switch (port) {
     case 0:
