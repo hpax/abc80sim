@@ -113,13 +113,17 @@ static inline unsigned int phys_sector(struct ctl_state *state)
     return sector;
 }
 
-static inline int file_pos_valid(struct ctl_state *state)
+static inline bool file_pos_valid(struct ctl_state *state)
 {
+    uint8_t k3 = state->k[3];
+
+    if (!state->newaddr && ((k3 & 31) >> state->clustshift))
+	return false;
 
     return phys_sector(state) < cur_drv(state)->sectors;
 }
 
-static inline int file_pos(struct ctl_state *state)
+static inline unsigned int file_pos(struct ctl_state *state)
 {
     return phys_sector(state) << 8;
 }
