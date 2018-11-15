@@ -49,7 +49,7 @@ struct ctl_state {
     int aux_status;             /* Auxilliary status */
     int notready_ctr;           /* How many times are we not ready? */
     struct drive_state drv[8];  /* Per-drive  */
-    unsigned char buf[4][256];  /* 4 buffers @ 256 bytes */
+    uint8_t buf[4][256];	/* 4 buffers @ 256 bytes */
 };
 
 static struct ctl_state mo_state = {
@@ -86,12 +86,12 @@ static struct ctl_state *const sel_to_state[64] = {
     [46] = &sf_state,
 };
 
-static inline struct drive_state *cur_drv(struct ctl_state *state)
+static inline const struct drive_state *cur_drv(const struct ctl_state *state)
 {
     return &state->drv[state->k[1] & 7];
 }
 
-static inline unsigned int cur_sector(struct ctl_state *state)
+static inline unsigned int cur_sector(const struct ctl_state *state)
 {
     uint8_t k2 = state->k[2], k3 = state->k[3];
 
@@ -102,9 +102,9 @@ static inline unsigned int cur_sector(struct ctl_state *state)
 }
 
 /* Get physical sector number, after interleaving */
-static inline unsigned int phys_sector(struct ctl_state *state)
+static inline unsigned int phys_sector(const struct ctl_state *state)
 {
-    struct drive_state *drv = cur_drv(state);
+    const struct drive_state *drv = cur_drv(state);
     unsigned int ilmsk = drv->ilmsk;
     unsigned int ilfac = drv->ilfac;
     unsigned int sector = cur_sector(state);
@@ -113,7 +113,7 @@ static inline unsigned int phys_sector(struct ctl_state *state)
     return sector;
 }
 
-static inline bool file_pos_valid(struct ctl_state *state)
+static inline bool file_pos_valid(const struct ctl_state *state)
 {
     uint8_t k3 = state->k[3];
 
@@ -123,9 +123,14 @@ static inline bool file_pos_valid(struct ctl_state *state)
     return phys_sector(state) < cur_drv(state)->sectors;
 }
 
-static inline unsigned int file_pos(struct ctl_state *state)
+static inline unsigned int file_pos(const struct ctl_state *state)
 {
     return phys_sector(state) << 8;
+}
+
+static inline uint8_t *cur_buf(struct ctl_state *state)
+{
+    return state->buf[state->k[1] >> 6];
 }
 
 static void disk_reset_state(struct ctl_state *state)
@@ -202,9 +207,9 @@ static void disk_init(struct ctl_state *state)
 
 static void do_next_command(struct ctl_state *state)
 {
-    struct drive_state *drv = cur_drv(state);
+    const struct drive_state *drv = cur_drv(state);
     struct host_file *hf = drv->hf;
-    uint8_t *buf = state->buf[state->k[1] >> 6];        /* If applicable */
+    uint8_t *buf = cur_buf(state);
 
     if (!state->k[0]) {
 	state->state = disk_k0;
@@ -227,7 +232,7 @@ static void do_next_command(struct ctl_state *state)
         if (hf->map) {
             memcpy(buf, hf->map + file_pos(state), 256);
         } else {
-            fseek(hf->f, file_pos(state), SEEK_SET);
+	    fseek(hf->f, file_pos(state), SEEK_SET);
             fread(buf, 1, 256, hf->f);
         }
         state->k[0] &= ~0x01;   /* Command done */
@@ -257,8 +262,8 @@ static void do_next_command(struct ctl_state *state)
             memcpy(hf->map + file_pos(state), buf, 256);
         } else {
             clearerr(hf->f);
-            fseek(hf->f, file_pos(state), SEEK_SET);
-            fwrite(state->buf[state->k[1] >> 6], 1, 256, hf->f);
+	    fseek(hf->f, file_pos(state), SEEK_SET);
+            fwrite(buf, 1, 256, hf->f);
             if (ferror(hf->f)) {
                 state->status = 0x08;   /* Error */
                 state->aux_status = 0x40;       /* Write protect */
