@@ -177,11 +177,24 @@ static void disk_init(struct ctl_state *state)
 	if (filesec)
 	  map_file(drv->hf, drv->sectors << 8);
 
+	if (tracing(TRACE_DISK)) {
+	    fprintf(tracef, "%s: initialized, sectors = %u (%u clusters), %s\n",
+		    drv->name, drv->sectors, drv->sectors >> state->clustshift,
+		    drv->hf->map ? "memory mapped" : "not mapped");
+	}
+
 	/* Interleaving parameters */
 #if INTERLEAVE
 	drv->ilfac = state->ilfac;
 	drv->ilmsk = state->ilmsk;
+#else
+	drv->ilfac = drv->ilmsk = 0;
 #endif
+    }
+
+    if (tracing(TRACE_DISK)) {
+	fprintf(tracef, "%s: controller initialized with %u drives\n",
+		state->name, state->drives);
     }
 
     disk_reset_state(state);
@@ -193,6 +206,22 @@ static void do_next_command(struct ctl_state *state)
     struct host_file *hf = drv->hf;
     uint8_t *buf = state->buf[state->k[1] >> 6];        /* If applicable */
 
+    if (!state->k[0]) {
+	state->state = disk_k0;
+	return;
+    }
+
+    if (tracing(TRACE_DISK)) {
+	fprintf(tracef, "%s: sector %u (physical %u, pos %u) buf %u :%s%s%s%s\n",
+		drv->name, cur_sector(state), phys_sector(state),
+		file_pos(state),
+		state->k[1] >> 6,
+		(state->k[0] & 0x01) ? " read" : "",
+		(state->k[0] & 0x02) ? " to_host" : "",
+		(state->k[0] & 0x04) ? " from_host" : "",
+		(state->k[0] & 0x08) ? " write" : "");
+    }
+
     if (state->k[0] & 0x01) {
         /* READ SECTOR */
         if (hf->map) {
@@ -202,10 +231,11 @@ static void do_next_command(struct ctl_state *state)
             fread(buf, 1, 256, hf->f);
         }
         state->k[0] &= ~0x01;   /* Command done */
+	trace_dump(TRACE_DISK, drv->name, buf, 256);
     }
     if (state->k[0] & 0x02) {
         /* SECTOR TO HOST */
-        state->in_ptr = 0;
+	state->in_ptr = 0;
         state->state = disk_download;
         state->k[0] &= ~0x02;   /* Command done */
         return;
@@ -219,6 +249,7 @@ static void do_next_command(struct ctl_state *state)
     }
     if (state->k[0] & 0x08) {
         /* WRITE SECTOR */
+	trace_dump(TRACE_DISK, drv->name, buf, 256);
         if (!file_wrok(hf)) {
             state->status = 0x80;       /* Error */
             state->aux_status = 0x40;   /* Write protect */
@@ -259,8 +290,12 @@ void disk_out(int sel, int port, int value)
     if (state->state == disk_need_init)
         disk_init(state);
 
-    if (!state->drives)
-        return;                 /* No driver - simulate no controller */
+    if (!state->drives) {
+	if (tracing(TRACE_DISK)) {
+		fprintf(tracef, "%s: no drives present\n", state->name);
+	}
+	return;
+    }
 
     switch (port) {
     case 0:
@@ -277,15 +312,15 @@ void disk_out(int sel, int port, int value)
             state->state = disk_k0;
 
             if (tracing(TRACE_DISK)) {
-                fprintf(tracef, "%s%d: command %02X %02X %02X %02X\n",
-                        state->name, state->k[1] & 7,
+		fprintf(tracef, "%s: command %02X %02X %02X %02X\n",
+                        cur_drv(state)->name,
                         state->k[0], state->k[1], state->k[2], state->k[3]);
                 fprintf(tracef, "PC = %04X  BC = %04X  DE = %04X  HL = %04X\n",
                         REG_PC, REG_BC, REG_DE, REG_HL);
             }
 
             /* Bad drive/sector? */
-            if (!cur_drv(state)) {
+            if (!cur_drv(state)->hf) {
                 state->status = 0x08;		/* Error */
                 state->aux_status = 0x80;       /* Device not ready */
             } else if (!file_pos_valid(state)) {
@@ -343,8 +378,12 @@ int disk_in(int sel, int port)
     if (state->state == disk_need_init)
         disk_init(state);
 
-    if (!state->drives)
+    if (!state->drives) {
+	if (tracing(TRACE_DISK)) {
+		fprintf(tracef, "%s: no drives present\n", state->name);
+	}
         return 0xff;            /* No drives - controller not present */
+    }
 
     switch (port) {
     case 0:
