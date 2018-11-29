@@ -42,6 +42,8 @@ struct ctl_state {
     unsigned int c, h, s;
     unsigned int drives;        /* Number of drives present */
     bool newaddr;
+    bool fmtdata_in_buf;	/* Use user-provided formatting data */
+    bool trace_dump;	        /* If tracing, dump data buf after command */
     const char name[3];         /* Device type name with extra NUL */
     uint8_t ilmsk, ilfac;	/* Software interleaving parameters */
     int out_ptr;                /* Pointer within buffer for out data */
@@ -58,6 +60,7 @@ static struct ctl_state mo_state = {
     .clustshift = 0,
     .maxsectors = 40 * 1 * 16,
     .c = 40, .h = 1, .s = 16,
+    .fmtdata_in_buf = true,
     .ilmsk = 15,
     .ilfac = 7,
     .name = "mo"
@@ -113,15 +116,19 @@ static inline unsigned int cur_sector(const struct ctl_state *state)
 }
 
 /* Get physical sector number, after interleaving */
-static inline unsigned int phys_sector(const struct ctl_state *state)
+static inline unsigned int
+virt2phys(const struct drive_state *drv, unsigned int sector)
 {
-    const struct drive_state *drv = cur_drv(state);
     unsigned int ilmsk = drv->ilmsk;
     unsigned int ilfac = drv->ilfac;
-    unsigned int sector = cur_sector(state);
 
     sector = (sector & ~ilmsk) | ((sector * ilfac) & ilmsk);
     return sector;
+}
+
+static inline unsigned int phys_sector(const struct ctl_state *state)
+{
+    return virt2phys(cur_drv(state), cur_sector(state));
 }
 
 static inline bool file_pos_valid(const struct ctl_state *state)
@@ -223,6 +230,12 @@ static void do_next_command(struct ctl_state *state)
     uint8_t *buf = cur_buf(state);
 
     if (!state->k[0]) {
+	if (tracing(TRACE_DISK)) {
+	    if (state->trace_dump) {
+		trace_dump(TRACE_DISK, drv->name, buf, 256);
+		state->trace_dump = false;
+	    }
+	}
 	state->state = disk_k0;
 	return;
     }
@@ -244,18 +257,28 @@ static void do_next_command(struct ctl_state *state)
 		(k & 0x20) ? " select_drive" : "",
 		(k & 0x40) ? " motor_on" : "",
 		(k & 0x80) ? " ?k7" : "");
+
+	state->trace_dump |= (state->k[0] & 15) != 0;
     }
 
     if (state->k[0] & 0x01) {
         /* READ SECTOR */
-        if (hf->map) {
-            memcpy(buf, hf->map + file_pos(state), 256);
-        } else {
-	    fseek(hf->f, file_pos(state), SEEK_SET);
-            fread(buf, 1, 256, hf->f);
-        }
+	if (!hf) {
+	    state->error = 0x80; /* Device not ready */
+	} else if (!file_pos_valid(state)) {
+	    state->error = 0x21; /* Out of range, DOSGEN expected value */
+	} else {
+	    if (hf->map) {
+		memcpy(buf, hf->map + file_pos(state), 256);
+	    } else {
+		clearerr(hf->f);
+		fseek(hf->f, file_pos(state), SEEK_SET);
+		fread(buf, 1, 256, hf->f);
+		if (ferror(hf->f))
+		    state->error = 0x08; /* CRC error */
+	    }
+	}
         state->k[0] &= ~0x01;   /* Command done */
-	trace_dump(TRACE_DISK, drv->name, buf, 256);
     }
     if (state->k[0] & 0x02) {
         /* SECTOR TO HOST */
@@ -273,17 +296,22 @@ static void do_next_command(struct ctl_state *state)
     }
     if (state->k[0] & 0x08) {
         /* WRITE SECTOR */
-	trace_dump(TRACE_DISK, drv->name, buf, 256);
-        if (!file_wrok(hf)) {
-            state->error = 0x40;   /* Write protect */
-        } else if (hf->map) {
-            memcpy(hf->map + file_pos(state), buf, 256);
-        } else {
-            clearerr(hf->f);
-	    fseek(hf->f, file_pos(state), SEEK_SET);
-            fwrite(buf, 1, 256, hf->f);
-            if (ferror(hf->f))
-                state->error = 0x20; /* Write fault */
+	if (!hf) {
+	    state->error = 0x80; /* Not ready */
+	} else if (!file_wrok(hf)) {
+	    state->error = 0x40; /* Write protect */
+	} else if (!file_pos_valid(state)) {
+	    state->error = 0x21; /* Same as for read? */
+	} else {
+	    if (hf->map) {
+		memcpy(hf->map + file_pos(state), buf, 256);
+	    } else {
+		clearerr(hf->f);
+		fseek(hf->f, file_pos(state), SEEK_SET);
+		fwrite(buf, 1, 256, hf->f);
+		if (ferror(hf->f))
+		    state->error = 0x20; /* Write fault */
+	    }
         }
         state->k[0] &= ~0x08;   /* Command done */
     }
@@ -295,8 +323,18 @@ static void do_next_command(struct ctl_state *state)
 	} else {
 	    unsigned int s, c0, c1, s0, s1;
 	    unsigned int cylsec = state->s * state->h;
+	    const uint8_t *data;
 
-	    memset(buf, 0x40, 256);
+	    if (state->fmtdata_in_buf) {
+		/*
+		 * This is true for MO double density, single density
+		 * not supported yet.
+		 */
+		data = state->buf[0] + 0x3b;
+	    } else {
+		memset(state->buf[3], 0x40, 256); /* Or zero? */
+		data = state->buf[3];
+	    }
 
 	    /*
 	     * k2 and k3 contain the first and last cylinder numbers to
@@ -305,35 +343,30 @@ static void do_next_command(struct ctl_state *state)
 	     */
 
 	    c0 = state->k[2];
-	    c1 = state->k[3] + 1;
-
 	    s0 = c0 * cylsec;
+	    c1 = state->k[3] + 1;
 	    s1 = c1 * cylsec;
-
-	    if (s1 > drv->sectors)
-		s1 = drv->sectors;
 
 	    if (tracing(TRACE_DISK)) {
 		fprintf(tracef, "%s: formatting cyl %u..%u, sectors %u..%u\n",
 			drv->name, c0, c1-1, s0, s1-1);
 	    }
 
-	    if (c0 >= state->c) {
-		state->error = 0;
-	    } else if (s0 >= s1) {
-		/* Nothing to do - includes the case of s0 >= drv->sectors */
-	    } else {
+	    clearerr(hf->f);
+
+	    for (s = s0; s < s1; s++) {
+		unsigned int ps = virt2phys(drv, s);
+		if (ps >= drv->sectors)
+		    continue;
 		if (hf->map) {
-		    memset(hf->map + (s0 << 8), 0x40, (s1-s0) << 8);
+		    memcpy(hf->map + (ps << 8), data, 256);
 		} else {
-		    fseek(hf->f, s0 << 8, SEEK_SET);
-		    for (s = s0; s < s1; s++)
-			fwrite(buf, 1, 256, hf->f);
-		    fflush(hf->f);
-		    if (ferror(hf->f))
-			state->error = 0x20; /* Write fault */
+		    fseek(hf->f, ps << 8, SEEK_SET);
+		    fwrite(data, 1, 256, hf->f);
 		}
 	    }
+	    if (ferror(hf->f))
+		state->error = 0x20; /* Write fault */
 	}
 	state->k[1] &= ~0x08;
     }
@@ -363,7 +396,8 @@ void disk_out(int sel, int port, int value)
         return;                 /* Not a disk drive */
 
     if (tracing(TRACE_DISK)) {
-	fprintf(tracef, "%s: OUT  %d/%d : ", state->name, sel, port);
+	fprintf(tracef, "%s: OUT %d/%d: %02x : ",
+		state->name, sel, port, value);
 	fprintf(tracef, "PC = %04X  BC = %04X  DE = %04X  HL = %04X\n",
 		REG_PC, REG_BC, REG_DE, REG_HL);
     }
@@ -397,33 +431,14 @@ void disk_out(int sel, int port, int value)
 		fprintf(tracef, "%s: command %02X %02X %02X %02X\n",
                         cur_drv(state)->name,
                         state->k[0], state->k[1], state->k[2], state->k[3]);
-                fprintf(tracef, "PC = %04X  BC = %04X  DE = %04X  HL = %04X\n",
-                        REG_PC, REG_BC, REG_DE, REG_HL);
             }
 
-            /* Bad drive/sector? */
-	    if (state->k[0]) {
-		if (!cur_drv(state)->hf) {
-		    state->error = 0x80;	/* Device not ready */
-		} else if (state->k[0] & 0x09 && !file_pos_valid(state)) {
-		    /* Sector beyond end of disk */
-		    state->error = 0x21;	/* Expected by DOSGEN? */
-		}
-		if (!state->error)
-		    do_next_command(state);
-	    }
+	    do_next_command(state);
             break;
         case disk_upload:
             cur_buf(state)[state->out_ptr++] = value;
-            if (tracing(TRACE_DISK))
-                fprintf(tracef, "%02X", value);
-            if (state->out_ptr >= 256) {
-                if (tracing(TRACE_DISK))
-                    fprintf(tracef,
-                            "\nPC = %04X  BC = %04X  DE = %04X  HL = %04X\n",
-                            REG_PC, REG_BC, REG_DE, REG_HL);
+            if (state->out_ptr >= 256)
                 do_next_command(state);
-            }
             break;
         case disk_download:
             break;
