@@ -229,38 +229,6 @@ static void do_next_command(struct ctl_state *state)
     struct host_file *hf = drv->hf;
     uint8_t *buf = cur_buf(state);
 
-    if (!state->k[0]) {
-	if (tracing(TRACE_DISK)) {
-	    if (state->trace_dump) {
-		trace_dump(TRACE_DISK, drv->name, buf, 256);
-		state->trace_dump = false;
-	    }
-	}
-	state->state = disk_k0;
-	return;
-    }
-
-    if (tracing(TRACE_DISK)) {
-	uint16_t k = (state->k[1] << 8) + state->k[0];
-
-	fprintf(tracef, "%s: sector %u (physical %u, pos %u) buf %u :%s%s%s%s%s%s%s%s%s%s\n",
-		drv->name, cur_sector(state), phys_sector(state),
-		file_pos(state),
-		k >> (6+8),
-		(k & 0x01) ? " read" : "",
-		(k & 0x02) ? " to_host" : "",
-		(k & 0x04) ? " from_host" : "",
-		(k & 0x08) ? " write" : "",
-		((k & 0x0810) == 0x0810) ? " format" : "",
-		((k & 0x1010) == 0x1010) ? " rdmark" : "",
-		((k & 0x2010) == 0x2010) ? " ?cmd5" : "",
-		(k & 0x20) ? " select_drive" : "",
-		(k & 0x40) ? " motor_on" : "",
-		(k & 0x80) ? " ?k7" : "");
-
-	state->trace_dump |= (state->k[0] & 15) != 0;
-    }
-
     if (state->k[0] & 0x01) {
         /* READ SECTOR */
 	if (!hf) {
@@ -374,6 +342,12 @@ static void do_next_command(struct ctl_state *state)
     if (!(state->k[1] & 0x38))
 	state->k[0] &= ~0x10;
 
+    if (tracing(TRACE_DISK)) {
+      if (state->trace_dump) {
+	trace_dump(TRACE_DISK, drv->name, buf, 256);
+	state->trace_dump = false;
+      }
+    }
     state->state = disk_k0;
 }
 
@@ -396,7 +370,7 @@ void disk_out(int sel, int port, int value)
         return;                 /* Not a disk drive */
 
     if (tracing(TRACE_DISK)) {
-	fprintf(tracef, "%s: OUT %d/%d: %02x : ",
+	fprintf(tracef, "%s:  OUT %d/%d: %02x : ",
 		state->name, sel, port, value);
 	fprintf(tracef, "PC = %04X  BC = %04X  DE = %04X  HL = %04X\n",
 		REG_PC, REG_BC, REG_DE, REG_HL);
@@ -428,11 +402,27 @@ void disk_out(int sel, int port, int value)
             state->state = disk_k0;
 
             if (tracing(TRACE_DISK)) {
-		fprintf(tracef, "%s: command %02X %02X %02X %02X\n",
-                        cur_drv(state)->name,
-                        state->k[0], state->k[1], state->k[2], state->k[3]);
-            }
-
+		uint16_t k = (state->k[1] << 8) + state->k[0];
+		fprintf(tracef, "%s: cmd %02X %02X %02X %02X "
+			"sect %u (phys %u, pos %u) "
+			"buf %u :%s%s%s%s%s%s%s%s%s%s\n",
+			cur_drv(state)->name,
+			state->k[0], state->k[1], state->k[2], state->k[3],
+			cur_sector(state), phys_sector(state),
+			file_pos(state),
+			k >> (6+8),
+			(k & 0x01) ? " read" : "",
+			(k & 0x02) ? " to_host" : "",
+			(k & 0x04) ? " from_host" : "",
+			(k & 0x08) ? " write" : "",
+			((k & 0x0810) == 0x0810) ? " format" : "",
+			((k & 0x1010) == 0x1010) ? " rdmark" : "",
+			((k & 0x2010) == 0x2010) ? " ?cmd5" : "",
+			(k & 0x20) ? " select_drive" : "",
+			(k & 0x40) ? " motor_on" : "",
+			(k & 0x80) ? " ?k7" : "");
+		state->trace_dump |= (state->k[0] & 15) != 0;
+	    }
 	    do_next_command(state);
             break;
         case disk_upload:
@@ -504,7 +494,7 @@ int disk_in(int sel, int port)
     }
 
     if (tracing(TRACE_DISK)) {
-        fprintf(tracef, "%s: IN  %d/%d: %02x : error %02x ",
+        fprintf(tracef, "%s:  IN  %d/%d: %02x : error %02x ",
 		state->name, sel, port, v, state->error);
         fprintf(tracef, "PC = %04X  BC = %04X  DE = %04X  HL = %04X\n",
                 REG_PC, REG_BC, REG_DE, REG_HL);
