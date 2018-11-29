@@ -1,5 +1,5 @@
 /*
- * ABC80 simulated disk
+ * ABC80/800 simulated disk
  */
 
 #include "compiler.h"
@@ -39,22 +39,25 @@ struct ctl_state {
     uint8_t k[4];               /* Command bytes */
     unsigned int clustshift;
     unsigned int maxsectors;
+    unsigned int c, h, s;
     unsigned int drives;        /* Number of drives present */
     bool newaddr;
     const char name[3];         /* Device type name with extra NUL */
     uint8_t ilmsk, ilfac;	/* Software interleaving parameters */
     int out_ptr;                /* Pointer within buffer for out data */
     int in_ptr;                 /* Pointer within buffer for in data */
-    int status;                 /* Primary status */
-    int aux_status;             /* Auxilliary status */
+    int error;			/* Error code */
     int notready_ctr;           /* How many times are we not ready? */
     struct drive_state drv[8];  /* Per-drive  */
     uint8_t buf[4][256];	/* 4 buffers @ 256 bytes */
 };
 
+#define NOT_READY 4		/* How many times to report not ready */
+
 static struct ctl_state mo_state = {
     .clustshift = 0,
     .maxsectors = 40 * 1 * 16,
+    .c = 40, .h = 1, .s = 16,
     .ilmsk = 15,
     .ilfac = 7,
     .name = "mo"
@@ -63,12 +66,14 @@ static struct ctl_state mo_state = {
 static struct ctl_state mf_state = {
     .clustshift = 2,
     .maxsectors = 80 * 2 * 16,
+    .c = 80, .h = 2, .s = 16,
     .name = "mf"
 };
 
 static struct ctl_state sf_state = {
     .clustshift = 2,
     .maxsectors = (77 * 2 - 1) * 26, /* Track 0, side 0 not used */
+    .c = 77, .h = 2, .s = 26,
     .name = "sf"
 };
 
@@ -76,6 +81,7 @@ static struct ctl_state hd_state = {
     .clustshift = 5,
     .newaddr = true,            /* Actually irrelevant for clustshift = 5 */
     .maxsectors = (239 * 32 - 1) * 32,     /* Maximum supported by UFD-DOS */
+    .c = 238, .h = 16, .s = 64,
     .name = "hd"
 };
 
@@ -85,6 +91,11 @@ static struct ctl_state *const sel_to_state[64] = {
     [45] = &mo_state,
     [46] = &sf_state,
 };
+
+static inline struct drive_state *cur_drv_mutable(struct ctl_state *state)
+{
+    return &state->drv[state->k[1] & 7];
+}
 
 static inline const struct drive_state *cur_drv(const struct ctl_state *state)
 {
@@ -138,10 +149,10 @@ static void disk_reset_state(struct ctl_state *state)
     int i;
 
     state->state = disk_k0;
-    state->status = state->aux_status = 0;
+    state->error = 0;
     state->in_ptr = -1;
     state->out_ptr = 0;
-    state->notready_ctr = 4;
+    state->notready_ctr = NOT_READY;
 
     for (i = 0; i < 8; i++)
         flush_file(state->drv[i].hf);
@@ -207,7 +218,7 @@ static void disk_init(struct ctl_state *state)
 
 static void do_next_command(struct ctl_state *state)
 {
-    const struct drive_state *drv = cur_drv(state);
+    struct drive_state *drv = cur_drv_mutable(state);
     struct host_file *hf = drv->hf;
     uint8_t *buf = cur_buf(state);
 
@@ -217,14 +228,22 @@ static void do_next_command(struct ctl_state *state)
     }
 
     if (tracing(TRACE_DISK)) {
-	fprintf(tracef, "%s: sector %u (physical %u, pos %u) buf %u :%s%s%s%s\n",
+	uint16_t k = (state->k[1] << 8) + state->k[0];
+
+	fprintf(tracef, "%s: sector %u (physical %u, pos %u) buf %u :%s%s%s%s%s%s%s%s%s%s\n",
 		drv->name, cur_sector(state), phys_sector(state),
 		file_pos(state),
-		state->k[1] >> 6,
-		(state->k[0] & 0x01) ? " read" : "",
-		(state->k[0] & 0x02) ? " to_host" : "",
-		(state->k[0] & 0x04) ? " from_host" : "",
-		(state->k[0] & 0x08) ? " write" : "");
+		k >> (6+8),
+		(k & 0x01) ? " read" : "",
+		(k & 0x02) ? " to_host" : "",
+		(k & 0x04) ? " from_host" : "",
+		(k & 0x08) ? " write" : "",
+		((k & 0x0810) == 0x0810) ? " format" : "",
+		((k & 0x1010) == 0x1010) ? " rdmark" : "",
+		((k & 0x2010) == 0x2010) ? " ?cmd5" : "",
+		(k & 0x20) ? " select_drive" : "",
+		(k & 0x40) ? " motor_on" : "",
+		(k & 0x80) ? " ?k7" : "");
     }
 
     if (state->k[0] & 0x01) {
@@ -256,21 +275,72 @@ static void do_next_command(struct ctl_state *state)
         /* WRITE SECTOR */
 	trace_dump(TRACE_DISK, drv->name, buf, 256);
         if (!file_wrok(hf)) {
-            state->status = 0x80;       /* Error */
-            state->aux_status = 0x40;   /* Write protect */
+            state->error = 0x40;   /* Write protect */
         } else if (hf->map) {
             memcpy(hf->map + file_pos(state), buf, 256);
         } else {
             clearerr(hf->f);
 	    fseek(hf->f, file_pos(state), SEEK_SET);
             fwrite(buf, 1, 256, hf->f);
-            if (ferror(hf->f)) {
-                state->status = 0x08;   /* Error */
-                state->aux_status = 0x40;       /* Write protect */
-            }
+            if (ferror(hf->f))
+                state->error = 0x20; /* Write fault */
         }
         state->k[0] &= ~0x08;   /* Command done */
     }
+    if (state->k[0] & 0x10 && state->k[1] & 0x08) {
+	state->out_ptr = 0;
+	/* FORMAT */
+        if (!file_wrok(hf)) {
+            state->error = 0x40;   /* Write protect */
+	} else {
+	    unsigned int s, c0, c1, s0, s1;
+	    unsigned int cylsec = state->s * state->h;
+
+	    memset(buf, 0x40, 256);
+
+	    /*
+	     * k2 and k3 contain the first and last cylinder numbers to
+	     * format, inclusively.  The last cylinder may be partial due
+	     * to virtual remapping, e.g. for sf floppies.
+	     */
+
+	    c0 = state->k[2];
+	    c1 = state->k[3] + 1;
+
+	    s0 = c0 * cylsec;
+	    s1 = c1 * cylsec;
+
+	    if (s1 > drv->sectors)
+		s1 = drv->sectors;
+
+	    if (tracing(TRACE_DISK)) {
+		fprintf(tracef, "%s: formatting cyl %u..%u, sectors %u..%u\n",
+			drv->name, c0, c1-1, s0, s1-1);
+	    }
+
+	    if (c0 >= state->c) {
+		state->error = 0;
+	    } else if (s0 >= s1) {
+		/* Nothing to do - includes the case of s0 >= drv->sectors */
+	    } else {
+		if (hf->map) {
+		    memset(hf->map + (s0 << 8), 0x40, (s1-s0) << 8);
+		} else {
+		    fseek(hf->f, s0 << 8, SEEK_SET);
+		    for (s = s0; s < s1; s++)
+			fwrite(buf, 1, 256, hf->f);
+		    fflush(hf->f);
+		    if (ferror(hf->f))
+			state->error = 0x20; /* Write fault */
+		}
+	    }
+	}
+	state->k[1] &= ~0x08;
+    }
+
+    if (!(state->k[1] & 0x38))
+	state->k[0] &= ~0x10;
+
     state->state = disk_k0;
 }
 
@@ -292,6 +362,12 @@ void disk_out(int sel, int port, int value)
     if (!state)
         return;                 /* Not a disk drive */
 
+    if (tracing(TRACE_DISK)) {
+	fprintf(tracef, "%s: OUT  %d/%d : ", state->name, sel, port);
+	fprintf(tracef, "PC = %04X  BC = %04X  DE = %04X  HL = %04X\n",
+		REG_PC, REG_BC, REG_DE, REG_HL);
+    }
+
     if (state->state == disk_need_init)
         disk_init(state);
 
@@ -304,11 +380,12 @@ void disk_out(int sel, int port, int value)
 
     switch (port) {
     case 0:
+	state->notready_ctr = 0;
+
         switch (state->state) {
         case disk_k0:
         case disk_k1:
         case disk_k2:
-            state->status = state->aux_status = 0;
             state->k[state->state - disk_k0] = value;
             state->state++;
             break;
@@ -325,19 +402,19 @@ void disk_out(int sel, int port, int value)
             }
 
             /* Bad drive/sector? */
-            if (!cur_drv(state)->hf) {
-                state->status = 0x08;		/* Error */
-                state->aux_status = 0x80;       /* Device not ready */
-            } else if (!file_pos_valid(state)) {
-                state->status = 0x08;		/* Error */
-                state->aux_status = 0x10;       /* Seek error */
-            } else {
-		state->status = state->aux_status = 0;
-                do_next_command(state);
-            }
+	    if (state->k[0]) {
+		if (!cur_drv(state)->hf) {
+		    state->error = 0x80;	/* Device not ready */
+		} else if (state->k[0] & 0x09 && !file_pos_valid(state)) {
+		    /* Sector beyond end of disk */
+		    state->error = 0x21;	/* Expected by DOSGEN? */
+		}
+		if (!state->error)
+		    do_next_command(state);
+	    }
             break;
         case disk_upload:
-            state->buf[state->k[1] >> 6][state->out_ptr++] = value;
+            cur_buf(state)[state->out_ptr++] = value;
             if (tracing(TRACE_DISK))
                 fprintf(tracef, "%02X", value);
             if (state->out_ptr >= 256) {
@@ -358,11 +435,6 @@ void disk_out(int sel, int port, int value)
 
     case 2:                    /* Start command */
     case 4:                    /* Reset */
-        if (tracing(TRACE_DISK)) {
-            fprintf(tracef, "OUT %d/%d : ", sel, port);
-            fprintf(tracef, "PC = %04X  BC = %04X  DE = %04X  HL = %04X\n",
-                    REG_PC, REG_BC, REG_DE, REG_HL);
-        }
         disk_reset();
         break;
 
@@ -393,31 +465,32 @@ int disk_in(int sel, int port)
     switch (port) {
     case 0:
         if (state->in_ptr >= 0) {
+	    state->notready_ctr = 0;
             v = state->buf[state->k[1] >> 6][state->in_ptr++];
             if (state->in_ptr >= 256) {
                 state->in_ptr = -1;
                 do_next_command(state);
             }
         } else {
-            v = state->aux_status;
+            v = state->error;
         }
         break;
 
-    case 1:                    /* Controller status */
-        if (state->notready_ctr) {
-            state->notready_ctr--;
-            v = 0x80;
-        } else {
-            v = 0x01 | state->status | ((state->state == disk_k0) ? 0x80 : 0);
-        }
-        break;
-
+    case 1:
+	v = (state->state == disk_k0) ? 0x80 : 0;
+	v |= state->error ? 0 : 8;
+	v |= state->notready_ctr ? 0 : 1;
+	if (state->notready_ctr)
+	    state->notready_ctr--;
+	break;		       /* Primary status */
     default:
-        break;
+        v = 0xff;
+	break;
     }
 
     if (tracing(TRACE_DISK)) {
-        fprintf(tracef, "IN %d/%d: %02X : ", sel, port, v);
+        fprintf(tracef, "%s: IN  %d/%d: %02x : error %02x ",
+		state->name, sel, port, v, state->error);
         fprintf(tracef, "PC = %04X  BC = %04X  DE = %04X  HL = %04X\n",
                 REG_PC, REG_BC, REG_DE, REG_HL);
     }
