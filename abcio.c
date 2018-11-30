@@ -29,18 +29,51 @@ static struct z80_irq keyb_irq_fake =
 IRQ(IRQ80_PIOA, keyb_intack_fake, NULL, NULL);
 static struct z80_irq keyb_irq_800 = IRQ(IRQ800_DARTB, NULL, NULL, NULL);
 
+/*
+ * ABC802 decodes I/O addresses based on the upper 4 bits; convert to the
+ * canonical address form.
+ */
+struct port_mask {
+    uint8_t mask, bits;
+};
+
+#define UNUSED { 0xff, 0x00 }	/* Just pass port number through */
+
+static const struct port_mask abc802_port_mask[16] =
+{
+    { 0x07, 0x00 },		/* ABC-bus */
+    UNUSED,
+    { 0x03, 0x20 },		/* DART */
+
+    /*
+     * The CRTC connection is WEIRD: A3 needs to be 1 for write, 0 for
+     * read.  The other ports are reserved for "RAM controller", which
+     * includes the ABC806 RTC.  If this causes problems, it might be
+     * interesting to try changing the mask below to 0x09.
+     */
+    { 0x0f, 0x30 },		/* CRTC */
+
+    { 0x03, 0x40 },		/* SIO/2 */
+    UNUSED,
+    { 0x03, 0x60 },		/* CTC */
+    UNUSED,
+
+    UNUSED,
+    UNUSED,
+    UNUSED,
+    UNUSED,
+
+    UNUSED,
+    UNUSED,
+    UNUSED,
+    UNUSED
+};
+
 static inline uint8_t abc800_mangle_port(uint8_t port)
 {
-    if ((port & 0xe0) == 0x00)
-        return port & 0xe7;
-    else if ((port & 0xf0) == 0x20)
-        return port & 0xf3;
-    else if ((port & 0xf8) == 0x28)
-        return port & 0xf9;
-    else if ((port & 0xc0) == 0x40)
-        return port & 0xe3;
-    else
-        return port;
+    const struct port_mask *pm = &abc802_port_mask[port >> 4];
+
+    return (port & pm->mask) ^ pm->bits;
 }
 
 /*
@@ -111,6 +144,20 @@ static void abc80_out(uint8_t port, uint8_t value)
     default:
         break;
     }
+}
+
+/*
+ * Stubbed out V24 channel which is apparently used by MyAB CP/M to
+ * detect an ABC802?  Maybe because SYNC# is always high?
+ */
+static void abc800_v24_out(uint8_t port, uint8_t v)
+{
+    (void)port; (void)v;
+}
+static uint8_t abc800_v24_in(uint8_t port)
+{
+    /* 0x44 seems like a plausible post-reset value for RR0 */
+    return (port & 1) ? 0x44 : 0xff;
 }
 
 static bool vsync;
@@ -231,44 +278,49 @@ static void abc802_out(uint8_t port, uint8_t value)
     port = abc800_mangle_port(port);
 
     switch (port) {
-    case 0:
-    case 1:
-    case 2:
-    case 3:
-    case 4:
-    case 5:
+    case 0x00:
+    case 0x01:
+    case 0x02:
+    case 0x03:
+    case 0x04:
+    case 0x05:
         abcbus_out(port, value);
         break;
 
-    case 32:
-    case 33:
+    case 0x20:
+    case 0x21:
         dart_pr_out(port, value);
         break;
 
-    case 34:
-    case 35:
+    case 0x22:
+    case 0x23:
         dart_keyb_out(port, value);
         break;
 
-    case 54:
-    case 55:
+    case 0x36:
+    case 0x37:
         abc806_rtc_out(port, value);
         break;
 
-    case 56:
-    case 57:
+    case 0x38:
+    case 0x39:
         crtc_out(port, value);
         break;
 
-    case 66:
-    case 67:
+    case 0x40:
+    case 0x41:
+	abc800_v24_out(port, value);
+	break;
+
+    case 0x42:
+    case 0x43:
         abc800_sio_cas_out(port, value);
         break;
 
-    case 96:
-    case 97:
-    case 98:
-    case 99:
+    case 0x60:
+    case 0x61:
+    case 0x62:
+    case 0x63:
         abc800_ctc_out(port, value);
         break;
 
@@ -375,42 +427,47 @@ static uint8_t abc802_in(uint8_t port)
     port = abc800_mangle_port(port);
 
     switch (port) {
-    case 0:
-    case 1:
-    case 2:
-    case 7:
+    case 0x00:
+    case 0x01:
+    case 0x02:
+    case 0x07:
         v = abcbus_in(port);
         break;
 
-    case 32:
-    case 33:
+    case 0x20:
+    case 0x21:
         v = dart_pr_in(port);
         break;
 
-    case 34:
-    case 35:
+    case 0x22:
+    case 0x23:
         v = dart_keyb_in(port);
         break;
 
-    case 54:
-    case 55:
+    case 0x32:
+    case 0x33:
         v = abc806_rtc_in(port);
         break;
 
-    case 56:
-    case 57:
+    case 0x30:
+    case 0x31:
         v = crtc_in(port);
         break;
 
-    case 66:
-    case 67:
+    case 0x40:
+    case 0x41:
+	v = abc800_v24_in(port);
+	break;
+
+    case 0x42:
+    case 0x43:
         v = abc800_sio_cas_in(port);
         break;
 
-    case 96:
-    case 97:
-    case 98:
-    case 99:
+    case 0x60:
+    case 0x61:
+    case 0x62:
+    case 0x63:
         v = abc800_ctc_in(port);
         break;
 
