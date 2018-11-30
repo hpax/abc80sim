@@ -324,7 +324,7 @@ static void do_next_command(struct ctl_state *state)
 
 		fmtsec >>= single;
 
-		if (p < ep) {
+		if (*p++ == 0xfb) { /* Data block found */
 		    if (single) {
 			/* Really two 128-byte sectors! */
 			memcpy(data, p, 128);
