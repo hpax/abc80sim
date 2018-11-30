@@ -286,23 +286,61 @@ static void do_next_command(struct ctl_state *state)
     if (state->k[0] & 0x10 && state->k[1] & 0x08) {
 	state->out_ptr = 0;
 	/* FORMAT */
-        if (!file_wrok(hf)) {
-            state->error = 0x40;   /* Write protect */
+	if (!drv->hf) {
+	    state->error = 0x80;	/* Not ready */
+	} else if (!file_wrok(hf)) {
+            state->error = 0x40;	/* Write protect */
 	} else {
 	    unsigned int s, c0, c1, s0, s1;
 	    unsigned int cylsec = state->s * state->h;
-	    const uint8_t *data;
+	    uint8_t data[256];
+	    unsigned int fmtsec, filesec;
+
+	    /* Sector count produced by format */
+	    fmtsec = state->maxsectors;
+
+	    /* For non-MO-drives, this seems to be internally generated */
+	    memset(data, 0x40, 256);
 
 	    if (state->fmtdata_in_buf) {
 		/*
-		 * This is true for MO double density, single density
-		 * not supported yet.
+		 * MO drives put the sector image in the buffers, for
+		 * backwards compatibility and to support single density.
+		 *
+		 * Right before the F7 header CRC opcode is a density byte;
+		 * 00 for single, and 01 for double.  The data begins after
+		 * a byte of FB.
 		 */
-		data = state->buf[0] + 0x3b;
-	    } else {
-		memset(state->buf[3], 0x40, 256); /* Or zero? */
-		data = state->buf[3];
+		bool single = false;
+		const uint8_t *p, *ep;
+
+		ep = state->buf[1];
+		for (p = state->buf[0]+1; p < ep; p++) {
+		    if (*p == 0xf7)
+			single = (p[-1] == 0);
+		    if (*p == 0xfb)
+			break;
+		}
+
+		fmtsec >>= single;
+
+		if (p < ep) {
+		    if (single) {
+			/* Really two 128-byte sectors! */
+			memcpy(data, p, 128);
+			memcpy(data+128, p, 128);
+		    } else {
+			memcpy(data, p, 128);
+		    }
+		}
 	    }
+
+	    /*
+	     * Adjust the size of the accessible device to the smallest
+	     * of the physical file and the formatted size
+	     */
+	    filesec = drv->hf->filesize >> 8;
+	    drv->sectors = (filesec && filesec < fmtsec) ? filesec : fmtsec;
 
 	    /*
 	     * k2 and k3 contain the first and last cylinder numbers to
