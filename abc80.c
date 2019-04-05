@@ -330,8 +330,6 @@ int main(int argc, char **argv)
     bool faketype_set = false;
     SDL_Thread *cpu_thread;
 
-    attach_console();
-
     (void)argc;
     program_name = argv[0];
 

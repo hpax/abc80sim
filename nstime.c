@@ -40,45 +40,33 @@ void nstime_init(void)
 
 #elif defined(__WIN32__)
 
-static uint64_t tzero;
+static uint64_t tzero, tscfactor;
 static HANDLE wait_timer;
 
-static inline uint64_t fromft(FILETIME ft)
+static inline uint64_t tsc(void)
 {
-    ULARGE_INTEGER q;
-
-    q.LowPart = ft.dwLowDateTime;
-    q.HighPart = ft.dwHighDateTime;
-    return q.QuadPart;
-}
-
-static inline FILETIME toft(uint64_t t)
-{
-    FILETIME ft;
-    ULARGE_INTEGER q;
-
-    q.QuadPart = t;
-    ft.dwLowDateTime = q.LowPart;
-    ft.dwHighDateTime = q.HighPart;
-    return ft;
+#ifdef HAVE___RDTSC
+    return __rdtsc();
+#else
+    LARGE_INTEGER tsc;
+    QueryPerformanceCounter(&tsc);
+    return tsc.QuadPart;
+#endif
 }
 
 uint64_t nstime(void)
 {
-    FILETIME ft;
-    uint64_t t;
-
-    GetSystemTimeAsFileTime(&ft);
-    t = fromft(ft);
-    return (t - tzero) * UINT64_C(100);
+    return __muluh(tsc() - tzero, tscmult);
 }
 
 void nstime_init(void)
 {
     FILETIME ft;
+    LARGE_INTEGER tscfreq;
 
-    GetSystemTimeAsFileTime(&ft);
-    tzero = fromft(ft);
+    QueryPerformanceFrequency(&tscfreq);
+    /* Should really be 2^64 not 2^64-1, but very much close enough */
+    tscmult = UINT64_MAX/((uint64_t)(tscfreq.QuadPart));
 
     wait_timer = CreateWaitableTimer(NULL, TRUE, NULL);
 }

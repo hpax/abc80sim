@@ -57,21 +57,6 @@ static int redirect_stdio(const char *in, const char *out)
 
 #ifdef __WIN32__
 
-/* A Windows GUI app detaches from the console by default */
-void attach_console(void)
-{
-    atexit(detach_console);
-
-    if (!AttachConsole(ATTACH_PARENT_PROCESS))
-        return;                 /* Attach failed */
-
-    if (redirect_stdio("CONIN$", "CONOUT$"))
-        detach_console();
-
-    /* We are probably displaying a command prompt, so start with a newline */
-    putchar('\n');
-}
-
 void detach_console(void)
 {
     redirect_stdio("\\Device\\Null", NULL);
@@ -79,11 +64,6 @@ void detach_console(void)
 }
 
 #else /* not __WIN32__ */
-
-void attach_console(void)
-{
-    /* Do nothing */
-}
 
 #ifndef _PATH_DEVNULL
 #define _PATH_DEVNULL "/dev/null"

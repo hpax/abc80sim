@@ -104,6 +104,22 @@ typedef int mode_t;
 #endif
 
 /*
+ * 128-bit integers
+ */
+#ifdef HAVE_UINT128_T
+/* Already good */
+#elif defined(HAVE___UINT128_T)
+typedef __uint128_t uint128_t;
+# define HAVE_UINT128_T
+# elif defined(HAVE___UINT128)
+typedef __uint128 uint128_t;
+# define HAVE_UINT128_T
+#elif defined(HAVE_UNSIGNED___INT128)
+typedef unsigned __int128 uint128_t;
+# define HAVE_UINT128_T
+#endif
+
+/*
  * Hack to support external-linkage inline functions
  */
 #ifndef HAVE_STDC_INLINE

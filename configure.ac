@@ -16,6 +16,10 @@ export WINELOADER
 
 AC_PREFIX_PROGRAM(abc80)
 
+dnl What to build
+TARGETS='abc80$(X)'
+AC_SUBST(TARGETS)
+
 dnl Get canonical target ("host") name
 AC_CANONICAL_HOST
 
@@ -50,15 +54,13 @@ dnl Add -O3 unless disabled; seems to help this program quite a bit
 PA_ARG_DISABLED([O3], [don't compile with -O3 optimization],
  [], [PA_ADD_CFLAGS(-O3)])
 
+dnl Can we be selective about libraries?
+PA_ADD_LDFLAGS([--as-needed])
+
 dnl Don't put things in common if we can avoid it.  We don't want to
 dnl assume all compilers support common, and this will help find those
 dnl problems.  This also works around an OSX linker problem.
 PA_ADD_CFLAGS([-fno-common])
-
-dnl Compiler intrinsics
-PA_ADD_HEADERS(intrin.h)
-PA_HAVE_FUNC(__builtin_expect, (1,1))
-PA_HAVE_FUNC(__builtin_constant_p, (0))
 
 dnl See if we can find sdl-config
 AC_CHECK_TOOL([SDL_CONFIG], [sdl-config], [false])
@@ -67,9 +69,29 @@ AS_IF(["$SDL_CONFIG" --cflags >/dev/null 2>&1],
        LIBS="$LIBS `"$SDL_CONFIG" --libs`"],
       [AC_MSG_WARN([sdl-config not found or not functional, this is probably bad news])])
 
+dnl Hack: on windows, build as a console app but create abc80win.exe
+pa_libs_win="`echo "$LIBS" | sed -e 's/-mwindows//'`"
+AS_IF([test x"$LIBS" != x"$pa_libs_win"],
+      [LIBS="$pa_libs_win"
+       TARGETS="$TARGETS abc80win\$(X)"
+      ])
+
+dnl SDL headers
 AC_CHECK_HEADERS(SDL.h)
 AC_CHECK_HEADERS(png.h)
 
+dnl Compiler intrinsics
+PA_ADD_HEADERS(intrin.h)
+PA_ADD_HEADERS(x86intrin.h)
+PA_HAVE_FUNC(__builtin_expect, (1,1))
+PA_HAVE_FUNC(__builtin_constant_p, (0))
+PA_HAVE_FUNC(__rdtsc, ())
+PA_HAVE_FUNC(__umulh, (1ULL, 1ULL))
+PA_HAVE_FUNC(__emulu, (1U, 1U))
+PA_HAVE_FUNC(_addcarry_u64, (1, 1ULL, 1ULL, NULL))
+
+dnl System headers
+PA_ADD_HEADERS(windows.h)
 AC_CHECK_HEADERS(dirent.h)
 AC_CHECK_HEADERS(sys/types.h)
 AC_CHECK_HEADERS(sys/stat.h)
@@ -78,13 +100,18 @@ AC_CHECK_HEADERS(unistd.h)
 AC_CHECK_HEADERS(fcntl.h)
 AC_CHECK_HEADERS(paths.h)
 AC_CHECK_HEADERS(io.h)
-AC_CHECK_HEADERS(windows.h)
 AC_CHECK_HEADERS(direct.h)
 PA_SANE_TERMIOS
 
 dnl Useful functions which we may lack
 AC_CHECK_FUNCS([mempcpy])
 AC_CHECK_FUNCS([asprintf])
+
+dnl 128-bit integers?
+AC_CHECK_TYPES([uint128_t])
+AC_CHECK_TYPES([__uint128_t])
+AC_CHECK_TYPES([__uint128])
+AC_CHECK_TYPES([unsigned __int128])
 
 dnl Windows stat functions are a bit different, sigh...
 AC_CHECK_TYPES([struct _stat64])
@@ -123,6 +150,7 @@ AC_CHECK_FUNCS(gettimeofday)
 
 dnl Console handling
 AC_CHECK_FUNCS(setsid)
+PA_HAVE_FUNC(AllocConsole, ())
 AC_FUNC_FORK
 
 dnl Checks for library functions.

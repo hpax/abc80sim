@@ -40,16 +40,21 @@ HDRS = clock.h screen.h z80.h z80irq.h patchlevel.h screenshot.h abcio.h \
 
 OBJS = $(patsubst %.c,%.$(O),$(SRCS))
 
-all: abc80$(X)
+TARGETS = @TARGETS@
 
-install: abc80$(X)
+all: $(TARGETS)
+
+install: all
 	$(MKDIR) -p $(INSTALLROOT)$(bindir)
-	$(INSTALL_PROGRAM) abc80$(X) $(INSTALLROOT)$(bindir)
+	$(INSTALL_PROGRAM) $(TARGETS) $(INSTALLROOT)$(bindir)
 	$(MKDIR) -p $(INSTALLROOT)$(mandir)/man1
 	$(INSTALL_DATA) abc80.man $(INSTALLROOT)$(mandir)/man1/abc80.1
 
 abc80$(X): $(OBJS)
 	$(CC) $(LDFLAGS) -o abc80$(X) $(OBJS) $(LIBS)
+
+abc80win$(X): winwrap.c
+	$(CC) $(LDFLAGS) -mwindows -municode -D_UNICODE -o abc80win$(X) $^
 
 .PRECIOUS: %.c
 %.c: %.rom bin2c.pl
@@ -74,5 +79,5 @@ asmsrc:
 	$(MAKE) -C asmsrc
 
 clean:
-	$(RM_F) abc80$(X) *.$(O) *~ core *.lst *.i *.s *~
+	$(RM_F) $(TARGETS) *.$(O) *~ core *.lst *.i *.s *~
 	$(RM_F) roms/*.c
