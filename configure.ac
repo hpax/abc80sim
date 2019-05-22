@@ -101,7 +101,7 @@ AC_CHECK_HEADERS(fcntl.h)
 AC_CHECK_HEADERS(paths.h)
 AC_CHECK_HEADERS(io.h)
 AC_CHECK_HEADERS(direct.h)
-PA_SANE_TERMIOS
+AC_CHECK_HEADERS(termios.h)
 
 dnl Useful functions which we may lack
 AC_CHECK_FUNCS([mempcpy])

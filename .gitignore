@@ -33,3 +33,4 @@ abc*/
 /config.status
 /configure
 /Makefile
+/baudtospeed.c

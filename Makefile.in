@@ -70,6 +70,12 @@ abc80win$(X): winwrap.c
 %.s: %.c $(HDRS)
 	$(CC) $(CFLAGS) -S -o $@ $<
 
+# Note: it is OK for the cpp invocation to fail, which is a good thing
+# because it uses nonstandard constructs.
+baudtospeed.c: termios.c baudtospeed.sh
+	( $(CC) $(CFLAGS) -Wp,-dM -E termios.c || true ) \
+		| sh baudtospeed.sh > "$@"
+
 .PHONY: roms
 roms:
 	$(MAKE) -C roms
