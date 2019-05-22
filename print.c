@@ -20,6 +20,7 @@
 #include "compiler.h"
 #include "abcprintd.h"
 #include "hostfile.h"
+#include "print.h"
 
 #include <wchar.h>
 #include <locale.h>
@@ -31,13 +32,12 @@ const char *lpr_command =
 const char *lpr_command = "lpr '*'";
 #endif
 
-static struct host_file *hf;
-
-static void print_finish(void)
+static void print_finish(struct abcprint *me)
 {
     const char *p;
     char *cmd, *q;
     size_t cmdlen, namelen;
+    struct host_file *hf = me->prfile;
 
     if (!hf)
         return;
@@ -65,12 +65,13 @@ static void print_finish(void)
         system(cmd);
         free(cmd);
     }
-    close_file(&hf);
+    close_file(&me->prfile);
 }
 
-static void output(unsigned char c)
+static void output(struct abcprint *me, unsigned char c)
 {
     static const char temp_prefix[] = "abcprint_tmp_";
+    struct host_file *hf = me->prfile;
 
     static const wchar_t abc_to_unicode[256] =
         L"\000\001\002\003\004\005\006\007\010\011\012\013\014\015\016\017"
@@ -89,11 +90,11 @@ static void output(unsigned char c)
         L"\340\341\342\343{}\346\347\350`\352\353\354\355\356\357"
         L"\360\361\362\363\364\365|\367\370\371\372\373~\375\376\377";
 
-    if (!hf) {
+    if (hf) {
         if (c < '\b' || (c > '\r' && c < 31))
-            hf = temp_file(HF_BINARY, temp_prefix);
+            me->prfile = hf = temp_file(HF_BINARY, temp_prefix);
         else
-            hf = temp_file(HF_UNICODE, temp_prefix);
+            me->prfile = hf = temp_file(HF_UNICODE, temp_prefix);
     }
 
     if (hf->mode == HF_BINARY)
@@ -102,21 +103,32 @@ static void output(unsigned char c)
         putwc(abc_to_unicode[c], hf->f);
 }
 
-enum input_state {
-    is_normal,                  /* Normal operation */
-    is_ff,                      /* 0xFF received */
-    is_file,                    /* File operation in progress */
-    is_console                  /* Output to console */
-};
-static enum input_state is;
 FILE *console_file;
 
-void abcprint_init(void)
+void abcprint_reset(struct abcprint *me)
 {
-    is = is_normal;
+    struct send_data sd;
+
+    fileop_reset(me);
+    sd = me->sd;
+    memset(me, 0, sizeof *me);
+    me->sd = sd;
+    me->istate = is_normal;
 }
 
-void abcprint_recv(const void *data, size_t len)
+struct abcprint *abcprint_init(send_func send_data, void *pvt)
+{
+    struct abcprint *me = calloc(sizeof *me, 1);
+    if (!me)
+	return NULL;
+
+    me->sd.func = send_data;
+    me->sd.pvt = pvt;
+    abcprint_reset(me);
+    return me;
+}
+
+void abcprint_recv(struct abcprint *me, const void *data, size_t len)
 {
     const unsigned char *dp = data;
     unsigned char c;
@@ -124,38 +136,38 @@ void abcprint_recv(const void *data, size_t len)
     while (len--) {
         c = *dp++;
 
-        switch (is) {
+        switch (me->istate) {
         case is_normal:
             if (c == 0xff)
-                is = is_ff;
+                me->istate = is_ff;
             else
-                output(c);
+                output(me, c);
             break;
 
         case is_ff:
             if (c == 0) {
                 /* End of job */
-                print_finish();
-                is = is_normal;
+                print_finish(me);
+                me->istate = is_normal;
             } else if (c >= 0xa0 && c <= 0xbf) {
                 /* Opcode range reserved for file ops */
-                is = file_op(c) ? is_file : is_normal;
+                me->istate = file_op(me, c) ? is_file : is_normal;
             } else if (c == 0xc0) {
                 /* Output to console */
-                is = is_console;
+                me->istate = is_console;
             } else {
-                output(c);
-                is = is_normal;
+                output(me, c);
+                me->istate = is_normal;
             }
             break;
 
         case is_file:
-            is = file_op(c) ? is_file : is_normal;
+            me->istate = file_op(me, c) ? is_file : is_normal;
             break;
 
         case is_console:
             if (c == 0) {
-                is = is_normal;
+                me->istate = is_normal;
                 if (console_file)
                     fflush(console_file);
             } else if (console_file) {

@@ -6,21 +6,30 @@
 
 static unsigned char output_buf[BUF_SIZE];
 static int output_head, output_tail;
+static struct abcprint *me;
+
 
 /* Called to send data abcprint -> abc */
-void abcprint_send(const void *buf, size_t count)
+static size_t abcprint_send(void *pvt, const void *buf, size_t count)
 {
     const unsigned char *bp = buf;
+    size_t sent = 0;
 
-    while (count--) {
+    (void)pvt;
+
+    while (count) {
         int nt = (output_tail + 1) % BUF_SIZE;
 
         if (nt == output_head)
-            return;             /* Output buffer full - data lost */
+            break;		/* Output buffer full - data lost */
 
         output_buf[output_tail] = *bp++;
         output_tail = nt;
+	sent++;
+	count--;
     }
+
+    return sent;
 }
 
 static int abcprint_read(void)
@@ -45,11 +54,8 @@ static struct z80_irq dart_pr_irq;
 
 void printer_reset(void)
 {
-    static bool init = false;
-
-    if (!init) {
-        init = true;
-        abcprint_init();
+    if (!me) {
+        me = abcprint_init(abcprint_send, NULL);
         if (model != MODEL_ABC80)
             z80_register_irq(&dart_pr_irq);
     }
@@ -63,11 +69,11 @@ void printer_out(int sel, int port, int value)
 
     switch (port) {
     case 0:
-        abcprint_recv(&v, 1);   /* Data received abc -> abcprint */
+	abcprint_recv(me, &v, 1);   /* Data received abc -> abcprint */
         break;
 
     case 4:
-        abcprint_init();
+	printer_reset();
         break;
 
     default:
@@ -87,7 +93,7 @@ int printer_in(int sel, int port)
         break;
 
     case 1:
-        v = abcprint_poll()? 0x40 : 0;
+        v = abcprint_poll() ? 0x40 : 0;
         break;
 
     default:
@@ -110,7 +116,7 @@ void dart_pr_out(uint8_t port, uint8_t v)
     switch (port & 1) {
     case 0:                    /* Data port */
         if (dart_pr_ctl[5] & 0x08)
-            abcprint_recv(&v, 1);
+            abcprint_recv(me, &v, 1);
         break;
 
     case 1:                    /* Control port */

@@ -3,10 +3,14 @@
 
 #include "compiler.h"
 
-extern void abcprint_init(void);
-extern void abcprint_recv(const void *, size_t);
-extern void abcprint_send(const void *, size_t);
-extern bool file_op(unsigned char);
+/* abcprint instance */
+struct abcprint;
+
+typedef size_t (*send_func)(void *, const void *, size_t);
+
+extern struct abcprint *abcprint_init(send_func, void *);
+extern void abcprint_reset(struct abcprint *);
+extern void abcprint_recv(struct abcprint *, const void *, size_t);
 extern const char *fileop_path, *lpr_command;
 extern FILE *console_file;
 

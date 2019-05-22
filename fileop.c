@@ -2,53 +2,34 @@
 #include "hostfile.h"
 #include "abcfile.h"
 #include "trace.h"
+#include "print.h"
 
 const char *fileop_path = "abcdir";
 
 #define BUF_SIZE 512
 
-static enum {
-    st_op,                      /* Receiving command */
-    st_open,
-    st_read,
-    st_print,                   /* Before data */
-    st_print2,                  /* After data */
-    st_seek,
-    st_rename,
-    st_delete,
-    st_pread,
-    st_pwrite,                  /* Before data */
-    st_pwrite2,                 /* After data */
-    st_blksize
-} state = st_op;
-
-struct file {
-    struct host_file *hf;
-    bool binary;
-};
-static struct file filemap[65536];      /* Massive waste of space, yes... */
-
-static unsigned int blksize;    /* System block size */
-
-static inline bool file_open(uint16_t ix)
+static inline struct fileop_file *getfile(struct abcprint *me, uint16_t ix)
 {
-    return ! !filemap[ix].hf;
+    return &me->filemap[ix];
 }
 
-static inline bool file_binary(uint16_t ix)
+/* In the future this may be used to allocate filemap storage */
+#define getfile_alloc(me,ix) getfile(me,ix)
+
+static inline bool file_open(const struct fileop_file *ff)
 {
-    return filemap[ix].binary;
+    return ff && ff->hf;
 }
 
-static inline enum host_file_mode file_mode(uint16_t ix)
+static inline bool file_binary(const struct fileop_file *ff)
 {
-    return filemap[ix].hf->mode;
+    return ff->binary;
 }
 
-static unsigned int byte_count = 4;
-static unsigned char cmd[4];
-static unsigned char *bytep = cmd;
-static unsigned char data[65536 + 2];
+static inline enum host_file_mode file_mode(const struct fileop_file *ff)
+{
+    return ff->hf->mode;
+}
 
 static void trace_data(const void *data, size_t len, const char *pfx)
 {
@@ -86,80 +67,93 @@ static void trace_data(const void *data, size_t len, const char *pfx)
     putc('\n', tracef);
 }
 
-static void pr_send(const void *buf, size_t len)
+static void pr_send(struct abcprint *me, const void *buf, size_t len)
 {
+    const uint8_t *p = buf;
+
     trace_data(buf, len, "SEND");
-    abcprint_send(buf, len);
+    while (len) {
+	size_t sent = me->sd.func(me->sd.pvt, p, len);
+	if (sent == (size_t)-1)
+	    sent = 0;
+	len -= sent;
+	p += sent;
+    }
 }
 
-static void send_reply(int status)
+static void send_reply(struct abcprint *me, int status)
 {
     unsigned char reply[4];
 
     reply[0] = 0xff;
-    reply[1] = cmd[0];
-    reply[2] = cmd[1];
+    reply[1] = me->cmd[0];
+    reply[2] = me->cmd[1];
     reply[3] = status;
 
-    pr_send(reply, 4);
+    pr_send(me, reply, 4);
 }
 
-/* Returns the status code, use send_reply(do_close(ix)) if reply desired */
-static int do_close(uint16_t ix)
+/* Returns the status code, use send_reply(me, do_close(ix)) if reply desired */
+static int do_close(struct abcprint *me)
 {
-    if (file_open(ix)) {
-        close_file(&filemap[ix].hf);
+    if (file_open(me->ff)) {
+        close_file(&me->ff->hf);
         return 0;
     } else {
         return 128 + 45;        /* "Fel logiskt filnummer" */
     }
 }
 
-static void do_closeall(bool reply)
+static void do_closeall(struct abcprint *me, bool reply)
 {
-    int ix;
+    size_t ix;
 
-    for (ix = 0; ix <= 65535; ix++)
-        if (file_open(ix))
-            do_close(ix);
+    for (ix = 0; ix <= 65535; ix++) {
+	struct fileop_file *ff = getfile(me, ix);
+	if (file_open(ff))
+	    close_file(&ff->hf);
+    }
 
     if (reply)
-        send_reply(0);
+        send_reply(me, 0);
 }
 
-static void do_open(uint16_t ix, char *name)
+static void do_open(struct abcprint *me, char *name)
 {
     int err;
     char path_buf[64];
     int openflags;
     enum host_file_mode mode;
+    struct fileop_file *ff;
     struct host_file *hf;
+    uint8_t cmd0 = me->cmd[0];
 
     if (!fileop_path) {
-        send_reply(128 + 42);   /* Skivan ej klar */
+        send_reply(me, 128 + 42);   /* Skivan ej klar */
         return;
     }
 
-    do_close(ix);
+    do_close(me);
 
     unmangle_filename(path_buf, name);
 
     if (!path_buf[0]) {
         /* Empty filename (readdir) */
 
-        mode = ((cmd[0] & 3) == 0) ? HF_DIRECTORY : HF_FAIL;
+        mode = ((cmd0 & 3) == 0) ? HF_DIRECTORY : HF_FAIL;
         openflags = 0;
     } else {
         /* Actual filename */
 
         mode = HF_BINARY;
-        mode |= (cmd[0] & 2) ? 0 : HF_RETRY;
-        openflags = (cmd[0] & 2) ? (O_RDWR | O_TRUNC | O_CREAT) : O_RDWR;
+        mode |= (cmd0 & 2) ? 0 : HF_RETRY;
+        openflags = (cmd0 & 2) ? (O_RDWR | O_TRUNC | O_CREAT) : O_RDWR;
     }
 
     hf = open_host_file(mode, fileop_path, path_buf, openflags);
-    filemap[ix].hf = hf;
-    filemap[ix].binary = cmd[0] & 1;
+    ff = getfile_alloc(me, me->ix);
+    ff->hf = hf;
+    ff->binary = cmd0 & 1;
 
     switch (errno) {
 #if 0                           /* Enable this? */
@@ -179,26 +173,29 @@ static void do_open(uint16_t ix, char *name)
         break;
     }
 
-    send_reply(hf ? 0 : err);
+    send_reply(me, hf ? 0 : err);
 }
 
-static void do_read_block(uint16_t ix, uint16_t len)
+static void do_read_block(struct abcprint *me, uint16_t len)
 {
-    struct host_file *hf = filemap[ix].hf;
+    struct fileop_file *ff = me->ff;
+    struct host_file *hf;
     int err;
     int dlen;
 
-    if (!file_open(ix)) {
-        send_reply(128 + 45);
+    if (!file_open(ff)) {
+        send_reply(me, 128 + 45);
         return;
     }
-    if (file_mode(ix) == HF_DIRECTORY) {
-        send_reply(128 + 37);   /* Felaktigt recordformat */
+    hf = ff->hf;
+
+    if (file_mode(ff) == HF_DIRECTORY) {
+        send_reply(me, 128 + 37);   /* Felaktigt recordformat */
         return;
     }
 
     clearerr(hf->f);
-    dlen = fread(data + 2, 1, len, hf->f);
+    dlen = fread(me->data + 2, 1, len, hf->f);
     if (dlen == 0) {
         if (ferror(hf->f)) {
             switch (errno) {
@@ -216,55 +213,56 @@ static void do_read_block(uint16_t ix, uint16_t len)
             /* EOF */
             err = 128 + 34;     /* Slut på filen */
         }
-        send_reply(err);
+        send_reply(me, err);
         return;
     }
 
-    send_reply(0);
+    send_reply(me, 0);
 
-    data[0] = len;
-    data[1] = len >> 8;
-    pr_send(data, len + 2);
+    me->data[0] = len;
+    me->data[1] = len >> 8;
+    pr_send(me, me->data, len + 2);
 }
 
 /* Common routine for all commands which need seek */
-static int seeker(uint16_t ix, uint64_t pos)
+static int seeker(struct abcprint *me, uint64_t pos)
 {
-    struct host_file *hf = filemap[ix].hf;
-    int err;
+    struct fileop_file *ff = me->ff;
+    struct host_file *hf;
 
-    if (!file_open(ix)) {
-        err = 128 + 45;         /* Fel logiskt filnummer */
-    } else if (file_mode(ix) == HF_DIRECTORY) {
-        err = 128 + 37;         /* Felaktigt recordformat */
-    } else if (fseek(hf->f, pos, SEEK_SET) == -1) {
-        err = 128 + 38;         /* Recordnummer utanför filen */
-    } else {
-        err = 0;
-    }
+    if (!file_open(ff))
+        return 128 + 45;         /* Fel logiskt filnummer */
 
-    return err;
+    hf = ff->hf;
+    if (file_mode(ff) == HF_DIRECTORY)
+        return 128 + 37;         /* Felaktigt recordformat */
+
+    if (fseeko(hf->f, pos, SEEK_SET) == -1)
+        return 128 + 38;         /* Recordnummer utanför filen */
+
+    return 0;
 }
 
-static void do_seek(uint16_t ix, uint64_t pos)
+static void do_seek(struct abcprint *me, uint64_t pos)
 {
-    send_reply(seeker(ix, pos));
+    send_reply(me, seeker(me, pos));
 }
 
-static void do_pread(uint16_t ix, uint16_t blk)
+static void do_pread(struct abcprint *me, uint16_t blk)
 {
     int err;
 
-    err = seeker(ix, blksize * (long)blk);
+    err = seeker(me, me->blksize * (long)blk);
     if (err)
-        send_reply(err);
+        send_reply(me, err);
     else
-        do_read_block(ix, blksize);
+        do_read_block(me, me->blksize);
 }
 
-static void do_input(uint16_t ix)
+static void do_input(struct abcprint *me)
 {
-    struct host_file *hf = filemap[ix].hf;
+    struct fileop_file *ff = me->ff;
+    struct host_file *hf;
     int err;
     char data1[255 + 2];        /* Max number of bytes to return + 2 */
     char *p, *q, c;
@@ -272,14 +270,15 @@ static void do_input(uint16_t ix)
     struct dirent *de;
     struct stat st;
 
-    if (!file_open(ix)) {
-        send_reply(128 + 45);
+    if (!file_open(ff)) {
+        send_reply(me, 128 + 45);
         return;
     }
+    hf = ff->hf;
 
-    if (file_mode(ix) != HF_DIRECTORY) {
+    if (file_mode(ff) != HF_DIRECTORY) {
         clearerr(hf->f);
-        if (!fgets((char *)data, sizeof data, hf->f)) {
+        if (!fgets((char *)me->data, sizeof me->data, hf->f)) {
             if (ferror(hf->f)) {
                 switch (errno) {
                 case EBADF:
@@ -298,8 +297,8 @@ static void do_input(uint16_t ix)
             }
         } else {
             /* Strip CR and change LF -> CR LF */
-            if (!file_binary(ix)) {
-                for (p = (char *)data, q = data1 + 2; (c = *p); p++) {
+            if (!file_binary(ff)) {
+                for (p = (char *)me->data, q = data1 + 2; (c = *p); p++) {
                     if (q == &data1[sizeof data1])
                         break;
                     switch (c) {
@@ -330,8 +329,8 @@ static void do_input(uint16_t ix)
         }
         if (de) {
             unsigned long blocks, pad;
-            blocks = (st.st_size + blksize - 1) / blksize;
-            pad = blksize * blocks - st.st_size;
+            blocks = (st.st_size + me->blksize - 1) / me->blksize;
+            pad = me->blksize * blocks - st.st_size;
             /* pad = unused bytes in the last block */
             dlen += sprintf(data1 + 2 + dlen, ",%lu,%lu\r\n", blocks, pad);
             err = 0;
@@ -342,17 +341,18 @@ static void do_input(uint16_t ix)
         err = 128 + 44;
     }
 
-    send_reply(err);
+    send_reply(me, err);
     if (!err) {
         data1[0] = dlen;
         data1[1] = dlen >> 8;
-        pr_send(data1, dlen + 2);
+        pr_send(me, data1, dlen + 2);
     }
 }
 
-static void do_print(uint16_t ix, uint16_t len, bool eolcvt)
+static void do_print(struct abcprint *me, uint16_t len, bool eolcvt)
 {
-    struct host_file *hf = filemap[ix].hf;
+    struct fileop_file *ff = me->ff;
+    struct host_file *hf;
     int err;
 
 #ifdef __WIN32__
@@ -360,70 +360,80 @@ static void do_print(uint16_t ix, uint16_t len, bool eolcvt)
     eolcvt = false;
 #endif
 
-    if (!file_open(ix)) {
+    if (!file_open(ff)) {
         err = 128 + 45;
-    } else if (file_mode(ix) == HF_DIRECTORY) {
-        err = 128 + 39;         /* Directories are readonly */
-    } else {
-        clearerr(hf->f);
-        if (len) {
-            if (eolcvt && !file_binary(ix)) {
-                int i;
-                for (i = 0; i < len - 1; i++) {
-                    char c = data[i];
-                    if (c == '\r')
-                        continue;       /* CR LF -> LF */
-                    else
-                        putc(c, hf->f);
-                }
-                putc(data[len - 1], hf->f);     /* Last char is always verbatim */
-            } else {
-                fwrite(data, 1, len, hf->f);
-            }
-            fflush(hf->f);
-        }
-
-        if (!ferror(hf->f)) {
-            err = 0;
-        } else {
-            switch (errno) {
-            case EACCES:
-                err = 128 + 39; /* Filen skrivskyddad */
-                break;
-            case ENOSPC:
-            case EFBIG:
-                err = 128 + 41; /* Skivan full */
-                break;
-            case EROFS:
-                err = 128 + 43; /* Skivan skrivskyddad */
-                break;
-            case EBADF:
-                err = 128 + 44; /* Logisk fil ej öppen */
-                break;
-            case EIO:
-                err = 128 + 36; /* Checksummafel vid skrivning */
-                break;
-            default:
-                err = 128 + 48; /* Fel i biblioteket */
-                break;
-            }
-        }
+	goto fail;
     }
-    send_reply(err);
+    hf = ff->hf;
+
+    if (file_mode(ff) == HF_DIRECTORY) {
+        err = 128 + 39;         /* Directories are readonly */
+	goto fail;
+    }
+
+    hf = ff->hf;
+
+    clearerr(hf->f);
+    if (len) {
+	if (eolcvt && !file_binary(ff)) {
+	    int i;
+	    for (i = 0; i < len - 1; i++) {
+		char c = me->data[i];
+		if (c == '\r')
+		    continue;       /* CR LF -> LF */
+		else
+		    putc(c, hf->f);
+	    }
+	    /* Last char is always verbatim */
+	    fputc(me->data[len - 1], hf->f);
+	} else {
+	    fwrite(me->data, 1, len, hf->f);
+	}
+	fflush(hf->f);
+    }
+
+    if (!ferror(hf->f)) {
+	err = 0;
+    } else {
+	switch (errno) {
+	case EACCES:
+	    err = 128 + 39; /* Filen skrivskyddad */
+	    break;
+	case ENOSPC:
+	case EFBIG:
+	    err = 128 + 41; /* Skivan full */
+	    break;
+	case EROFS:
+	    err = 128 + 43; /* Skivan skrivskyddad */
+	    break;
+	case EBADF:
+	    err = 128 + 44; /* Logisk fil ej öppen */
+	    break;
+	case EIO:
+	    err = 128 + 36; /* Checksummafel vid skrivning */
+	    break;
+	default:
+	    err = 128 + 48; /* Fel i biblioteket */
+	    break;
+	}
+    }
+
+fail:
+    send_reply(me, err);
 }
 
-static void do_pwrite(uint16_t ix, uint16_t blk)
+static void do_pwrite(struct abcprint *me, uint16_t blk)
 {
     int err;
 
-    err = seeker(ix, blksize * (long)blk);
+    err = seeker(me, me->blksize * (long)blk);
     if (err)
-        send_reply(err);
+        send_reply(me, err);
     else
-        do_print(ix, blksize, false);
+        do_print(me, me->blksize, false);
 }
 
-static void do_rename(const char *files)
+static void do_rename(struct abcprint *me, const char *files)
 {
     char old_name[64], new_name[64];
     int err;
@@ -459,10 +469,10 @@ static void do_rename(const char *files)
         }
     }
 
-    send_reply(err);
+    send_reply(me, err);
 }
 
-static void do_delete(const char *file)
+static void do_delete(struct abcprint *me, const char *file)
 {
     char path_buf[64];
     int err;
@@ -496,16 +506,27 @@ static void do_delete(const char *file)
         }
     }
 
-    send_reply(err);
+    send_reply(me, err);
 }
 
-typedef union argbuf {
-    uint8_t b[32];
-    char c[32];
-    uint64_t q;
-} argbuf;
+/* Revert the state machine to its initial state (no command in progress) */
+void fileop_goto_init_state(struct abcprint *me)
+{
+    memset(&me->cmd, 0, sizeof me->cmd);
+    memset(&me->argbuf, 0, sizeof me->argbuf);
+    me->bytep = me->cmd;
+    me->byte_count = 4;
+    me->fstate = st_op;
+}
 
-static inline uint64_t get_qword(const argbuf * v)
+/* Initialize or terminate the fileop session */
+void fileop_reset(struct abcprint *me)
+{
+    me->blksize = 253;
+    fileop_goto_init_state(me);
+}
+
+static inline uint64_t get_qword(const argbuf *v)
 {
 #ifdef WORDS_LITTLEENDIAN
     return v->q;
@@ -516,93 +537,92 @@ static inline uint64_t get_qword(const argbuf * v)
         ((uint64_t) v->b[3] << 24) +
         ((uint64_t) v->b[4] << 32) +
         ((uint64_t) v->b[5] << 40) +
-        ((uint64_t) v->b[6] << 48) + ((uint64_t) v->b[7] << 56);
+        ((uint64_t) v->b[6] << 48) +
+        ((uint64_t) v->b[7] << 56);
 #endif
 }
 
-bool file_op(unsigned char c)
+bool file_op(struct abcprint *me, unsigned char c)
 {
-    static argbuf argbuf;
-    static unsigned int datalen = 0;
-    uint16_t ix;
     uint64_t arg;
 
-    *bytep++ = c;
-    if (--byte_count)
+    *me->bytep++ = c;
+    if (--me->byte_count)
         return true;            /* More to do... */
 
     /* Otherwise, we have a full deck of *something* */
-    ix = (cmd[3] << 8) + cmd[2];
-    arg = get_qword(&argbuf);
-    bytep = argbuf.b;
+    me->ix = (me->cmd[3] << 8) + me->cmd[2];
+    me->ff = getfile(me, me->ix);
+    arg = get_qword(&me->argbuf);
+    me->bytep = me->argbuf.b;
 
-    switch (state) {
+    switch (me->fstate) {
     case st_op:
-        switch (cmd[0]) {
+        switch (me->cmd[0]) {
         case 0xA0:             /* OPEN TEXT */
         case 0xA1:             /* OPEN BINARY */
         case 0xA2:             /* PREPARE TEXT */
         case 0xA3:             /* PREPARE BINARY */
-            byte_count = 11;
-            state = st_open;
+            me->byte_count = 11;
+            me->fstate = st_open;
             break;
 
         case 0xA4:             /* INPUT */
-            do_input(ix);
+            do_input(me);
             break;
 
         case 0xA5:             /* READ BLOCK */
-            byte_count = 2;
-            state = st_read;
+            me->byte_count = 2;
+            me->fstate = st_read;
             break;
 
         case 0xA6:             /* PRINT */
         case 0xB9:             /* PUT */
-            byte_count = 2;
-            state = st_print;
+            me->byte_count = 2;
+            me->fstate = st_print;
             break;
 
         case 0xA7:             /* CLOSE */
-            send_reply(do_close(ix));
+            send_reply(me, do_close(me));
             break;
 
         case 0xA8:             /* CLOSEALL */
-            do_closeall(true);
+            do_closeall(me, true);
             break;
 
         case 0xA9:             /* INIT */
-            blksize = 253;
-            do_closeall(false);
+            me->blksize = 253;
+            do_closeall(me, false);
             break;
 
         case 0xAE:             /* SET BLOCK SIZE */
         case 0xAF:             /* INITSZ */
-            byte_count = 2;
-            state = st_blksize;
+            me->byte_count = 2;
+            me->fstate = st_blksize;
             break;
 
         case 0xAA:             /* RENAME */
-            byte_count = 22;
-            state = st_rename;
+            me->byte_count = 22;
+            me->fstate = st_rename;
             break;
 
         case 0xAB:             /* DELETE */
-            byte_count = 11;
-            state = st_delete;
+            me->byte_count = 11;
+            me->fstate = st_delete;
             break;
 
         case 0xAC:             /* PREAD */
-            byte_count = 2;
-            state = st_pread;
+            me->byte_count = 2;
+            me->fstate = st_pread;
             break;
 
         case 0xAD:             /* PWRITE */
-            byte_count = 2;
-            state = st_pwrite;
+            me->byte_count = 2;
+            me->fstate = st_pwrite;
             break;
 
         case 0xB0:             /* SEEK0 == REWIND */
-            do_seek(ix, 0);
+            do_seek(me, 0);
             break;
 
         case 0xB1:             /* SEEK1 */
@@ -613,13 +633,13 @@ bool file_op(unsigned char c)
         case 0xB6:             /* SEEK6 */
         case 0xB7:             /* SEEK7 */
         case 0xB8:             /* SEEK8 */
-            byte_count = cmd[0] - 0xb0;
-            state = st_seek;
+            me->byte_count = me->cmd[0] - 0xb0;
+            me->fstate = st_seek;
             break;
 
         default:
             /* Unknown command */
-            send_reply(128 + 11);
+            send_reply(me, 128 + 11);
             break;
         }
         if (tracing(TRACE_PR)) {
@@ -633,88 +653,84 @@ bool file_op(unsigned char c)
                 "SEEK8", "PUT", NULL, NULL,
                 NULL, NULL, NULL, NULL
             };
-            int cnum = cmd[0] - 0xa0;
+            int cnum = me->cmd[0] - 0xa0;
             const char *cmdname = (cnum >= 0x20) ? NULL : cmdnames[cnum];
 
             fprintf(tracef, "PR:  CMD  : %-6s %02x %02x %04x <need %u bytes>\n",
-                    cmdname ? cmdname : "???", cmd[0], cmd[1], ix, byte_count);
+                    cmdname ? cmdname : "???", me->cmd[0], me->cmd[1],
+		    me->ix, me->byte_count);
         }
         break;
 
     case st_open:
-        trace_data(argbuf.b, 11, "OPEN");
-        do_open(ix, argbuf.c);
+        trace_data(me->argbuf.b, 11, "OPEN");
+        do_open(me, me->argbuf.c);
         break;
 
     case st_read:
-        trace_data(argbuf.b, 2, "READ");
-        do_read_block(ix, arg);
+        trace_data(me->argbuf.b, 2, "READ");
+        do_read_block(me, arg);
         break;
 
     case st_print:
-        trace_data(argbuf.b, 2, "WRTE");
-        bytep = data;
-        byte_count = arg;
-        state = st_print2;
+        trace_data(me->argbuf.b, 2, "WRTE");
+        me->bytep = me->data;
+        me->byte_count = arg;
+        me->fstate = st_print2;
         break;
 
     case st_print2:
-        trace_data(data, datalen, "DATA");
-        do_print(ix, datalen, cmd[0] == 0xA6);
+        trace_data(me->data, me->datalen, "DATA");
+        do_print(me, me->datalen, me->cmd[0] == 0xA6);
         break;
 
     case st_pwrite:
-        trace_data(argbuf.b, 2, "PWRT");
-        bytep = data;
-        byte_count = 253;
-        state = st_pwrite2;
+        trace_data(me->argbuf.b, 2, "PWRT");
+        me->bytep = me->data;
+        me->byte_count = 253;
+        me->fstate = st_pwrite2;
         break;
 
     case st_pwrite2:
-        trace_data(data, datalen, "DATA");
-        do_pwrite(ix, arg);
+        trace_data(me->data, me->datalen, "DATA");
+        do_pwrite(me, arg);
         break;
 
     case st_pread:
-        trace_data(argbuf.b, 2, "PRED");
-        do_pread(ix, arg);
+        trace_data(me->argbuf.b, 2, "PRED");
+        do_pread(me, arg);
         break;
 
     case st_seek:
-        trace_data(argbuf.b, cmd[0] - 0xb0, "SEEK");
-        do_seek(ix, arg);
+        trace_data(me->argbuf.b, me->cmd[0] - 0xb0, "SEEK");
+        do_seek(me, arg);
         break;
 
     case st_rename:
-        trace_data(data, 11, "REN1");
-        trace_data(data + 11, 11, "REN2");
-        do_rename(argbuf.c);
+        trace_data(me->argbuf.b, 11, "REN1");
+        trace_data(me->argbuf.b + 11, 11, "REN2");
+        do_rename(me, me->argbuf.c);
         break;
 
     case st_delete:
-        trace_data(data, 11, "DEL ");
-        do_delete(argbuf.c);
+        trace_data(me->argbuf.b, 11, "DEL ");
+        do_delete(me, me->argbuf.c);
         break;
 
     case st_blksize:
-        trace_data(data, 2, "SIZE");
-        blksize = arg;
-        if (cmd[0] == 0xAF)
-            do_closeall(false);
+        trace_data(me->argbuf.b, 2, "SIZE");
+        me->blksize = arg;
+        if (me->cmd[0] == 0xAF)
+            do_closeall(me, false);
         break;
     }
 
-    datalen = byte_count;
-    if (bytep == argbuf.b)
-        memset(&argbuf, 0, sizeof argbuf);
+    me->datalen = me->byte_count;
 
-    if (byte_count) {
+    if (me->byte_count) {
         return true;
     } else {
-        /* back to command mode */
-        bytep = cmd;
-        byte_count = 4;
-        state = st_op;
+	fileop_goto_init_state(me);
         return false;
     }
 }
