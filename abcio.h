@@ -25,7 +25,7 @@ extern void disk_out(int sel, int port, int value);
 extern int disk_in(int sel, int port);
 
 /* This is the "fake" ABCbus-connected RTC */
-extern int rtc_in(int sel, int port);
+extern int busrtc_in(int sel, int port);
 
 /* ABC806 RTC */
 extern uint8_t abc806_rtc_in(uint8_t port);

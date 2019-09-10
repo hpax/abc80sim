@@ -369,7 +369,7 @@ static uint8_t abcbus_in(uint8_t port)
         break;
 
     case 55:                   /* RTC */
-        return rtc_in(abcbus_select, port);
+	return busrtc_in(abcbus_select, port);
         break;
 
     default:
@@ -444,8 +444,8 @@ static uint8_t abc802_in(uint8_t port)
         v = dart_keyb_in(port);
         break;
 
-    case 0x32:
-    case 0x33:
+    case 0x36:
+    case 0x37:
         v = abc806_rtc_in(port);
         break;
 
