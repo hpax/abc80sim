@@ -1061,7 +1061,7 @@ static void do_rrd(void)
 
 static void do_inid(int dir)
 {
-    mem_write(REG_HL, z80_in(REG_C));
+    mem_write(REG_HL, z80_in(REG_BC));
     REG_HL += dir;
     REG_B--;
 
@@ -1083,14 +1083,14 @@ static void do_inidr(int dir)
     }
 }
 
-static int in_with_flags(int port)
+static uint8_t in_with_flags(uint16_t port)
 {
     /*
      * Do the appropriate flag calculations for the in instructions
      * which compute the flags.  Return the input value.
      */
 
-    int value;
+    uint8_t value;
     uint8_t clear, set;
 
     clear = SIGN_MASK | ZERO_MASK | HALF_CARRY_MASK |
@@ -1115,7 +1115,7 @@ static int in_with_flags(int port)
 
 static void do_outid(int dir)
 {
-    z80_out(REG_C, mem_read(REG_HL));
+    z80_out(REG_BC, mem_read(REG_HL));
     REG_HL += dir;
     REG_B--;
 
@@ -2220,25 +2220,25 @@ static void do_ED_instruction(wordregister * ix)
         break;
 
     case 0x78:                 /* in a, (c) */
-        REG_A = in_with_flags(REG_C);
+        REG_A = in_with_flags(REG_BC);
         break;
     case 0x40:                 /* in b, (c) */
-        REG_B = in_with_flags(REG_C);
+        REG_B = in_with_flags(REG_BC);
         break;
     case 0x48:                 /* in c, (c) */
-        REG_C = in_with_flags(REG_C);
+        REG_C = in_with_flags(REG_BC);
         break;
     case 0x50:                 /* in d, (c) */
-        REG_D = in_with_flags(REG_C);
+        REG_D = in_with_flags(REG_BC);
         break;
     case 0x58:                 /* in e, (c) */
-        REG_E = in_with_flags(REG_C);
+        REG_E = in_with_flags(REG_BC);
         break;
     case 0x60:                 /* in h, (c) */
-        REG_H = in_with_flags(REG_C);
+        REG_H = in_with_flags(REG_BC);
         break;
     case 0x68:                 /* in l, (c) */
-        REG_L = in_with_flags(REG_C);
+        REG_L = in_with_flags(REG_BC);
         break;
 
     case 0xAA:                 /* ind */
@@ -2328,28 +2328,28 @@ static void do_ED_instruction(wordregister * ix)
         break;
 
     case 0x79:                 /* out (c), a */
-        z80_out(REG_C, REG_A);
+        z80_out(REG_BC, REG_A);
         break;
     case 0x41:                 /* out (c), b */
-        z80_out(REG_C, REG_B);
+        z80_out(REG_BC, REG_B);
         break;
     case 0x49:                 /* out (c), c */
-        z80_out(REG_C, REG_C);
+        z80_out(REG_BC, REG_C);
         break;
     case 0x51:                 /* out (c), d */
-        z80_out(REG_C, REG_D);
+        z80_out(REG_BC, REG_D);
         break;
     case 0x59:                 /* out (c), e */
-        z80_out(REG_C, REG_E);
+        z80_out(REG_BC, REG_E);
         break;
     case 0x61:                 /* out (c), h */
-        z80_out(REG_C, REG_H);
+        z80_out(REG_BC, REG_H);
         break;
     case 0x69:                 /* out (c), l */
-        z80_out(REG_C, REG_L);
+        z80_out(REG_BC, REG_L);
         break;
     case 0x71:                 /* out (c), 0 */
-        z80_out(REG_C, 0);
+        z80_out(REG_BC, 0);
         break;
 
     case 0xAB:                 /* outd */
@@ -2842,7 +2842,7 @@ indexed:
             break;
 
         case 0xDB:             /* in a, (port) */
-            REG_A = z80_in(mem_fetch(REG_PC++));
+            REG_A = z80_in((REG_B << 8) + mem_fetch(REG_PC++));
             break;
 
         case 0x3C:             /* inc a */
@@ -3305,7 +3305,7 @@ indexed:
             break;
 
         case 0xD3:             /* out (port), a */
-            z80_out(mem_fetch(REG_PC++), REG_A);
+	    z80_out((REG_B << 8) + mem_fetch(REG_PC++), REG_A);
             break;
 
         case 0xC1:             /* pop bc */
