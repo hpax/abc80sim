@@ -464,9 +464,10 @@ void z80_out(uint16_t port, uint8_t value)
     const struct out_port *op = &outport[port & PORT_MASK];
 
     if (tracing(TRACE_IO)) {
-        fprintf(tracef, "OUT: port 0x%02x (%3d) sel 0x%02x (%2d) "
+        fprintf(tracef, "OUT: port %02x:%02x (%3d) sel 0x%02x (%2d) "
                 "data 0x%02x (%3d) PC=%04x\n",
-                port, port, abcbus_select, abcbus_select,
+                port >> 8, port & 0xff, port & 0xff,
+		abcbus_select, abcbus_select,
                 value, value, REG_PC);
     }
 
@@ -482,9 +483,10 @@ uint8_t z80_in(uint16_t port)
     v = ip->in(port & ip->valid);
 
     if (tracing(TRACE_IO)) {
-        fprintf(tracef, " IN: port 0x%02x (%3d) sel 0x%02x (%2d) "
+        fprintf(tracef, " IN: port %02x:%02x (%3d) sel 0x%02x (%2d) "
                 "data 0x%02x (%3d) PC=%04x\n",
-                port, port, sel, sel, v, v, REG_PC);
+                port >> 8, port & 0xff, port & 0xff,
+		sel, sel, v, v, REG_PC);
     }
     return v;
 }
