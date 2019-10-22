@@ -52,28 +52,28 @@ static bool abcprint_poll(void)
 
 static struct z80_irq dart_pr_irq;
 
-void printer_reset(void)
+static void printer_reset(uint8_t sel)
 {
+    (void)sel;
+
     if (!me) {
         me = abcprint_init(abcprint_send, NULL);
-        if (opts.model != MODEL_ABC80)
+        if (sel == NO_SELECT)
             z80_register_irq(&dart_pr_irq);
     }
 }
 
-void printer_out(int sel, int port, int value)
+static void printer_out(uint8_t sel, uint16_t port, uint8_t value)
 {
-    unsigned char v = value;
-
     (void)sel;
 
     switch (port) {
     case 0:
-	abcprint_recv(me, &v, 1);   /* Data received abc -> abcprint */
+	abcprint_recv(me, &value, 1);   /* Data received abc -> abcprint */
         break;
 
     case 4:
-	printer_reset();
+	printer_reset(sel);
         break;
 
     default:
@@ -81,9 +81,9 @@ void printer_out(int sel, int port, int value)
     }
 }
 
-int printer_in(int sel, int port)
+static uint8_t printer_in(uint8_t sel, uint16_t port)
 {
-    int v;
+    uint8_t v;
 
     (void)sel;
 
@@ -104,12 +104,27 @@ int printer_in(int sel, int port)
     return v;
 }
 
+static const struct abcbus_dev printer_dev = {
+    .out      = printer_out,
+    .in       = printer_in,
+    .reset    = printer_reset,
+    .portmask = 7
+};
+
+void printer_init(void)
+{
+    if (is_abc80())
+	register_abcbus_dev(60, &printer_dev);
+    else
+	printer_reset(NO_SELECT);
+}
+
 /* Hardware-like interface via the ABC800 PR: port */
 static uint8_t dart_pr_ctl[8];
 
 static struct z80_irq dart_pr_irq = IRQ(IRQ800_DARTA, NULL, NULL, NULL);
 
-void dart_pr_out(uint8_t port, uint8_t v)
+void dart_pr_out(uint16_t port, uint8_t v)
 {
     uint8_t r;
 
@@ -128,7 +143,7 @@ void dart_pr_out(uint8_t port, uint8_t v)
     }
 }
 
-uint8_t dart_pr_in(uint8_t port)
+uint8_t dart_pr_in(uint16_t port)
 {
     uint8_t r, v = 0;
 

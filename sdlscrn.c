@@ -764,7 +764,7 @@ static void trigger_refresh(void)
 /* Called in the CPU thread context */
 static uint8_t crtc_addr;
 
-void crtc_out(uint8_t port, uint8_t data)
+void crtc_out(uint16_t port, uint8_t data)
 {
     if (!(port & 1)) {
         crtc_addr = data;
@@ -783,7 +783,7 @@ void crtc_out(uint8_t port, uint8_t data)
     SDL_mutexV(screen_mutex);
 }
 
-uint8_t crtc_in(uint8_t port)
+uint8_t crtc_in(uint16_t port)
 {
     if (!(port & 1))
         return crtc_addr;

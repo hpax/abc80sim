@@ -97,7 +97,7 @@ static void busrtc_latch_time(void)
     bustime[7] = rt.usec / 20000;
 }
 
-int busrtc_in(int sel, int port)
+static uint8_t busrtc_in(uint8_t sel, uint16_t port)
 {
     static unsigned int busptr;
     uint8_t v;
@@ -121,6 +121,18 @@ int busrtc_in(int sel, int port)
 
     return v;
 }
+
+static const struct abcbus_dev busrtc_dev =
+{
+    .in  = busrtc_in,
+    .portmask = 7
+};
+
+void rtc_init(void)
+{
+    register_abcbus_dev(55, &busrtc_dev);
+}
+
 
 /* ABC806 RTC (E05-16) */
 
@@ -154,7 +166,7 @@ static void e05_latch_time(void)
  */
 static const uint8_t e05cmdtoreg[8] = { 6, 1, 0, 2, 3, 5, 4, 0 };
 
-void abc806_rtc_out(uint8_t port, uint8_t val)
+void abc806_rtc_out(uint16_t port, uint8_t val)
 {
     uint8_t oldstate, reg, set, clr;
 
@@ -237,7 +249,7 @@ void abc806_rtc_out(uint8_t port, uint8_t val)
     }
 }
 
-uint8_t abc806_rtc_in(uint8_t port)
+uint8_t abc806_rtc_in(uint16_t port)
 {
     uint8_t v;
 

@@ -17,8 +17,8 @@ extern void key_check(void);
 extern volatile int event_pending;
 Uint32 post_periodic(Uint32 interval, void *param);
 
-extern void crtc_out(uint8_t, uint8_t);
-extern uint8_t crtc_in(uint8_t);
+extern void crtc_out(uint16_t, uint8_t);
+extern uint8_t crtc_in(uint16_t);
 
 /* Pointer into video RAM */
 extern uint8_t *const video_ram;

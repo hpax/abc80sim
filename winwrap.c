@@ -27,13 +27,13 @@ static wchar_t *format_error(wchar_t *msg, DWORD dw)
 	if (!dw)
 		return msg;
 
-	len = FormatMessageW(FORMAT_MESSAGE_ALLOCATE_BUFFER | 
+	len = FormatMessageW(FORMAT_MESSAGE_ALLOCATE_BUFFER |
 			     FORMAT_MESSAGE_FROM_SYSTEM |
 			     FORMAT_MESSAGE_IGNORE_INSERTS,
 			     NULL, dw,
 			     MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
 			     (wchar_t *)&errtxt, 0, NULL);
-	
+
 	if (!len)
 		return msg;
 
@@ -52,8 +52,8 @@ static wchar_t *format_error(wchar_t *msg, DWORD dw)
 static no_return ErrorExit(wchar_t *msg)
 {
 	DWORD dw = GetLastError();
-	
-	MessageBoxW(NULL, format_error(msg, dw), L"Error", MB_OK); 
+
+	MessageBoxW(NULL, format_error(msg, dw), L"Error", MB_OK);
 	ExitProcess(dw ? dw : ERROR_PATH_NOT_FOUND);
 	abort();
 }
@@ -89,7 +89,7 @@ wchar_t *getmyname(size_t *lenp)
 
 	if (lenp)
 		*lenp = len;
-	
+
 	return buf;
 }
 
@@ -152,7 +152,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
 	(void)hInstance;
 	(void)hPrevInstance;
 	(void)nShowCmd;
-	
+
 	memset(&inheritable, 0, sizeof inheritable);
 	inheritable.nLength = sizeof inheritable;
 	inheritable.bInheritHandle = TRUE;
@@ -189,7 +189,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
 		ErrorExit(L"Unable to determine subprocess filename");
 
 	memmove(tail, tail+3, 4*sizeof(*tail));
-	
+
 	/* Launch CLI process */
 	memset(&si, 0, sizeof si);
 	si.cb          = sizeof si;
@@ -220,7 +220,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
 			break;
 	}
 	tail++;
-	
+
 	/*
 	 * Read from the pipe until the application exits
 	 */

@@ -366,7 +366,7 @@ static void pio_control(struct pio *pio, uint8_t v)
     }
 }
 
-void abc80_piob_out(uint8_t port, uint8_t v)
+void abc80_piob_out(uint16_t port, uint8_t v)
 {
     uint8_t old = pio_readval(&portb);
 
@@ -402,9 +402,11 @@ void abc80_piob_out(uint8_t port, uint8_t v)
     pio_check_interrupt(&portb);
 }
 
-/* This is called for the data port only */
-uint8_t abc80_piob_in(void)
+uint8_t abc80_piob_in(uint16_t port)
 {
+    if (port & 1)
+	return 0xff;
+
     return pio_readval(&portb);
 }
 
@@ -471,7 +473,7 @@ static void cas_poll_interrupt(void)
     z80_interrupt(&sio_cas_irq);
 }
 
-void abc800_sio_cas_out(uint8_t port, uint8_t v)
+void abc800_sio_cas_out(uint16_t port, uint8_t v)
 {
     uint8_t r;
 
@@ -529,7 +531,7 @@ void abc800_sio_cas_out(uint8_t port, uint8_t v)
     cas_poll_interrupt();
 }
 
-uint8_t abc800_sio_cas_in(uint8_t port)
+uint8_t abc800_sio_cas_in(uint16_t port)
 {
     uint8_t r, v = 0xff;
 

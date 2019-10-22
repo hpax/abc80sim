@@ -389,18 +389,15 @@ static void do_next_command(struct ctl_state *state)
     state->state = disk_k0;
 }
 
-void disk_reset(void)
+static void disk_reset(uint8_t sel)
 {
-    int i;
-    struct ctl_state *state;
-    for (i = 0; i < 64; i++) {
-        state = sel_to_state[i];
-        if (state && state->state != disk_need_init)
-            disk_reset_state(state);
-    }
+    struct ctl_state *state = sel_to_state[sel];
+
+    if (state && state->state != disk_need_init)
+	disk_reset_state(state);
 }
 
-void disk_out(int sel, int port, int value)
+void disk_out(uint8_t sel, uint16_t port, uint8_t value)
 {
     struct ctl_state *state = sel_to_state[sel];
 
@@ -478,7 +475,7 @@ void disk_out(int sel, int port, int value)
 
     case 2:                    /* Start command */
     case 4:                    /* Reset */
-        disk_reset();
+	disk_reset_state(state);
         break;
 
     default:
@@ -487,7 +484,7 @@ void disk_out(int sel, int port, int value)
     }
 }
 
-int disk_in(int sel, int port)
+uint8_t disk_in(uint8_t sel, uint16_t port)
 {
     struct ctl_state *state = sel_to_state[sel];
     uint8_t v = 0xff;
@@ -538,4 +535,21 @@ int disk_in(int sel, int port)
                 REG_PC, REG_BC, REG_DE, REG_HL);
     }
     return v;
+}
+
+static const struct abcbus_dev disk_dev = {
+    .out = disk_out,
+    .in  = disk_in,
+    .reset = disk_reset,
+    .portmask = 7
+};
+
+void disk_register_devices(void)
+{
+    unsigned int i;
+
+    for (i = 0; i < 64; i++) {
+	if (sel_to_state[i])
+	    register_abcbus_dev(i, &disk_dev);
+    }
 }

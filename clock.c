@@ -200,7 +200,7 @@ static void abc800_clock_tick(void)
 /*
  * CTC I/O
  */
-void abc800_ctc_out(uint8_t port, uint8_t v)
+void abc800_ctc_out(uint16_t port, uint8_t v)
 {
     port &= 3;                  /* Get channel */
 
@@ -224,7 +224,7 @@ void abc800_ctc_out(uint8_t port, uint8_t v)
     ctc_ctl[port] = v;
 }
 
-uint8_t abc800_ctc_in(uint8_t port)
+uint8_t abc800_ctc_in(uint16_t port)
 {
     uint8_t v, div;
     const struct abctimer *t;
