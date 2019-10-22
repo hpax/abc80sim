@@ -18,9 +18,6 @@ static uint8_t keyb_fakedata;
 #define KEYB_NEW  0x100
 #define KEYB_DOWN 0x800
 
-/* Fake minimal-touch input */
-bool faketype;
-
 static int keyb_intack_fake(struct z80_irq *irq);
 static struct z80_irq *keyb_irq;
 
@@ -200,8 +197,8 @@ static void dart_keyb_out(uint8_t port, uint8_t value)
         }
         break;
     case 5:
-        setmode40(! !(value & 2));
-        abc802_set_mem(! !(value & 0x80));
+        setmode40(!!(value & 2));
+        abc802_set_mem(!!(value & 0x80));
         break;
     default:
         break;
@@ -343,6 +340,14 @@ void z80_out(int port, uint8_t value)
     do_out(port, value);
 }
 
+/* INP 7, or hardware reset */
+static void abcbus_reset(void)
+{
+    abcbus_select = -1;
+    disk_reset();
+    printer_reset();
+}
+
 /*
  * This function is called from the z80 at an IN instruction.
  */
@@ -350,9 +355,7 @@ static uint8_t abcbus_in(uint8_t port)
 {
     if (port == 7) {
         /* Reset all */
-        abcbus_select = -1;
-        disk_reset();
-        printer_reset();
+	abcbus_reset();
         return 0xff;
     }
 
@@ -396,11 +399,11 @@ static uint8_t abc80_in(uint8_t port)
         break;
 
     case 4:
-        setmode40(0);
+        setmode40(opts.tkn80 == TKN80_NONE);
         break;
 
     case (56 & 0x17):
-        if (faketype) {
+	if (opts.faketype) {
             v = keyb_fakedata;
             keyb_fakedata &= ~0x80;
         } else {
@@ -498,7 +501,7 @@ int z80_in(int port)
 /* This is called in the event handler thread context! */
 void keyboard_down(int sym)
 {
-    if (model == MODEL_ABC80) {
+    if (opts.model == MODEL_ABC80) {
         if (sym & ~127)
             return;
     }
@@ -519,13 +522,13 @@ unsigned int keyboard_up(void)
 
 void io_init(void)
 {
-    switch (model) {
+    switch (opts.model) {
     case MODEL_ABC80:
         do_out = abc80_out;
         do_in = abc80_in;
         keyb_data = 0;
         abc80_cas_init();
-        keyb_irq = faketype ? &keyb_irq_fake : &keyb_irq_80;
+        keyb_irq = opts.faketype ? &keyb_irq_fake : &keyb_irq_80;
         break;
     case MODEL_ABC802:
         do_out = abc802_out;
@@ -537,4 +540,5 @@ void io_init(void)
         break;
     }
     z80_register_irq(keyb_irq);
+    abcbus_reset();
 }

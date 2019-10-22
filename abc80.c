@@ -1,5 +1,6 @@
 #include "compiler.h"
 
+#include "options.h"
 #include "clock.h"
 #include "screen.h"
 #include "z80.h"
@@ -32,9 +33,6 @@ FILE *tracef;
 
 int events_in_queue = 1;
 volatile int event_pending = 1;
-
-/* This reflects the screen width at system boot; e.g. ABC802 jumper setting */
-bool startup_width40 = false;
 
 /*
  * Read a two digit hex number from a string
@@ -136,13 +134,17 @@ static no_return help(void)
            "       --detach            detach from console if run from a command line\n"
            "\n"
            "Options for ABC80 only:\n"
-           "  -k,  --kb #              set the memory size K (1-32 or 64)\n"
+           "  -k,  --kb #              set the memory size K (1-32 or 64) [64]\n"
            "       --old-basic         run BASIC 1.0 (checksum 11273)\n"
            "       --11273             same as --old-basic\n"
-           "       --new-basic         run BASIC 1.2 (checksum 9913)\n"
+           "       --new-basic         run BASIC 1.2 (checksum 9913, default)\n"
            "       --9913              same as --new-basic\n"
            "       --faketype          fake short keystrokes (default > 12.5 MHz)\n"
            "       --realtype          true key up/down emulation (default < 12.5 MHz)\n"
+	   "       --tkn80 none        no 80-character support\n"
+	   "       --no-tkn80          same as --tkn80 none\n"
+	   "       --tkn80 myab        MyAB TKN80 (video RAM at 22-24K) (default)\n"
+	   "       --tkn80 29k         vendor unknown, video RAM at 29K-30K, no double map\n"
            "\n"
            "Options for ABC802 only:\n"
            "  -Fm, --memfile file      load a file into the ABC802 MEM: device\n"
@@ -209,13 +211,17 @@ static void parse_trace(char *arg)
 
 static void set_speed(const char *arg)
 {
-    double mhz = atof(arg);
-    if (mhz <= 0.001 || mhz >= 1.0e+6) {
+    double hz = atof(arg) * 1.0e+6;
+
+    opts.hz = hz;
+
+    if (hz <= 1.0e+3 || hz >= 1.0e+10) {
         limit_speed = false;
+	opts.hz = HUGE_VAL;
     } else {
         limit_speed = true;
-        ns_per_tstate = 1000.0 / mhz;
-        tstate_per_ns = mhz / 1000.0;
+        ns_per_tstate = 1.0e+9 / hz;
+        tstate_per_ns = hz / 1.0e+9;
     }
 }
 
@@ -286,9 +292,17 @@ found:
     return 0;
 }
 
-enum model model = MODEL_ABC80;
-unsigned int kilobytes = 64;
-bool old_basic = false;
+/* Default options */
+struct opts opts = {
+    .model		= MODEL_ABC80,
+    .kb			= 64,	/* Currently only applicable to ABC80 */
+    .old_basic		= false,
+    .tkn80		= TKN80_MYAB,
+    .startup_width40	= false,
+    .color		= true,
+    .faketype		= A_AUTO,
+    .memflags           = MEMFL_DEFAULT,
+};
 
 /* Helper functions that error out on a missing argument */
 static char *short_arg(char opt, char *arg)
@@ -320,14 +334,11 @@ static char *long_arg(bool enable, const char *opt, char *arg)
 
 int main(int argc, char **argv)
 {
-    unsigned int memflags = 0;
     char **option;
     const char *optstr;
     char optchr;
     bool detach = false;
-    bool color = true;
     bool console = false;
-    bool faketype_set = false;
     SDL_Thread *cpu_thread;
 
     (void)argc;
@@ -354,25 +365,25 @@ int main(int argc, char **argv)
                 optstr += 3;
             }
             if (!strcmp(optstr, "abc80")) {
-                model = MODEL_ABC80;
+                opts.model = MODEL_ABC80;
             } else if (!strcmp(optstr, "abc802")) {
-                model = MODEL_ABC802;
+                opts.model = MODEL_ABC802;
             } else if (!strcmp(optstr, "40")) {
-                startup_width40 = enable;
+                opts.startup_width40 = enable;
             } else if (!strcmp(optstr, "80")) {
-                startup_width40 = !enable;
+                opts.startup_width40 = !enable;
             } else if (!strcmp(optstr, "basic")) {
-                memflags &= ~MEMFL_NOBASIC;
-                memflags |= (enable ? 0 : MEMFL_NOBASIC);
+                opts.memflags &= ~MEMFL_NOBASIC;
+                opts.memflags |= (enable ? 0 : MEMFL_NOBASIC);
             } else if (!strcmp(optstr, "old-basic") || !strcmp(optstr, "11273")) {
-                old_basic = enable;
+		opts.old_basic = enable;
             } else if (!strcmp(optstr, "new-basic") || !strcmp(optstr, "9913")) {
-                old_basic = !enable;
+                opts.old_basic = !enable;
             } else if (!strcmp(optstr, "device")) {
-                memflags &= ~MEMFL_NODEV;
-                memflags |= enable ? 0 : MEMFL_NODEV;
+                opts.memflags &= ~MEMFL_NODEV;
+                opts.memflags |= enable ? 0 : MEMFL_NODEV;
             } else if (!strcmp(optstr, "kb")) {
-                kilobytes = strtoul(LONG_ARG(), NULL, 0);
+                opts.kb = strtoul(LONG_ARG(), NULL, 0);
             } else if (!strcmp(optstr, "help")) {
                 if (enable)
                     help();
@@ -384,18 +395,35 @@ int main(int argc, char **argv)
             } else if (!strcmp(optstr, "detach")) {
                 detach = enable;
             } else if (!strcmp(optstr, "color") || !strcmp(optstr, "colour")) {
-                color = enable;
+                opts.color = enable;
             } else if (!strcmp(optstr, "MHz") ||
                        !strcmp(optstr, "mhz") ||
                        !strcmp(optstr, "speed") ||
                        !strcmp(optstr, "frequency")) {
                 set_speed(LONG_ARG());
             } else if (!strcmp(optstr, "faketype")) {
-                faketype = enable;
-                faketype_set = true;
+                opts.faketype = A_YES;
             } else if (!strcmp(optstr, "realtype")) {
-                faketype = !enable;
-                faketype_set = true;
+                opts.faketype = A_NO;
+	    } else if (!strcmp(optstr, "tkn80")) {
+		if (!enable) {
+		    opts.tkn80 = TKN80_NONE;
+		} else {
+		    const char *typestr = LONG_ARG();
+		    if (!strcmp(typestr, "none") ||
+			!strcmp(typestr, "off")) {
+			opts.tkn80 = TKN80_NONE;
+		    } else if (!strcmp(typestr, "myab") ||
+			       !strcmp(typestr, "std")) {
+			opts.tkn80 = TKN80_MYAB;
+		    } else if (!strcmp(typestr, "29k")) {
+			opts.tkn80 = TKN80_29K;
+		    } else {
+			fprintf(stderr, "%s: unknown tkn80 type %s, using MyAB",
+				program_name, typestr);
+			opts.tkn80 = TKN80_MYAB;
+		    }
+		}
             } else {
                 if (set_path(optstr - 1, *option++)) {
                     fprintf(stderr, "%s: unknown option: --%s\n",
@@ -411,22 +439,22 @@ int main(int argc, char **argv)
                     parse_trace(SHORT_ARG());
                     break;
                 case 'b':
-                    memflags |= MEMFL_NOBASIC;
+                    opts.memflags |= MEMFL_NOBASIC;
                     break;
                 case 'e':
                     console = true;
                     break;
                 case 'd':
-                    memflags |= MEMFL_NODEV;
+                    opts.memflags |= MEMFL_NODEV;
                     break;
                 case '4':
-                    startup_width40 = true;
+                    opts.startup_width40 = true;
                     break;
                 case '8':
-                    startup_width40 = false;
+                    opts.startup_width40 = false;
                     break;
                 case 'k':
-                    kilobytes = strtoul(SHORT_ARG(), NULL, 0);
+                    opts.kb = strtoul(SHORT_ARG(), NULL, 0);
                     break;
                 case 's':
                     set_speed(SHORT_ARG());
@@ -466,8 +494,8 @@ int main(int argc, char **argv)
         }
     }
 
-    if (!faketype_set)
-        faketype = !limit_speed || (ns_per_tstate < 1000.0 / 12.5);
+    if (opts.faketype == A_AUTO)
+        opts.faketype = !limit_speed || (ns_per_tstate < 1000.0 / 12.5);
 
     /* If no --casdir has been given, default to --filedir */
     if (!cas_path)
@@ -475,7 +503,7 @@ int main(int argc, char **argv)
 
     hostfile_init();
 
-    if (memfile && model != MODEL_ABC802) {
+    if (memfile && opts.model != MODEL_ABC802) {
         fprintf(stderr, "WARNING: --memfile specified for a system "
                 "other than ABC802 - not possible\n");
     }
@@ -508,9 +536,19 @@ int main(int argc, char **argv)
     if (detach)
         detach_console();
 
-    screen_init(startup_width40, color);
+    /*
+     * Override startup_width40 if not applicable on this machine.
+     * ABC80 without TKN80: always 40
+     * ABC800C (future):    always 40
+     * ABC800M (future):    always 80(?)
+     * ABC806 (future):     always 80, uses attribute codes for 40 char?
+     */
+    if (is_abc80() && opts.tkn80 == TKN80_NONE)
+	opts.startup_width40 = true;
 
-    mem_init(memflags, memfile);
+    screen_init(opts.startup_width40, opts.color);
+
+    mem_init(opts.memflags, memfile);
     io_init();
 
     /*

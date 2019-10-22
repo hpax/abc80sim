@@ -29,6 +29,7 @@
 #include <limits.h>
 #include <errno.h>
 #include <time.h>
+#include <math.h>
 
 #ifdef HAVE_FCNTL_H
 #include <fcntl.h>

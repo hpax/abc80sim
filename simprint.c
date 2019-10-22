@@ -56,7 +56,7 @@ void printer_reset(void)
 {
     if (!me) {
         me = abcprint_init(abcprint_send, NULL);
-        if (model != MODEL_ABC80)
+        if (opts.model != MODEL_ABC80)
             z80_register_irq(&dart_pr_irq);
     }
 }
@@ -148,14 +148,14 @@ uint8_t dart_pr_in(uint8_t port)
              * 7 - 0 - No break
              * 6 - 0 - No transmit underrun
              * 5 - 1 - CTS# asserted
-             * 4 - x - RI# asserted if 80 columns on boot
+             * 4 - x - RI# asserted if 80 columns *on boot* (jumper)
              * 3 - 1 - DCD# asserted
              * 2 - 1 - Transmit buffer empty
              * 1 - 0 - Interrupt not pending
              * 0 - x - Receive character available
              */
-            v = 0x2c | (!startup_width40 << 4) | (dart_pr_ctl[3] &
-                                                  abcprint_poll());
+            v = 0x2c | (!opts.startup_width40 << 4) |
+		(dart_pr_ctl[3] & abcprint_poll());
             break;
 
         case 1:                /* RR1 Rx special modes */

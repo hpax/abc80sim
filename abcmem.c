@@ -208,7 +208,7 @@ void abc80_mem_mode40(bool mode40)
 
 void abc80_mem_setmap(unsigned int map)
 {
-    if (kilobytes < 64)
+    if (opts.kb < 64)
         return;                 /* Only 64K models can remap memory */
 
     abc80_map = ((map & 3) << 1) | (abc80_map & ~6);
@@ -310,47 +310,92 @@ void mem_init(unsigned int flags, const char *memfile)
     /* Start by initializing all memory maps to all RAM */
     map_memory(ALL_MAPS, 0, K(64), ram, write_ram);
 
-    switch (model) {
+    switch (opts.model) {
     case MODEL_ABC80:
         /* 4 maps * 2 (40/80) */
 
-        if ((kilobytes < 1 || kilobytes > 32) && kilobytes != 64) {
+        if ((opts.kb < 1 || opts.kb > 32) && opts.kb != 64) {
             fprintf(stderr, "%s: invalid ABC80 memory size %uK, using 64K\n",
-                    program_name, kilobytes);
-            kilobytes = 64;
+                    program_name, opts.kb);
+            opts.kb = 64;
         }
 
         /* Map 0: default (for < 64K, the only available map) */
         if (!(flags & MEMFL_NOBASIC)) {
-            map_memory(0x01, 0, K(16),
-                       old_basic ? abc80bas80o : abc80bas80n, write_rom);
-            map_memory(0x02, 0, K(16),
-                       old_basic ? abc80bas40o : abc80bas40n, write_rom);
+	    uint8_t *basic40 = opts.old_basic ? abc80bas40o : abc80bas40n;
+	    uint8_t *basic80 = opts.old_basic ? abc80bas80o : abc80bas80n;
+	    int i;
+
+            map_memory(0x02, 0, K(16), basic40, write_rom);
+
+	    /*
+	     * The 80-character BASIC ROMs have screen row addresses
+	     * relative to the start of VRAM, since those addresses
+	     * vary. Fix them up here.
+	     */
+	    switch (opts.tkn80) {
+	    case TKN80_NONE:
+		basic80 = basic40; /* No 80-column mode at all */
+		break;
+
+	    case TKN80_MYAB:
+		for (i = 885; i < 885+2*24; i += 2)
+		    basic80[i] += 0x58;
+		break;
+
+	    case TKN80_29K:
+		for (i = 885; i < 885+2*24; i += 2)
+		    basic80[i] += (basic80[i] & 4) + 0x74;
+		break;
+	    }
+
+	    map_memory(0x01, 0, K(16), basic80, write_rom);
         }
+
         if (!(flags & MEMFL_NODEV)) {
             /* Hack: allow device ROMs to be written to */
             map_memory(0x03, K(16), K(16), abc80_devs, write_ram);
         }
-        map_memory(0x01, K(29), K(1), &video_ram[K(0)], write_screen);
-        map_memory(0x03, K(31), K(1), &video_ram[K(1)], write_screen);
 
-        if (kilobytes < 32) {
+	/*
+	 * Note: leave 80-character VRAM always mapped, there is no
+	 * evidence that any of them unmapped the extra video RAM
+	 * (why would they?)
+	 */
+	switch (opts.tkn80) {
+	case TKN80_NONE:
+	    /* Nothing to map */
+	    break;
+	case TKN80_MYAB:
+	    map_memory(0x03, K(22), K(2), &video_ram[K(0)], write_screen);
+	    break;
+	case TKN80_29K:
+	    map_memory(0x03, K(29), K(1), &video_ram[K(0)], write_screen);
+	    break;
+	}
+
+	/* Standard 40-char video RAM */
+	map_memory(0x03, K(31), K(1), &video_ram[K(1)], write_screen);
+
+        if (opts.kb < 32) {
             /*
              * Simulate non-existing memory by filling it with FF
              * and changing it to readonly.  ABC80 RAM grows from
              * top of memory downward toward 32K.
              */
-            memset(ram + K(32), 0xff, K(32 - kilobytes));
-            map_memory(0x03, K(32), K(32 - kilobytes), &ram[K(32)], write_rom);
+            memset(ram + K(32), 0xff, K(32 - opts.kb));
+            map_memory(0x03, K(32), K(32 - opts.kb), &ram[K(32)], write_rom);
         }
 
         /* Map 1: RAM over ROM areas */
-        map_memory(0x04, K(30), K(2), &video_ram[K(0)], write_screen);
-        map_memory(0x08, K(31), K(1), &video_ram[K(1)], write_screen);
-
         /* Map 2: video RAM at the end */
-        map_memory(0x10, K(62), K(2), &video_ram[K(0)], write_screen);
-        map_memory(0x20, K(63), K(1), &video_ram[K(1)], write_screen);
+	if (opts.tkn80 == TKN80_NONE) {
+	    map_memory(0x0c, K(31), K(1), &video_ram[K(1)], write_screen);
+	    map_memory(0x30, K(63), K(1), &video_ram[K(1)], write_screen);
+	} else {
+	    map_memory(0x0c, K(30), K(2), &video_ram[K(0)], write_screen);
+	    map_memory(0x30, K(62), K(2), &video_ram[K(0)], write_screen);
+	}
 
         /* Map 3: all RAM */
 

@@ -40,22 +40,14 @@ static void trigger_refresh(void);
 static struct argb {
     uint8_t a, r, g, b;
 } rgbcolors[NCOLORS] = {
-    {
-    0x00, 0x00, 0x00, 0x00},    /* black */
-    {
-    0x00, 0xff, 0x00, 0x00},    /* red */
-    {
-    0x00, 0x00, 0xff, 0x00},    /* green */
-    {
-    0x00, 0xff, 0xff, 0x00},    /* yellow */
-    {
-    0x00, 0x00, 0x00, 0xff},    /* blue */
-    {
-    0x00, 0xff, 0x00, 0xff},    /* purple */
-    {
-    0x00, 0x00, 0xff, 0xff},    /* cyan */
-    {
-    0x00, 0xff, 0xff, 0xff},    /* white */
+    {0x00, 0x00, 0x00, 0x00},    /* black */
+    {0x00, 0xff, 0x00, 0x00},    /* red */
+    {0x00, 0x00, 0xff, 0x00},    /* green */
+    {0x00, 0xff, 0xff, 0x00},    /* yellow */
+    {0x00, 0x00, 0x00, 0xff},    /* blue */
+    {0x00, 0xff, 0x00, 0xff},    /* purple */
+    {0x00, 0x00, 0xff, 0xff},    /* cyan */
+    {0x00, 0xff, 0xff, 0xff},    /* white */
 };
 
 /* Mutex for interaction with the CPU thread */
@@ -134,7 +126,7 @@ static inline unsigned int screenoffs(uint8_t y, uint8_t x, bool m40)
 {
     size_t offs = -1;
 
-    switch (model) {
+    switch (opts.model) {
     case MODEL_ABC80:
         if (m40)
             offs = 1024 + (((y >> 3) * 5) << 3) + ((y & 7) << 7) + x;
@@ -215,7 +207,7 @@ put_screen(struct surface *s, unsigned int tx, unsigned int ty, bool blink)
     voffs = screenoffs(ty, tx, vdu.mode40) + vdu.startaddr;
     cc = vdu.vram[voffs & VRAM_MASK];
     fontp = abc_font[(cc & 0x7f) + gmode];
-    invmask = (blink || model != MODEL_ABC80) ? 0x80 : 0;
+    invmask = (blink || opts.model != MODEL_ABC80) ? 0x80 : 0;
     invmask = (cc & invmask) ? 7 : 0;
     bg ^= invmask;
     fg ^= invmask;
@@ -293,7 +285,7 @@ static void refresh_screen(struct surface *s, bool force_blink)
 void setmode40(bool m40)
 {
     cpu.mode40 = m40;
-    if (model == MODEL_ABC80)
+    if (opts.model == MODEL_ABC80)
         abc80_mem_mode40(m40);
 }
 
@@ -485,7 +477,7 @@ void event_loop(void)
                     break;
 
                 case SDLK_f:
-                    faketype = !faketype;
+		    opts.faketype = !opts.faketype;
                     break;
 
                 default:

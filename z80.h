@@ -189,8 +189,4 @@ extern bool z80_poll_external(void);
 
 extern uint8_t ram[];           /* Array for plain RAM */
 
-extern void mem_init(unsigned int flags, const char *memfile);
-#define MEMFL_NOBASIC	1
-#define MEMFL_NODEV	2
-
 #endif /* Z80_H */

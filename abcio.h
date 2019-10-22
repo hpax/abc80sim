@@ -3,18 +3,10 @@
 
 #include "compiler.h"
 #include "hostfile.h"
+#include "options.h"
 
+extern void mem_init(enum memflags flags, const char *memfile);
 extern void io_init(void);
-
-enum model {
-    MODEL_ABC80,
-    MODEL_ABC802
-};
-
-extern enum model model;
-extern unsigned int kilobytes;
-extern bool old_basic;
-extern bool startup_width40;
 
 extern void abc80_mem_mode40(bool);
 extern void abc80_mem_setmap(unsigned int);

@@ -107,12 +107,7 @@ FILE *console_file;
 
 void abcprint_reset(struct abcprint *me)
 {
-    struct send_data sd;
-
     fileop_reset(me);
-    sd = me->sd;
-    memset(me, 0, sizeof *me);
-    me->sd = sd;
     me->istate = is_normal;
 }
 

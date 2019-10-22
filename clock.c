@@ -55,7 +55,7 @@ void timer_init(void)
     if (!limit_speed || poll_tstate_period > MAX_TSTATE_PERIOD)
         poll_tstate_period = MAX_TSTATE_PERIOD;
 
-    switch (model) {
+    switch (opts.model) {
     case MODEL_ABC80:
         /* 20 ms = 50 Hz */
         create_timer(MS(20), abc80_clock_tick);

@@ -115,7 +115,7 @@ static void cas_enable(bool enable)
         uint16_t fnaddr;
         int i;
 
-        switch (model) {
+        switch (opts.model) {
         case MODEL_ABC80:
             /* ABC80: a pointer to the filename can be found at (SP+4) */
             fnaddr = mem_fetch_word(REG_SP + 4);
