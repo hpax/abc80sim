@@ -56,7 +56,7 @@ PA_ARG_DISABLED([O3], [don't compile with -O3 optimization],
  [], [PA_ADD_CFLAGS(-O3)])
 
 dnl Can we be selective about libraries?
-PA_ADD_LDFLAGS([--as-needed])
+PA_ADD_LDFLAGS([-Wl,--as-needed])
 
 dnl Don't put things in common if we can avoid it.  We don't want to
 dnl assume all compilers support common, and this will help find those
