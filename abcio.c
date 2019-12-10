@@ -493,7 +493,7 @@ uint8_t z80_in(uint16_t port)
 
 void io_init(void)
 {
-    register_ioport(0, 0xffff, 0xffff, NULL, NULL);
+    register_ioport(0, 0, 0xffff, NULL, NULL);
 
     switch (opts.model) {
     case MODEL_ABC80:
