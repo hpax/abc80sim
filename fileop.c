@@ -510,7 +510,7 @@ static void do_delete(struct abcprint *me, const char *file)
 }
 
 /* Revert the state machine to its initial state (no command in progress) */
-void fileop_goto_init_state(struct abcprint *me)
+static void fileop_goto_init_state(struct abcprint *me)
 {
     memset(&me->cmd, 0, sizeof me->cmd);
     memset(&me->argbuf, 0, sizeof me->argbuf);

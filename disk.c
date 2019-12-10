@@ -397,7 +397,7 @@ static void disk_reset(uint8_t sel)
 	disk_reset_state(state);
 }
 
-void disk_out(uint8_t sel, uint16_t port, uint8_t value)
+static void disk_out(uint8_t sel, uint16_t port, uint8_t value)
 {
     struct ctl_state *state = sel_to_state[sel];
 
@@ -484,7 +484,7 @@ void disk_out(uint8_t sel, uint16_t port, uint8_t value)
     }
 }
 
-uint8_t disk_in(uint8_t sel, uint16_t port)
+static uint8_t disk_in(uint8_t sel, uint16_t port)
 {
     struct ctl_state *state = sel_to_state[sel];
     uint8_t v = 0xff;
