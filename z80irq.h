@@ -20,7 +20,7 @@ struct z80_irq {
 
 #define MAX_IRQ 32
 
-extern volatile unsigned int irq_pending;
+extern atomic_uint irq_pending;
 extern unsigned int irq_mask;   /* 0 = inside handler (irq->handled == true) */
 
 static inline bool poll_irq(void)
@@ -33,12 +33,12 @@ int z80_intack(void);
 void z80_eoi(void);
 static inline void z80_interrupt(struct z80_irq *irq)
 {
-    atomic_set_bit(&irq_pending, irq->prio);
+    atomic_fetch_or(&irq_pending, 1U << irq->prio);
 }
 
 static inline void z80_clear_interrupt(struct z80_irq *irq)
 {
-    atomic_clear_bit(&irq_pending, irq->prio);
+    atomic_fetch_and(&irq_pending, ~(1U << irq->prio));
 }
 
 #endif /* Z80IRQ_H */

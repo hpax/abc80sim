@@ -1,8 +1,4 @@
-#include <inttypes.h>
-#include <stdio.h>
-#include <string.h>
-#include <stdlib.h>
-#include <ctype.h>
+#include "compiler.h"
 #include "z80.h"
 
 static const char *const Mnemonics[256] = {

@@ -4,10 +4,7 @@
  * ABC80/802 screen emulation (40x24/80x24)
  */
 
-#include <stdarg.h>
-#include <stdlib.h>
-#include <inttypes.h>
-#include <string.h>
+#include "compiler.h"
 #include "screen.h"
 #include "screenshot.h"
 #include "z80.h"
@@ -221,7 +218,9 @@ put_screen(struct surface *s, unsigned int tx, unsigned int ty, bool blink)
 
     curmask = 0;
     if (unlikely(voffs == vdu.curaddr)) {
-        if (blink | (vdu.crtc.r.curstart & 0x40)) {
+	uint8_t curmode = vdu.crtc.r.curstart & 0x60;
+
+	if ((curmode == 0) || (blink && (curmode & 0x40))) {
             curmask = (~0U << (vdu.crtc.r.curstart & 0x1f));
             curmask &= (2U << (vdu.crtc.r.curend & 0x1f)) - 1;
         }
@@ -413,12 +412,18 @@ enum dump_memory_type {
     DUMP_RAM
 };
 
-static volatile enum dump_memory_type dump_memory_now;
+static atomic_uint dump_memory_now;
+
+enum user_event {
+    UEV_REFRESH_SCREEN,
+    UEV_ENABLE_KEYBOARD
+};
 
 void event_loop(void)
 {
     SDL_Event event;
-    static int keyboard_scan = -1;      /* No key currently down */
+    int keyboard_scan = -1;	/* No key currently down */
+    static bool keyboard_enabled = false;
     enum kshift {
         KSH_SHIFT = 1,
         KSH_CTRL = 2,
@@ -428,25 +433,9 @@ void event_loop(void)
     while (SDL_WaitEvent(&event)) {
         switch (event.type) {
         case SDL_KEYDOWN:
-            kshift =
-                ((event.key.keysym.
-                  mod & (KMOD_LALT | KMOD_RALT)) ? KSH_ALT : 0) | ((event.key.
-                                                                    keysym.
-                                                                    mod &
-                                                                    (KMOD_LCTRL
-                                                                     |
-                                                                     KMOD_RCTRL))
-                                                                   ? KSH_CTRL :
-                                                                   0) | ((event.
-                                                                          key.
-                                                                          keysym.
-                                                                          mod &
-                                                                          (KMOD_LSHIFT
-                                                                           |
-                                                                           KMOD_RSHIFT))
-                                                                         ?
-                                                                         KSH_SHIFT
-                                                                         : 0);
+            kshift = ((event.key.keysym.mod & (KMOD_LALT | KMOD_RALT)) ? KSH_ALT : 0)
+		| ((event.key.keysym.mod & (KMOD_LCTRL | KMOD_RCTRL)) ? KSH_CTRL : 0)
+		| ((event.key.keysym.mod & (KMOD_LSHIFT | KMOD_RSHIFT)) ? KSH_SHIFT : 0);
 
             if (kshift & KSH_ALT) {
                 /* Alt+key are special functions */
@@ -483,7 +472,7 @@ void event_loop(void)
                 default:
                     break;
                 }
-            } else {
+            } else if (keyboard_enabled) {
                 int mysym = -1;
 
                 switch (event.key.keysym.sym) {
@@ -705,12 +694,24 @@ void event_loop(void)
             }
             break;
         case SDL_KEYUP:
-            if (event.key.keysym.scancode == keyboard_scan)
-                keyboard_up();
+	    if (keyboard_enabled) {
+		if (event.key.keysym.scancode == keyboard_scan)
+		    keyboard_up();
+	    }
             break;
         case SDL_USEREVENT:
-            /* Time to update the screen */
-            refresh_screen(&rscreen, false);
+	    switch (event.user.code) {
+	    case UEV_REFRESH_SCREEN:
+		/* Time to update the screen */
+		refresh_screen(&rscreen, false);
+		break;
+	    case UEV_ENABLE_KEYBOARD:
+		/* Script file done */
+		keyboard_enabled = true;
+		break;
+	    default:
+		break;
+	    }
             break;
         case SDL_QUIT:
             return;             /* Return to main(), terminate */
@@ -738,7 +739,7 @@ void vsync_screen(void)
     trigger_refresh();
 
     if (unlikely(dump_memory_now)) {
-        dm = xchg(&dump_memory_now, DUMP_NONE);
+        dm = atomic_exchange(&dump_memory_now, DUMP_NONE);
         if (dm)
             dump_memory(dm == DUMP_RAM);
     }
@@ -747,18 +748,31 @@ void vsync_screen(void)
         fflush(tracef);         /* So we don't buffer indefinitely */
 }
 
+/* Post a user event */
+static void push_user_event(enum user_event ev)
+{
+    SDL_Event event;
+
+    memset(&event, 0, sizeof event);
+    event.type = SDL_USEREVENT;
+    event.user.code = ev;
+    SDL_PushEvent(&event);
+}
+
 /* Used from the CPU thread context to cause a screen redraw */
 static void trigger_refresh(void)
 {
-    SDL_Event trigger_redraw;
-
     SDL_mutexP(screen_mutex);
     xfr = cpu;
     SDL_mutexV(screen_mutex);
 
-    memset(&trigger_redraw, 0, sizeof trigger_redraw);
-    trigger_redraw.type = SDL_USEREVENT;
-    SDL_PushEvent(&trigger_redraw);
+    push_user_event(UEV_REFRESH_SCREEN);
+}
+
+/* Called by the CPU thread once any script file is fully consumed */
+void enable_real_keyboard(void)
+{
+    push_user_event(UEV_ENABLE_KEYBOARD);
 }
 
 /* Called in the CPU thread context */
@@ -766,6 +780,8 @@ static uint8_t crtc_addr;
 
 void crtc_out(uint16_t port, uint8_t data)
 {
+    uint8_t old_data;
+
     if (!(port & 1)) {
         crtc_addr = data;
         return;
@@ -776,11 +792,17 @@ void crtc_out(uint16_t port, uint8_t data)
 
     SDL_mutexP(screen_mutex);
 
+    old_data = cpu.crtc.regs[crtc_addr];
     cpu.crtc.regs[crtc_addr] = data;
     cpu.startaddr = ((cpu.crtc.r.starth & 0x3f) << 8) + cpu.crtc.r.startl;
     cpu.curaddr = ((cpu.crtc.r.curh & 0x3f) << 8) + cpu.crtc.r.curl;
 
     SDL_mutexV(screen_mutex);
+
+    if (crtc_addr == 0x0a &&
+	(old_data & 0x60) == 0x20 && (data & 0x60) != 0x20) {
+	cursor_enable_hook();
+    }
 }
 
 uint8_t crtc_in(uint16_t port)

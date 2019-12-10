@@ -8,19 +8,20 @@
 #include "trace.h"
 
 /* Keyboard IRQ vector */
-static volatile unsigned int keyb_data;
+static atomic_uint keyb_data;
 static uint8_t keyb_fakedata;
 
 /* These constants are designed to make dart_keyb_in() as simple as possible */
 #define KEYB_NEW  0x100
 #define KEYB_DOWN 0x800
 
-static int keyb_intack_fake(struct z80_irq *irq);
+struct host_file *scriptfile;
+
+static void script_next_char(void);
+static int keyb_intack_80(struct z80_irq *irq);
 static struct z80_irq *keyb_irq;
 
-static struct z80_irq keyb_irq_80 = IRQ(IRQ80_PIOA, NULL, NULL, NULL);
-static struct z80_irq keyb_irq_fake =
-IRQ(IRQ80_PIOA, keyb_intack_fake, NULL, NULL);
+static struct z80_irq keyb_irq_80 = IRQ(IRQ80_PIOA, keyb_intack_80, NULL, NULL);
 static struct z80_irq keyb_irq_800 = IRQ(IRQ800_DARTB, NULL, NULL, NULL);
 
 struct in_port {
@@ -243,11 +244,13 @@ static uint8_t abc80_pioa_in(uint16_t port)
 	return 0xff;
 
     /* Data port */
-    if (opts.faketype) {
+    if (opts.faketype || scriptfile) {
 	v = keyb_fakedata;
 	keyb_fakedata &= ~0x80;
+	if (!(v & 0x80) && scriptfile)
+	    script_next_char();
     } else {
-	unsigned int kbd = keyb_data;
+	unsigned int kbd = atomic_load(&keyb_data);
 	v = (kbd & 0x7f) | ((kbd & KEYB_DOWN) ? 0x80 : 0);
     }
     return v;
@@ -310,6 +313,7 @@ static void dart_keyb_out(uint16_t port, uint8_t value)
 {
     /* Keyboard DART control */
     uint8_t reg;
+    int16_t old_vector = keyb_irq->vector;
 
     if ((port & 1) == 0) {
         return;                 /* Data out - ignore for now */
@@ -352,26 +356,41 @@ static void dart_keyb_out(uint16_t port, uint8_t value)
         /* Fixed vector */
         keyb_irq->vector = (dart_keyb_ctl[2] & ~0x01);
     }
+
+    if (scriptfile && old_vector != keyb_irq->vector)
+	z80_interrupt(keyb_irq);
 }
 
 /* Get the keyboard data, clearing the KEYB_NEW flag */
 static unsigned int get_key(void)
 {
-    unsigned int rv, kbd;
-
-    rv = kbd = keyb_data;
-    cmpxchg(&keyb_data, &kbd, kbd & ~KEYB_NEW);
-
-    return rv;
+    unsigned int mask = scriptfile ? KEYB_NEW|KEYB_DOWN : KEYB_NEW;
+    return atomic_fetch_and(&keyb_data, ~mask);
 }
 
-static int keyb_intack_fake(struct z80_irq *irq)
+static int keyb_intack_80(struct z80_irq *irq)
 {
-    unsigned int data = get_key();
-
-    keyb_fakedata = (data & 0x7f) | ((data & KEYB_NEW) ? 0x80 : 0x00);
-
+    if (opts.faketype || scriptfile) {
+	unsigned int data = get_key();
+	keyb_fakedata = (data & 0x7f) | ((data & KEYB_NEW) ? 0x80 : 0x00);
+    }
     return irq->vector;
+}
+
+void cursor_enable_hook(void)
+{
+    if (!is_abc800())
+	return;
+
+    /*
+     * On ABC800, typing ahead will just cause characters to be lost
+     * in the buffer, so only do ghost typing when the cursor gets
+     * enabled.
+     */
+    if (scriptfile) {
+	if (!(atomic_load(&keyb_data) & KEYB_NEW))
+	    script_next_char();
+    }
 }
 
 static uint8_t dart_keyb_in(uint16_t port)
@@ -389,9 +408,10 @@ static uint8_t dart_keyb_in(uint16_t port)
 
         switch (reg) {
         case 0:
-            v = (keyb_data >> 8) + (1 << 2) +   /* Transmit buffer empty */
-                (dart_keyb_vsync << 4) +        /* RI -> vsync */
-                (1 << 5);       /* CTS -> 60 Hz */
+            v = (atomic_load(&keyb_data) >> 8) +
+		(1 << 2) +		 /* Transmit buffer empty */
+                (dart_keyb_vsync << 4) + /* RI -> vsync */
+                (1 << 5);		 /* CTS -> 60 Hz mode */
             break;
         case 1:
             v = (1 << 0);       /* All sent */
@@ -428,6 +448,36 @@ static void abc802_register_ioports(void)
 }
 
 /*
+ * Script keyboard handling
+ */
+static void script_next_char(void)
+{
+    int nextchar;
+
+    if (!scriptfile)
+	return;
+
+    do {
+	nextchar = fgetc(scriptfile->f);
+    } while (nextchar == '\r');	/* Drop CR */
+
+    if (nextchar == EOF) {
+	close_file(&scriptfile);
+	atomic_store(&keyb_data, 0); /* Nothing there */
+	enable_real_keyboard();
+	return;
+    }
+
+    if (nextchar == '\n' + 128)
+	nextchar = '\n';
+    else if (nextchar == '\n')
+	nextchar = '\r';
+
+    atomic_store(&keyb_data, (uint8_t)nextchar | KEYB_NEW | KEYB_DOWN);
+    z80_interrupt(keyb_irq);
+}
+
+/*
  * Keyboard callins from the screen-handling code
  */
 
@@ -435,25 +485,22 @@ static void abc802_register_ioports(void)
 
 /* Need to handle ABC800 up/down mode! */
 
-void keyboard_down(int sym)
+void keyboard_down(int key)
 {
-    if (opts.model == is_abc80()) {
+    uint8_t sym = key;
+
+    if (is_abc80()) {
         if (sym & ~127)
             return;
     }
 
-    keyb_data = sym | KEYB_NEW | KEYB_DOWN;
+    atomic_store(&keyb_data, sym | KEYB_NEW | KEYB_DOWN);
     z80_interrupt(keyb_irq);
 }
 
-unsigned int keyboard_up(void)
+void keyboard_up(void)
 {
-    unsigned int rv, kbd;
-
-    rv = kbd = keyb_data;
-    cmpxchg(&keyb_data, &kbd, kbd & ~KEYB_DOWN);
-
-    return rv;
+    atomic_fetch_and(&keyb_data, ~KEYB_DOWN);
 }
 
 /*
@@ -500,7 +547,7 @@ void io_init(void)
 	abc80_register_ioports();
         keyb_data = 0;
         abc80_cas_init();
-        keyb_irq = opts.faketype ? &keyb_irq_fake : &keyb_irq_80;
+        keyb_irq = &keyb_irq_80;
 	break;
 
     case MODEL_ABC802:

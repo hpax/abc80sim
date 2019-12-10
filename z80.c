@@ -1169,7 +1169,7 @@ static void do_im2(void)
 
 static void do_nmi(void)
 {
-    bool nminterrupt = xchg(&z80_state.nminterrupt, false);
+    bool nminterrupt = atomic_exchange(&z80_state.nminterrupt, false);
 
     if (!nminterrupt)
         return;

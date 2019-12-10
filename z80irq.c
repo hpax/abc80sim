@@ -2,7 +2,7 @@
 #include "z80.h"
 #include "z80irq.h"
 
-volatile unsigned int irq_pending;      /* Quick way to poll */
+atomic_uint irq_pending;      /* Quick way to poll */
 unsigned int irq_mask = ~0U;
 static struct z80_irq *irqs[MAX_IRQ];
 
@@ -23,7 +23,7 @@ int z80_intack(void)
 {
     unsigned int prio;
     int vector = -1;
-    unsigned int irqpend, irqmasked;
+    unsigned int irqpend, irqmasked, thisirq;
     struct z80_irq *irq;
 
     do {
@@ -35,7 +35,8 @@ int z80_intack(void)
             return vector;      /* All interrupts went away... */
 
         prio = __builtin_ctz(irqmasked);
-        if (unlikely(!atomic_test_clear_bit(&irq_pending, prio)))
+	thisirq = 1U << prio;
+        if (unlikely(!(atomic_fetch_and(&irq_pending, ~thisirq) & thisirq)))
             continue;           /* This particular interrupt went away on us? */
 
         irq = irqs[prio];

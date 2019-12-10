@@ -67,7 +67,7 @@ struct z80_state_struct {
     bool iff1, iff2, ei_shadow, signal_eoi;
 
     bool nmi_in_progress;       /* to prevent multiple simultaneous NMIs */
-    volatile bool nminterrupt;  /* used to signal a non maskable interrupt */
+    atomic_bool nminterrupt;  /* used to signal a non maskable interrupt */
 
     uint64_t tc;                /* T-state (clock cycle) counter */
 };
@@ -166,7 +166,7 @@ extern struct z80_state_struct z80_state;
 /* Signal an NMI */
 static inline void z80_nmi(void)
 {
-    z80_state.nminterrupt = true;
+    atomic_store(&z80_state.nminterrupt, true);
 }
 
 extern void z80_reset(void);

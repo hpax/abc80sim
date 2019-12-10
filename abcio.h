@@ -58,8 +58,9 @@ extern void dart_pr_out(uint16_t port, uint8_t v);
 extern uint8_t dart_pr_in(uint16_t port);
 
 extern void keyboard_down(int sym);
-extern unsigned int keyboard_up(void);
+extern void keyboard_up(void);
 extern bool faketype;
+extern void cursor_enable_hook(void);
 
 extern void abc802_vsync(void);
 
@@ -96,6 +97,7 @@ enum abc800_irq {
 extern const char *fileop_path, *disk_path, *screen_path, *memdump_path,
     *cas_path;
 extern struct file_list cas_files;
+extern struct host_file *scriptfile;
 
 /* Program name for error messages */
 extern const char *program_name;

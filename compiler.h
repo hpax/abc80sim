@@ -14,11 +14,6 @@
 /* On Microsoft platforms we support multibyte character sets in filenames */
 #define _MBCS 1
 
-#ifdef HAVE_INTTYPES_H
-#include <inttypes.h>
-#else
-#include "clib/inttypes.h"      /* Ersatz header file */
-#endif
 
 /* These header files should pretty much always be included... */
 #include <assert.h>
@@ -30,6 +25,8 @@
 #include <errno.h>
 #include <time.h>
 #include <math.h>
+#include <inttypes.h>
+#include <stdatomic.h>
 
 #ifdef HAVE_FCNTL_H
 #include <fcntl.h>
@@ -201,56 +198,6 @@ typedef unsigned __int128 uint128_t;
 #define is_constant(x) __builtin_constant_p(x)
 #else
 #define is_constant(x) false
-#endif
-
-/* Simple atomic operations */
-#ifdef __GNUC__
-#define atomic_load(p)    __atomic_load_n((p), __ATOMIC_ACQUIRE)
-#define atomic_store(p,v) __atomic_store_n((p), (v), __ATOMIC_RELEASE)
-#define cmpxchg(p, e, d)					\
-    likely(__atomic_compare_exchange_n((p), (e), (d), false,	\
-           __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE))
-#define xchg(p, v)						\
-    __atomic_exchange_n((p), (v), __ATOMIC_ACQ_REL)
-#define barrier() __atomic_thread_fence(__ATOMIC_ACQ_REL)
-
-#if defined(__i386__) || defined(__x86_64__)
-static inline bool atomic_test_set_bit(volatile unsigned int *p, unsigned int v)
-{
-    bool b;
-    asm volatile ("lock btsl %2,%0":"+m" (*p), "=@ccc"(b)
-                  :"rN"(v)
-                  :"memory");
-    return b;
-}
-
-static inline bool
-atomic_test_clear_bit(volatile unsigned int *p, unsigned int v)
-{
-    bool b;
-    asm volatile ("lock btrl %2,%0":"+m" (*p), "=@ccc"(b)
-                  :"rN"(v)
-                  :"memory");
-    return b;
-}
-#else
-static inline bool atomic_test_set_bit(volatile unsigned int *p, unsigned int v)
-{
-    return (__atomic_fetch_or(p, 1U << v, __ATOMIC_ACQ_REL) >> v) & 1;
-}
-
-static inline bool
-atomic_test_clear_bit(volatile unsigned int *p, unsigned int v)
-{
-    return (__atomic_fetch_and(p, ~(1U << v), __ATOMIC_ACQ_REL) >> v) & 1;
-}
-#endif
-
-#define atomic_set_bit(p,v) ((void)atomic_test_set_bit(p,v))
-#define atomic_clear_bit(p,v) ((void)atomic_test_clear_bit(p,v))
-
-#else /* __GNUC__ */
-#error "Define atomic operations for your compiler here"
 #endif
 
 #endif /* COMPILER_H */

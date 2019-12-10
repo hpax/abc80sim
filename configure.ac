@@ -41,6 +41,7 @@ AC_HEADER_STDC
 AC_HEADER_STDBOOL
 AC_CHECK_HEADERS(inttypes.h)
 AC_CHECK_HEADERS(stdnoreturn.h)
+AC_CHECK_HEADERS(stdatomic.h)
 
 dnl Force gcc and gcc-compatible compilers treat signed integers
 dnl as 2's complement

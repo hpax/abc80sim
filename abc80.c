@@ -27,6 +27,7 @@ const char *program_name;
 static const char *tracefile = NULL;
 static const char *memfile = NULL;
 static const char *console_filename = NULL;
+static const char *script_filename = NULL;
 
 enum tracing traceflags;
 FILE *tracef;
@@ -129,6 +130,7 @@ static no_return help(void)
            "  -Fc, --casfile file      input file for cassette (CAS:)\n"
            "  -Lc, --caslist file      read list of files for the cassette from a file\n"
            "  -Dc, --casdir dir        set directory for named cassette files [= filedir]\n"
+	   "  -Fs, --scriptfile file   script file to auto-type on startup\n"
            "  -e,  --console           enable console output device (PRC:)\n"
            "  -Fe, --consolefile file  enable console output device to a file\n"
            "       --detach            detach from console if run from a command line\n"
@@ -257,6 +259,7 @@ static const struct path_option path_options[] = {
     {{"Fc", "-casfile"}, NULL, add_casfile},
     {{"Lc", "-caslist"}, NULL, add_caslist},
     {{"Dc", "-casdir"}, &cas_path, NULL},
+    {{"Fs", "-scriptfile"}, &script_filename, NULL},
 };
 
 static int set_path(const char *opt, const char *what)
@@ -550,6 +553,12 @@ int main(int argc, char **argv)
 
     mem_init(opts.memflags, memfile);
     io_init();
+
+    if (script_filename)
+	scriptfile = open_host_file(HF_BINARY, NULL, script_filename, O_RDONLY);
+
+    if (!scriptfile)
+	enable_real_keyboard();
 
     /*
      * Load any other program files the
