@@ -12,6 +12,7 @@ enum model {
 enum tkn80 {
     TKN80_NONE,
     TKN80_MYAB,
+    TKN80_GEJO,
     TKN80_29K
 };
 
@@ -29,7 +30,9 @@ enum autobool {
 enum memflags {
     MEMFL_DEFAULT = 0,
     MEMFL_NOBASIC = 1,
-    MEMFL_NODEV   = 2
+    MEMFL_NODOS   = 2,
+    MEMFL_NOPR    = 4,
+    MEMFL_NODEV   = MEMFL_NODOS|MEMFL_NOPR
 };
 
 /* System options set on the command line */

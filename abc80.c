@@ -11,6 +11,7 @@
 #include "console.h"
 #include "trace.h"
 #include "clock.h"
+#include "sysload.h"
 
 #include <SDL_main.h>
 #include <SDL_thread.h>
@@ -36,59 +37,8 @@ int events_in_queue = 1;
 volatile int event_pending = 1;
 
 /*
- * Read a two digit hex number from a string
- * and return its numeric value.
- */
-static char *hexstring = "0123456789ABCDEF";
-static uint8_t gethex(char *p)
-{
-    return (uint8_t) (((strchr(hexstring, *p) - hexstring) << 4)
-                      + (strchr(hexstring, *(p + 1)) - hexstring));
-}
-
-/*
- * Load in Intel-hex file into memory.
- * No checking of the checksum is performed.
- */
-static void load_sysfile(FILE * sysfile)
-{
-    uint8_t *memory;
-    char line[128];
-    char *pos;
-    int len;
-    int type;
-
-    while (!feof(sysfile)) {
-        memory = ram;
-        fgets(line, 128, sysfile);
-        if (line[0] != ':') {
-            fprintf(stderr, "Invalid Intel-hex file.\n");
-            exit(1);
-        }
-        pos = line + 1;
-        len = gethex(pos);
-        pos += 2;
-        memory += (gethex(pos) << 8);
-        pos += 2;
-        memory += gethex(pos);
-        pos += 2;
-        type = gethex(pos);
-        pos += 2;
-        if (type == 1)
-            break;              /* End of file record */
-        if (type != 0)
-            continue;           /* Not a data record */
-        while (len--) {
-            *memory++ = gethex(pos);
-            pos += 2;
-        }
-    }
-}
-
-/*
  * Print usage message
  */
-
 static no_return usage(void)
 {
     fprintf(stderr, "Type \"%s --help\" for help\n", program_name);
@@ -564,17 +514,8 @@ int main(int argc, char **argv)
      * Load any other program files the
      * user gave on the command line.
      */
-    while (*option) {
-        const char *sysfile_name = *option++;
-        FILE *sysfile;
-        if ((sysfile = fopen(sysfile_name, "r")) == NULL) {
-            fprintf(stderr, "%s: Can't open file: %s: %s\n",
-                    argv[0], sysfile_name, strerror(errno));
-            exit(1);
-        }
-        load_sysfile(sysfile);
-        fclose(sysfile);
-    }
+    while (*option)
+      load_sysfile(*option++);
 
     /*
      * Off we go...

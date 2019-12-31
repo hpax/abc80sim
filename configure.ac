@@ -218,7 +218,6 @@ PA_ADD_CFLAGS([-fvisibility=hidden])
 dnl If we have gcc, add appropriate code cleanliness options
 PA_ADD_CPPFLAGS([-W])
 PA_ADD_CPPFLAGS([-Wall])
-PA_ADD_CPPFLAGS([-pedantic])
 dnl LLVM doesn't error out on invalid -W options unless this option is
 dnl specified first.  Enable this so this script can actually discover
 dnl which -W options are possible for this compiler.
