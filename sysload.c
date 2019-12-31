@@ -409,6 +409,10 @@ static int load_any(FILE *file, const struct load_data *ws, uint32_t addr)
     int bytes = -1;
 
     for (fmt = file_formats; fmt->loader; fmt++) {
+	/* Validate the file contents by loading to null */
+	if (fmt->loader(file, &memspace_null, addr) < 0)
+	    continue;
+
 	bytes = fmt->loader(file, ws, addr);
 	if (bytes >= 0)
 	    break;
