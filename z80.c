@@ -2842,7 +2842,7 @@ indexed:
             break;
 
         case 0xDB:             /* in a, (port) */
-            REG_A = z80_in((REG_B << 8) + mem_fetch(REG_PC++));
+            REG_A = z80_in((REG_A << 8) + mem_fetch(REG_PC++));
             break;
 
         case 0x3C:             /* inc a */
@@ -3305,7 +3305,7 @@ indexed:
             break;
 
         case 0xD3:             /* out (port), a */
-	    z80_out((REG_B << 8) + mem_fetch(REG_PC++), REG_A);
+	    z80_out((REG_A << 8) + mem_fetch(REG_PC++), REG_A);
             break;
 
         case 0xC1:             /* pop bc */
