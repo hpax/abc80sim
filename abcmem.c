@@ -409,9 +409,9 @@ void mem_init(unsigned int flags, const char *memfile)
 	    map_memory(0x01, 0, K(16), rom80, write_rom);
 
         if (!(flags & MEMFL_NODOS))
-	    memcpy(rom+K(24), abc80_devs, K(4));
+	    memcpy(rom+K(24), abc80_devs+K(8), K(4));
 	if (!(flags & MEMFL_NOPR))
-	    memcpy(rom+K(28), abc80_devs, K(4));
+	    memcpy(rom+K(28), abc80_devs+K(12), K(4));
 
 	/* Hack: allow printer ROMs to be written to */
 	map_memory(0x03, K(28), K(4), &rom[K(28)], write_ram);
