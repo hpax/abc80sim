@@ -109,51 +109,11 @@ void register_abcbus_dev(uint8_t sel, const struct abcbus_dev *dev)
     busdev[sel] = dev;
 }
 
-/*
- * ABC802 decodes I/O addresses based on the upper 4 bits; convert to the
- * canonical address form.
- */
-struct port_mask {
-    uint8_t mask, bits;
-};
-
-#define UNUSED { 0xff, 0x00 }	/* Just pass port number through */
-
-static const struct port_mask abc802_port_mask[16] =
+/* Magic event (out (253),x) */
+static void do_magic_out(uint16_t addr, uint8_t value)
 {
-    { 0x07, 0x00 },		/* ABC-bus */
-    UNUSED,
-    { 0x03, 0x20 },		/* DART */
-
-    /*
-     * The CRTC connection is WEIRD: A3 needs to be 1 for write, 0 for
-     * read.  The other ports are reserved for "RAM controller", which
-     * includes the ABC806 RTC.  If this causes problems, it might be
-     * interesting to try changing the mask below to 0x09.
-     */
-    { 0x0f, 0x30 },		/* CRTC */
-
-    { 0x03, 0x40 },		/* SIO/2 */
-    UNUSED,
-    { 0x03, 0x60 },		/* CTC */
-    UNUSED,
-
-    UNUSED,
-    UNUSED,
-    UNUSED,
-    UNUSED,
-
-    UNUSED,
-    UNUSED,
-    UNUSED,
-    UNUSED
-};
-
-static inline uint8_t abc800_mangle_port(uint8_t port)
-{
-    const struct port_mask *pm = &abc802_port_mask[port >> 4];
-
-    return (port & pm->mask) ^ pm->bits;
+    (void)addr;
+    do_magic(value);
 }
 
 /*
@@ -283,6 +243,9 @@ static void abc80_register_ioports(void)
 
     register_ioport(56, 0x16, 0x1, abc80_pioa_out, abc80_pioa_in);
     register_ioport(58, 0x16, 0x1, abc80_piob_out, abc80_piob_in);
+
+    /* Magic events */
+    register_outport(0xfd, 0xff, 0xff, do_magic_out);
 }
 
 /*
@@ -445,6 +408,9 @@ static void abc802_register_ioports(void)
     register_ioport(0x42, 0xf2, 0x01, abc800_sio_cas_out, abc800_sio_cas_in);
 
     register_ioport(0x60, 0xf0, 0x03, abc800_ctc_out, abc800_ctc_in);
+
+    /* Magic events */
+    register_outport(0xfd, 0xff, 0xff, do_magic_out);
 }
 
 /*

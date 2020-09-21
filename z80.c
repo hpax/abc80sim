@@ -1169,11 +1169,6 @@ static void do_im2(void)
 
 static void do_nmi(void)
 {
-    bool nminterrupt = atomic_exchange(&z80_state.nminterrupt, false);
-
-    if (!nminterrupt)
-        return;
-
     /* handle a non-maskable interrupt */
     if (tracing(TRACE_IO | TRACE_CPU)) {
         fprintf(tracef, "[%12" PRIu64 "] NMI: PC=%04x\n", TSTATE, REG_PC);
@@ -1187,6 +1182,8 @@ static void do_nmi(void)
     REG_PC = 0x66;
     inc_r();
     TSTATE += 11;
+
+    atomic_fetch_and(&z80_state.uncond, ~UCEV_NMI);
 }
 
 static void do_int(void)
@@ -1238,6 +1235,57 @@ static void do_int(void)
     }
 
     inc_r();
+}
+
+static void do_reset(void)
+{
+    REG_PC = 0;
+    z80_state.i = 0;
+    z80_state.iff1 = false;
+    z80_state.iff2 = false;
+    z80_state.ei_shadow = false;
+    z80_state.interrupt_mode = 0;
+    z80_state.nmi_in_progress = false;
+    z80_state.signal_eoi = false;
+    atomic_fetch_and(&z80_state.uncond, ~(UCEV_NMI|UCEV_RESET));
+}
+
+/* Check for an unconditional event (NMI, reset) */
+static bool check_cpu_event(void)
+{
+    unsigned int ucevent;
+
+    ucevent = atomic_load(&z80_state.uncond);
+
+    if (unlikely(ucevent)) {
+	if (unlikely(ucevent & UCEV_DUMP_MEM)) {
+	    atomic_fetch_and(&z80_state.uncond, ~UCEV_DUMP_MEM);
+	    dump_memory(false);
+	    ucevent = atomic_load(&z80_state.uncond);
+	}
+
+	if (unlikely(ucevent & UCEV_DUMP_RAM)) {
+	    atomic_fetch_and(&z80_state.uncond, ~UCEV_DUMP_MEM);
+	    dump_memory(true);
+	    ucevent = atomic_load(&z80_state.uncond);
+	}
+
+	if (unlikely(ucevent & UCEV_RESET)) {
+	    do_reset();
+	    return true;
+	} else if ((ucevent & UCEV_NMI) && !z80_state.nmi_in_progress) {
+	    do_nmi();
+	    return true;
+	}
+    }
+
+    if (z80_state.iff1 && !z80_state.ei_shadow && poll_irq()) {
+	do_int();
+	return true;
+    } else {
+	/* Nothing happened, no wakeup */
+	return false;
+    }
 }
 
 static uint16_t get_hl_addr(wordregister * ix)
@@ -2446,14 +2494,10 @@ int z80_run(bool continuous, bool halted)
             if (z80_poll_external())
                 return halted;
 
-            /* Check for an interrupt */
-            if (z80_state.nminterrupt && !z80_state.nmi_in_progress) {
-                halted = false;
-                do_nmi();
-            } else if (z80_state.iff1 && !z80_state.ei_shadow && poll_irq()) {
-                halted = false;
-                do_int();
-            }
+            /* Check for an interrupt or reset */
+	    if (check_cpu_event())
+		halted = false;
+
             z80_state.ei_shadow = false;
             if (!halted)
                 break;
@@ -3552,19 +3596,6 @@ indexed:
         }
     } while (continuous);
     return halted;
-}
-
-void z80_reset(void)
-{
-    REG_PC = 0;
-    z80_state.i = 0;
-    z80_state.iff1 = false;
-    z80_state.iff2 = false;
-    z80_state.ei_shadow = false;
-    z80_state.interrupt_mode = 0;
-    z80_state.nmi_in_progress = false;
-    z80_state.signal_eoi = false;
-    /* z80_state.r = 0; */
 }
 
 #define WREG(U,L) \

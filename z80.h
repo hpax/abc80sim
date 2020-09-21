@@ -66,11 +66,16 @@ struct z80_state_struct {
     uint8_t interrupt_mode;
     bool iff1, iff2, ei_shadow, signal_eoi;
 
+    atomic_uint uncond;		/* Unconditional events: NMI, reset */
     bool nmi_in_progress;       /* to prevent multiple simultaneous NMIs */
-    atomic_bool nminterrupt;  /* used to signal a non maskable interrupt */
 
     uint64_t tc;                /* T-state (clock cycle) counter */
 };
+
+#define UCEV_NMI	1U
+#define UCEV_RESET	2U
+#define UCEV_DUMP_MEM	4U
+#define UCEV_DUMP_RAM	8U
 
 #define Z80_ADDRESS_LIMIT	(1 << 16)
 
@@ -163,13 +168,25 @@ struct z80_state_struct {
 #define SIGN_FLAG		(REG_F & SIGN_MASK)
 
 extern struct z80_state_struct z80_state;
+
+/* Signal a RESET */
+static inline void z80_reset(void)
+{
+    atomic_fetch_or(&z80_state.uncond, UCEV_RESET);
+}
+
 /* Signal an NMI */
 static inline void z80_nmi(void)
 {
-    atomic_store(&z80_state.nminterrupt, true);
+    atomic_fetch_or(&z80_state.uncond, UCEV_NMI);
 }
 
-extern void z80_reset(void);
+/* Request a memory dump */
+static inline void z80_dump_memory(bool ram)
+{
+    atomic_fetch_or(&z80_state.uncond, ram ? UCEV_DUMP_RAM : UCEV_DUMP_MEM);
+}
+
 extern int z80_run(bool, bool);
 extern uint8_t mem_read(uint16_t);
 extern uint8_t mem_fetch(uint16_t);
@@ -186,6 +203,7 @@ extern uint8_t z80_in(uint16_t);
 extern int disassemble(int);
 extern int DAsm(uint16_t pc, char *T, int *target);
 extern bool z80_poll_external(void);
+extern void dump_memory(bool);
 
 extern uint8_t ram[];           /* Array for plain RAM */
 

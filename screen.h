@@ -20,6 +20,7 @@ Uint32 post_periodic(Uint32 interval, void *param);
 extern void crtc_out(uint16_t, uint8_t);
 extern uint8_t crtc_in(uint16_t);
 
+extern void do_magic(int);
 extern void enable_real_keyboard(void);
 
 /* Pointer into video RAM */

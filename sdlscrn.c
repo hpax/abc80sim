@@ -47,8 +47,10 @@ static struct argb {
     {0x00, 0xff, 0xff, 0xff},    /* white */
 };
 
-/* Mutex for interaction with the CPU thread */
-static SDL_mutex *screen_mutex;
+/* Mutexes for interaction with the CPU thread */
+static SDL_mutex *screen_mutex;	/* Lock screen operation */
+static SDL_mutex *magic_mutex;	/* "Magic" operation started */
+static SDL_cond  *magic_done;	/* "Magic" operation finished */
 
 #define VRAM_SIZE 2048
 #define VRAM_MASK (VRAM_SIZE-1)
@@ -328,6 +330,14 @@ static void abc_screenshot(void)
     SDL_FreeSurface(s.surf);
 }
 
+/* SDL_USEREVENT <= type < SDL_NUMEVENTS */
+enum user_event {
+    UEV_MAGIC = SDL_USEREVENT,
+    UEV_REFRESH_SCREEN,
+    UEV_ENABLE_KEYBOARD,
+    UEV_END
+};
+
 /*
  * Initialize SDL and the data structures
  */
@@ -342,6 +352,8 @@ void screen_init(bool width40, bool color)
         return;
 
     atexit(SDL_Quit);
+
+    assert((int)UEV_END <= (int)SDL_NUMEVENTS);
 
     rscreen.surf = SDL_SetVideoMode(PX_WIDTH, PX_HEIGHT, 32,
                                     SDL_HWSURFACE | SDL_DOUBLEBUF |
@@ -379,8 +391,10 @@ void screen_init(bool width40, bool color)
         }
     }
 
-    /* Create interlock mutex */
+    /* Create interlock mutexes */
     screen_mutex = SDL_CreateMutex();
+    magic_mutex  = SDL_CreateMutex();
+    magic_done   = SDL_CreateCond();
 
     if (!init_surface(&rscreen))
         return;
@@ -403,318 +417,247 @@ void screen_reset(void)
     /* Handled by atexit */
 }
 
+enum kshift {
+    KSH_SHIFT = 1,
+    KSH_CTRL = 2,
+    KSH_ALT = 4
+};
+
+/*
+ * Returns an ABC80/800 keycode (0-255), or -1 if unavailable.
+ * This is done regardless of the Alt status, so it can be used
+ * to decode Alt magic operations, too.
+ */
+static int sym_to_abc(const SDL_keysym *ks)
+{
+    int abcsym;
+    enum kshift kshift;
+    int ctlmask;
+
+    kshift = ((ks->mod & (KMOD_LALT | KMOD_RALT)) ? KSH_ALT : 0)
+	| ((ks->mod & (KMOD_LCTRL | KMOD_RCTRL)) ? KSH_CTRL : 0)
+	| ((ks->mod & (KMOD_LSHIFT | KMOD_RSHIFT)) ? KSH_SHIFT : 0);
+    ctlmask = kshift & KSH_CTRL ? 0x1f : 0xff;
+
+    switch (ks->sym) {
+    case SDLK_LEFT:
+	abcsym = 8;		/* Backspace/back arrow */
+	break;
+
+    case SDLK_RIGHT:
+	abcsym = 9;		/* Tab/forward arrow */
+	break;
+
+    case SDLK_F1:		/* ABC800 PF keys */
+    case SDLK_F2:
+    case SDLK_F3:
+    case SDLK_F4:
+    case SDLK_F5:
+    case SDLK_F6:
+    case SDLK_F7:
+    case SDLK_F8:
+	abcsym = (ks->sym - SDLK_F1 + 192) + ((int)kshift << 3);
+	break;
+
+    case SDLK_ESCAPE:		/* Equal to Ctrl-< */
+	abcsym = 127;
+	break;
+
+    case SDLK_SPACE:		/* Ctrl+Space -> NUL */
+	abcsym = ' ' & ctlmask;
+	break;
+
+    case SDLK_END:		/* Alt-End -> Alt-q */
+	if (KSH_ALT)
+	    abcsym = 'q';
+	break;
+
+    default:
+	abcsym = -1;
+	break;
+    }
+
+    if (abcsym < 0) {
+	switch (ks->unicode) {
+	case L' ':
+	    abcsym = ' ' & ctlmask;
+	    break;
+	case L'¤':
+	    abcsym = '$';
+	    break;
+	case L'É':
+	    abcsym = '@';
+	    break;
+	case L'Å':
+	    abcsym = ']';
+	    break;
+	case L'Ä':
+	    abcsym = '[';
+	    break;
+	case L'Ö':
+	    abcsym = '\\';
+	    break;
+	case L'Ü':
+	    abcsym = '^';
+	    break;
+	case L'é':
+	    abcsym = '`';
+	    break;
+	case L'å':
+	    abcsym = '}';
+	    break;
+	case L'ä':
+	    abcsym = '{';
+	    break;
+	case L'ö':
+	    abcsym = '|';
+	    break;
+	case L'ü':
+	    abcsym = '~';
+	    break;
+	case L'<':
+	case L'>':
+	    abcsym = (kshift & KSH_CTRL) ? 127 : ks->unicode;
+	    break;
+	case L'§':
+	case L'½':
+	    abcsym = 127;
+	    break;
+	default:
+	    /* ks->unicode invalid can't be distinguished from NUL, sadly */
+	    if (ks->unicode > 0 && ks->unicode <= 255)
+		abcsym = ks->unicode;
+	    else
+		abcsym = -1;
+	    break;
+	}
+    }
+
+    if (abcsym >= '@' && abcsym < 127) {
+	if (kshift & KSH_CTRL) {
+	    abcsym &= 0x1f;
+	    if (kshift & KSH_SHIFT) {
+		/* ABC-specific: Ctrl-Shift flips bit 4 */
+		abcsym ^= 0x10;
+	    }
+	}
+    }
+
+    return abcsym;
+}
+
 /*
  * Event-handling loop; main loop of the event/screen thread.
  */
-enum dump_memory_type {
-    DUMP_NONE,
-    DUMP_MEM,
-    DUMP_RAM
-};
 
-static atomic_uint dump_memory_now;
+/* Post a user event */
+static inline void push_user_event(enum user_event ev, int code, void *data)
+{
+    SDL_Event event;
 
-enum user_event {
-    UEV_REFRESH_SCREEN,
-    UEV_ENABLE_KEYBOARD
-};
+    memset(&event, 0, sizeof event);
+    event.type = ev;
+    event.user.code = code;
+    event.user.data1 = data;
+    SDL_PushEvent(&event);
+}
+
+static void push_quit_event(void)
+{
+   SDL_Event event;
+
+    memset(&event, 0, sizeof event);
+    event.type = SDL_QUIT;
+    SDL_PushEvent(&event);
+}
+
+/*
+ * Invoked on a do_magic() event. If it returns nonzero,
+ * return to main() and exit the simulator.
+ */
+static void do_magic_from_event_loop(int abcsym)
+{
+    switch (abcsym) {
+    case 'q':
+	push_quit_event();
+	break;
+    case 's':
+	abc_screenshot();
+	break;
+    case 'r':
+	z80_reset();
+	break;
+    case 'n':
+	z80_nmi();
+	break;
+    case 'm':
+	z80_dump_memory(false);
+	break;
+    case 'u':
+	z80_dump_memory(true);
+	break;
+    case 'f':
+	opts.faketype = !opts.faketype;
+	break;
+    default:
+	break;
+    }
+}
 
 void event_loop(void)
 {
     SDL_Event event;
     int keyboard_scan = -1;	/* No key currently down */
     static bool keyboard_enabled = false;
-    enum kshift {
-        KSH_SHIFT = 1,
-        KSH_CTRL = 2,
-        KSH_ALT = 4
-    } kshift;
+    int abcsym;
 
     while (SDL_WaitEvent(&event)) {
         switch (event.type) {
         case SDL_KEYDOWN:
-            kshift = ((event.key.keysym.mod & (KMOD_LALT | KMOD_RALT)) ? KSH_ALT : 0)
-		| ((event.key.keysym.mod & (KMOD_LCTRL | KMOD_RCTRL)) ? KSH_CTRL : 0)
-		| ((event.key.keysym.mod & (KMOD_LSHIFT | KMOD_RSHIFT)) ? KSH_SHIFT : 0);
-
-            if (kshift & KSH_ALT) {
-                /* Alt+key are special functions */
-
-                switch (event.key.keysym.sym) {
-                case SDLK_END:
-                case SDLK_q:
-                    return;     /* Return to main() and exit simulator */
-
-                case SDLK_s:
-                    abc_screenshot();
-                    break;
-
-                case SDLK_r:
-                    z80_reset();
-                    break;
-
-                case SDLK_n:
-                    z80_nmi();
-                    break;
-
-                case SDLK_m:
-                    dump_memory_now = DUMP_MEM;
-                    break;
-
-                case SDLK_u:
-                    dump_memory_now = DUMP_RAM;
-                    break;
-
-                case SDLK_f:
-		    opts.faketype = !opts.faketype;
-                    break;
-
-                default:
-                    break;
+	    abcsym = sym_to_abc(&event.key.keysym);
+	    if (abcsym >= 0) {
+		if (event.key.keysym.mod & (KMOD_LALT|KMOD_RALT)) {
+		    do_magic_from_event_loop(abcsym);
+		} else if (keyboard_enabled && abcsym >= 0) {
+		    /*
+		     * Remember which key so we can tell
+		     * when it is released
+		     */
+		    keyboard_scan = event.key.keysym.scancode;
+		    keyboard_down(abcsym);
                 }
-            } else if (keyboard_enabled) {
-                int mysym = -1;
+	    }
+	    break;
 
-                switch (event.key.keysym.sym) {
-                case SDLK_LEFT:
-                    mysym = 8;
-                    break;
-
-                case SDLK_RIGHT:
-                    mysym = 9;
-                    break;
-
-                case SDLK_F1:
-                case SDLK_F2:
-                case SDLK_F3:
-                case SDLK_F4:
-                case SDLK_F5:
-                case SDLK_F6:
-                case SDLK_F7:
-                case SDLK_F8:
-                    mysym =
-                        (event.key.keysym.sym - SDLK_F1 + 192) +
-                        ((int)kshift << 3);
-                    break;
-
-                case SDLK_ESCAPE:
-                    mysym = 127;
-                    break;
-
-                case SDLK_SPACE:       /* Ctrl+Space -> NUL */
-                    mysym = (kshift ^ KSH_CTRL) << 4;
-                    break;
-
-                default:
-                    switch (event.key.keysym.unicode) {
-                    case 1:
-                    case 2:
-                    case 3:
-                    case 4:
-                    case 5:
-                    case 6:
-                    case 7:
-                    case 8:
-                    case 9:
-                    case 10:
-                    case 11:
-                    case 12:
-                    case 13:
-                    case 14:
-                    case 15:
-                    case 16:
-                    case 17:
-                    case 18:
-                    case 19:
-                    case 20:
-                    case 21:
-                    case 22:
-                    case 23:
-                    case 24:
-                    case 25:
-                    case 26:
-                    case 27:
-                    case 28:
-                    case 29:
-                    case 30:
-                    case 31:
-                    case ' ':
-                    case '!':
-                    case '"':
-                    case '#':
-                    case '$':
-                    case '%':
-                    case '&':
-                    case 39:
-                    case '(':
-                    case ')':
-                    case '*':
-                    case '+':
-                    case ',':
-                    case '-':
-                    case '.':
-                    case '/':
-                    case '0':
-                    case '1':
-                    case '2':
-                    case '3':
-                    case '4':
-                    case '5':
-                    case '6':
-                    case '7':
-                    case '8':
-                    case '9':
-                    case ':':
-                    case ';':
-                    case '=':
-                    case '?':
-                    case '@':
-                    case 'A':
-                    case 'B':
-                    case 'C':
-                    case 'D':
-                    case 'E':
-                    case 'F':
-                    case 'G':
-                    case 'H':
-                    case 'I':
-                    case 'J':
-                    case 'K':
-                    case 'L':
-                    case 'M':
-                    case 'N':
-                    case 'O':
-                    case 'P':
-                    case 'Q':
-                    case 'R':
-                    case 'S':
-                    case 'T':
-                    case 'U':
-                    case 'V':
-                    case 'W':
-                    case 'X':
-                    case 'Y':
-                    case 'Z':
-                    case '[':
-                    case 92:
-                    case ']':
-                    case '^':
-                    case '_':
-                    case '`':
-                    case 'a':
-                    case 'b':
-                    case 'c':
-                    case 'd':
-                    case 'e':
-                    case 'f':
-                    case 'g':
-                    case 'h':
-                    case 'i':
-                    case 'j':
-                    case 'k':
-                    case 'l':
-                    case 'm':
-                    case 'n':
-                    case 'o':
-                    case 'p':
-                    case 'q':
-                    case 'r':
-                    case 's':
-                    case 't':
-                    case 'u':
-                    case 'v':
-                    case 'w':
-                    case 'x':
-                    case 'y':
-                    case 'z':
-                    case '{':
-                    case '|':
-                    case '}':
-                    case '~':
-                    case 127:
-                        mysym = event.key.keysym.unicode;
-                        break;
-                    case L'¤':
-                        mysym = '$';
-                        break;
-                    case L'É':
-                        mysym = '@';
-                        break;
-                    case L'Å':
-                        mysym = ']';
-                        break;
-                    case L'Ä':
-                        mysym = '[';
-                        break;
-                    case L'Ö':
-                        mysym = '\\';
-                        break;
-                    case L'Ü':
-                        mysym = '^';
-                        break;
-                    case L'é':
-                        mysym = '`';
-                        break;
-                    case L'å':
-                        mysym = '}';
-                        break;
-                    case L'ä':
-                        mysym = '{';
-                        break;
-                    case L'ö':
-                        mysym = '|';
-                        break;
-                    case L'ü':
-                        mysym = '~';
-                        break;
-                    case L'<':
-                    case L'>':
-                        mysym =
-                            (kshift & KSH_CTRL) ? 127 : event.key.keysym.
-                            unicode;
-                        break;
-                    case L'§':
-                    case L'½':
-                        mysym = 127;
-                        break;
-                    default:
-                        break;
-                    }
-                    if (!(mysym & ~0x1f)) {
-                        /* Shift+Ctrl -> invert bit 4 */
-                        if (kshift == (KSH_CTRL | KSH_SHIFT))
-                            mysym ^= 0x10;
-                    }
-                }
-                if (mysym >= 0) {
-                    /* Remember which key so we can tell when it is released */
-                    keyboard_scan = event.key.keysym.scancode;
-                    keyboard_down(mysym);
-                }
-            }
-            break;
         case SDL_KEYUP:
 	    if (keyboard_enabled) {
 		if (event.key.keysym.scancode == keyboard_scan)
 		    keyboard_up();
 	    }
             break;
-        case SDL_USEREVENT:
-	    switch (event.user.code) {
-	    case UEV_REFRESH_SCREEN:
-		/* Time to update the screen */
-		refresh_screen(&rscreen, false);
-		break;
-	    case UEV_ENABLE_KEYBOARD:
-		/* Script file done */
-		keyboard_enabled = true;
-		break;
-	    default:
-		break;
-	    }
-            break;
+
+	case UEV_REFRESH_SCREEN:
+	    /* Time to update the screen */
+	    refresh_screen(&rscreen, false);
+	    break;
+
+	case UEV_ENABLE_KEYBOARD:
+	    /* Script file done */
+	    keyboard_enabled = true;
+	    break;
+
+	case UEV_MAGIC:
+	{
+	    bool *done = event.user.data1;
+	    do_magic_from_event_loop(event.user.code);
+	    *done = true;
+	    SDL_CondBroadcast(magic_done);
+	}
+	break;
+
         case SDL_QUIT:
             return;             /* Return to main(), terminate */
+
         default:
             break;
         }
@@ -729,7 +672,6 @@ void vsync_screen(void)
 {
     const int blink_rate = 400 / 20;    /* 400 ms/20 ms = 2.5 Hz */
     static int blink_ctr;
-    enum dump_memory_type dm;
 
     if (!blink_ctr--) {
         blink_ctr = blink_rate;
@@ -738,25 +680,27 @@ void vsync_screen(void)
 
     trigger_refresh();
 
-    if (unlikely(dump_memory_now)) {
-        dm = atomic_exchange(&dump_memory_now, DUMP_NONE);
-        if (dm)
-            dump_memory(dm == DUMP_RAM);
-    }
-
     if (traceflags)
         fflush(tracef);         /* So we don't buffer indefinitely */
 }
 
-/* Post a user event */
-static void push_user_event(enum user_event ev)
+/*
+ * Queues a magic event. This may be called from any thread.
+ * This is a blocking event! If this is called from the CPU
+ * thread, it will be immediately followed by any CPU-related
+ * action, however.
+ */
+void do_magic(int abcsym)
 {
-    SDL_Event event;
+    if (abcsym >= 0 && abcsym <= 255) {
+	bool done = false;
 
-    memset(&event, 0, sizeof event);
-    event.type = SDL_USEREVENT;
-    event.user.code = ev;
-    SDL_PushEvent(&event);
+	SDL_mutexP(magic_mutex);
+	push_user_event(UEV_MAGIC, abcsym, &done);
+	while (!done)
+	    SDL_CondWait(magic_done, magic_mutex);
+	SDL_mutexV(magic_mutex);
+    }
 }
 
 /* Used from the CPU thread context to cause a screen redraw */
@@ -766,13 +710,13 @@ static void trigger_refresh(void)
     xfr = cpu;
     SDL_mutexV(screen_mutex);
 
-    push_user_event(UEV_REFRESH_SCREEN);
+    push_user_event(UEV_REFRESH_SCREEN, 0, NULL);
 }
 
 /* Called by the CPU thread once any script file is fully consumed */
 void enable_real_keyboard(void)
 {
-    push_user_event(UEV_ENABLE_KEYBOARD);
+    push_user_event(UEV_ENABLE_KEYBOARD, 0, NULL);
 }
 
 /* Called in the CPU thread context */
