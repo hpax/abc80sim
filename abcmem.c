@@ -358,6 +358,9 @@ void mem_init(unsigned int flags, const char *memfile)
 
     switch (opts.model) {
     case MODEL_ABC80:
+    {
+	const uint8_t *devs = abc80_devs;
+	
         /* 4 maps * 2 (40/80) */
 
 	sysload_add_memspace("rom", load_rom_4080, rom, -1, sizeof rom);
@@ -370,13 +373,32 @@ void mem_init(unsigned int flags, const char *memfile)
             opts.kb = 64;
         }
 
+	if (opts.basic == BASIC_II) {
+	    if (opts.tkn80 != TKN80_NONE)
+		opts.tkn80 = TKN80_GEJO; /* 30-32K */
+
+	    devs = basicii + K(16);
+	}
+	
         /* Map 0: default (for < 64K, the only available map) */
 
         if (!(flags & MEMFL_NOBASIC)) {
 	    int i;
 
-	    memcpy(rom,   opts.old_basic ? abc80bas40o : abc80bas40n, K(16));
-	    memcpy(rom80, opts.old_basic ? abc80bas80o : abc80bas80n, K(16));
+	    switch (opts.basic) {
+	    case BASIC_NEW:
+		memcpy(rom,   abc80bas40n, K(16));
+		memcpy(rom80, abc80bas80n, K(16));
+		break;
+	    case BASIC_OLD:
+		memcpy(rom,   abc80bas40o, K(16));
+		memcpy(rom80, abc80bas80o, K(16));
+		break;
+	    default:
+		memcpy(rom,   basicii,     K(24));
+		break;
+	    }
+		
 
 	    /*
 	     * The 80-character BASIC ROMs have screen row addresses
@@ -405,13 +427,13 @@ void mem_init(unsigned int flags, const char *memfile)
         }
 
 	map_memory(0x03, 0, K(32), rom, write_rom);
-	if (opts.tkn80 != TKN80_NONE)
+	if (opts.tkn80 != TKN80_NONE && opts.basic != BASIC_II)
 	    map_memory(0x01, 0, K(16), rom80, write_rom);
 
         if (!(flags & MEMFL_NODOS))
-	    memcpy(rom+K(24), abc80_devs+K(8), K(4));
+	    memcpy(rom+K(24), devs+K(8), K(4));
 	if (!(flags & MEMFL_NOPR))
-	    memcpy(rom+K(28), abc80_devs+K(12), K(4));
+	    memcpy(rom+K(28), devs+K(12), K(4));
 
 	/* Hack: allow printer ROMs to be written to */
 	map_memory(0x03, K(28), K(4), &rom[K(28)], write_ram);
@@ -467,6 +489,7 @@ void mem_init(unsigned int flags, const char *memfile)
 	/* Default to map 0 */
         abc80_mem_setmap(0);
         break;
+    }
 
     case MODEL_ABC802:
 	sysload_add_memspace("rom", NULL, rom, -1, sizeof rom);

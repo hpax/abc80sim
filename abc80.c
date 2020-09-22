@@ -91,6 +91,7 @@ static no_return help(void)
            "       --11273             same as --old-basic\n"
            "       --new-basic         run BASIC 1.2 (checksum 9913, default)\n"
            "       --9913              same as --new-basic\n"
+	   "       --basicii           run BASIC II (modified ABC800 BASIC)\n"
            "       --faketype          fake short keystrokes (default > 12.5 MHz)\n"
            "       --realtype          true key up/down emulation (default < 12.5 MHz)\n"
 	   "       --tkn80 none        no 80-character support\n"
@@ -249,7 +250,7 @@ found:
 struct opts opts = {
     .model		= MODEL_ABC80,
     .kb			= 64,	/* Currently only applicable to ABC80 */
-    .old_basic		= false,
+    .basic		= BASIC_NEW,
     .tkn80		= TKN80_MYAB,
     .startup_width40	= false,
     .color		= true,
@@ -329,9 +330,11 @@ int main(int argc, char **argv)
                 opts.memflags &= ~MEMFL_NOBASIC;
                 opts.memflags |= (enable ? 0 : MEMFL_NOBASIC);
             } else if (!strcmp(optstr, "old-basic") || !strcmp(optstr, "11273")) {
-		opts.old_basic = enable;
+		opts.basic = enable ? BASIC_OLD : BASIC_NEW;
             } else if (!strcmp(optstr, "new-basic") || !strcmp(optstr, "9913")) {
-                opts.old_basic = !enable;
+                opts.basic = enable ? BASIC_NEW : BASIC_OLD;
+	    } else if (!strcmp(optstr, "basicii") || !strcmp(optstr, "basic2")) {
+		opts.basic = enable ? BASIC_II : BASIC_NEW;
             } else if (!strcmp(optstr, "device")) {
                 opts.memflags &= ~MEMFL_NODEV;
                 opts.memflags |= enable ? 0 : MEMFL_NODEV;

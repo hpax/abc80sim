@@ -4,11 +4,12 @@
 #include <stddef.h>
 #include <inttypes.h>
 
-extern uint8_t abc80bas40n[16384];
-extern uint8_t abc80bas40o[16384];
-extern uint8_t abc80bas80n[16384];
-extern uint8_t abc80bas80o[16384];
-extern uint8_t abc80_devs[16384];
-extern uint8_t abc802rom[32768];
+extern uint8_t abc80bas40n[16 << 10];
+extern uint8_t abc80bas40o[16 << 10];
+extern uint8_t abc80bas80n[16 << 10];
+extern uint8_t abc80bas80o[16 << 10];
+extern uint8_t abc80_devs[16 << 10];
+extern uint8_t basicii[30 << 10];
+extern uint8_t abc802rom[32 << 10];
 
 #endif /* ROM_H */

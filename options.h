@@ -35,13 +35,19 @@ enum memflags {
     MEMFL_NODEV   = MEMFL_NODOS|MEMFL_NOPR
 };
 
+enum abc80_basic {
+    BASIC_NEW,			/* Checksum 9913 */
+    BASIC_OLD,			/* Checksum 11723 */
+    BASIC_II			/* BASIC II (modified ABC800 BASIC) */
+};
+
 /* System options set on the command line */
 struct opts {
     enum model model;
     unsigned int kb;	        /* Memory in kilobytes */
     enum tkn80 tkn80;		/* ABC80 form of 80 characters */
     bool startup_width40;	/* Start in 40-char mode (if applicable) */
-    bool old_basic;		/* ABC80 checksum 11723 BASIC */
+    enum abc80_basic basic;	/* BASIC version (ABC80 only) */
     bool color;			/* Color screen */
     enum autobool faketype;	/* ABC80 keyboard fake for high speeds */
     enum memflags memflags;	/* Memory configuration */
