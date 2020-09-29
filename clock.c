@@ -115,9 +115,7 @@ weird:
 }
 
 /* Poll for timers - these the only external event we look for */
-volatile bool z80_quit;
-bool have_breakpoints;
-extern bool check_breakpoint(uint16_t);
+atomic_bool z80_quit;
 
 enum z80_cond z80_poll_external(void)
 {

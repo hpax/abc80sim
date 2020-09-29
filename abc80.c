@@ -525,7 +525,7 @@ int main(int argc, char **argv)
      */
     cpu_thread = SDL_CreateThread(z80_thread, NULL);
     event_loop();               /* Handling external events and screen */
-    z80_quit = true;
+    atomic_store(&z80_quit, true);
     SDL_WaitThread(cpu_thread, NULL);
 
     screen_reset();
