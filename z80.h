@@ -16,17 +16,17 @@
 
 struct twobyte {
 #if WORDS_LITTLEENDIAN
-    uint8_t low, high;
+    uint8_t l, h;
 #else
-    uint8_t high, low;
+    uint8_t h, l;
 #endif
 };
 
 /* for implementing registers which can be seen as bytes or words: */
 typedef union {
-    struct twobyte byte;
-    uint16_t word;
-} wordregister;
+    uint16_t w;
+    struct twobyte b;
+} regpair;
 
 typedef void (*eoifunc) (uint8_t, void *);
 struct eoi {
@@ -37,24 +37,38 @@ struct eoi {
 
 struct z80_irq;
 
+/* This is the register numbering expected by gdb */
+enum z80_regnums {
+    Z80_AF,  Z80_BC,  Z80_DE,  Z80_HL,
+    Z80_SP,  Z80_PC,
+    Z80_IX,  Z80_IY,
+    Z80_AFx, Z80_BCx, Z80_DEx, Z80_HLx, /* AF' BC' DE' HL' */
+    Z80_IR,
+    Z80_REG_NUM
+};
 struct z80_state_struct {
-    wordregister af;
-    wordregister bc;
-    wordregister de;
-    wordregister hl;
-    wordregister ix;
-    wordregister iy;
-    wordregister sp;
-    wordregister pc;
+    union {
+	struct {
+	    regpair af;
+	    regpair bc;
+	    regpair de;
+	    regpair hl;
+	    regpair sp;
+	    regpair pc;
+	    regpair ix;
+	    regpair iy;
 
-    wordregister af_prime;
-    wordregister bc_prime;
-    wordregister de_prime;
-    wordregister hl_prime;
+	    regpair afx;
+	    regpair bcx;
+	    regpair dex;
+	    regpair hlx;
 
-    uint8_t i;                  /* interrupt-page address register */
-    uint8_t rc;                 /* counting part of register R (bits 6-0) */
-    uint8_t rf;                 /* fixed part of register R (bit 7) */
+	    regpair ir;
+	} r;
+	uint16_t dbg[Z80_REG_NUM];
+    } reg;
+
+    uint8_t rctr;		/* counter part of REG_R */
 
     uint8_t interrupt_mode;
     bool iff1, iff2, ei_shadow, signal_eoi;
@@ -65,6 +79,7 @@ struct z80_state_struct {
     atomic_uint uncond;		/* Unconditional events: NMI, reset */
     uint64_t tc;                /* T-state (clock cycle) counter */
 };
+extern struct z80_state_struct z80_state;
 
 #define UCEV_NMI	1U
 #define UCEV_RESET	2U
@@ -75,39 +90,75 @@ struct z80_state_struct {
  * Register accessors:
  */
 
-#define REG_A	(z80_state.af.byte.high)
-#define REG_F	(z80_state.af.byte.low)
-#define REG_B	(z80_state.bc.byte.high)
-#define REG_C	(z80_state.bc.byte.low)
-#define REG_D	(z80_state.de.byte.high)
-#define REG_E	(z80_state.de.byte.low)
-#define REG_H	(z80_state.hl.byte.high)
-#define REG_L	(z80_state.hl.byte.low)
-#define REG_IXH	(z80_state.ix.byte.high)
-#define REG_IXL	(z80_state.ix.byte.low)
-#define REG_IYH	(z80_state.iy.byte.high)
-#define REG_IYL	(z80_state.iy.byte.low)
+#define REG_A		z80_state.reg.r.af.b.h
+#define REG_F		z80_state.reg.r.af.b.l
+#define REG_B		z80_state.reg.r.bc.b.h
+#define REG_C		z80_state.reg.r.bc.b.l
+#define REG_D		z80_state.reg.r.de.b.h
+#define REG_E		z80_state.reg.r.de.b.l
+#define REG_H		z80_state.reg.r.hl.b.h
+#define REG_L		z80_state.reg.r.hl.b.l
 
-#define REG_SP	(z80_state.sp.word)
-#define REG_PC	(z80_state.pc.word)
+#define REG_IXH		z80_state.reg.r.ix.b.h
+#define REG_IXL		z80_state.reg.r.ix.b.l
+#define REG_IYH		z80_state.reg.r.iy.b.h
+#define REG_IYL		z80_state.reg.r.iy.b.l
 
-#define REG_AF	(z80_state.af.word)
-#define REG_BC	(z80_state.bc.word)
-#define REG_DE	(z80_state.de.word)
-#define REG_HL	(z80_state.hl.word)
+#define REG_SP		z80_state.reg.r.sp.w
+#define REG_PC		z80_state.reg.r.pc.w
 
-#define REG_AF_PRIME	(z80_state.af_prime.word)
-#define REG_BC_PRIME	(z80_state.bc_prime.word)
-#define REG_DE_PRIME	(z80_state.de_prime.word)
-#define REG_HL_PRIME	(z80_state.hl_prime.word)
+#define REG_AF		z80_state.reg.r.af.w
+#define REG_BC		z80_state.reg.r.bc.w
+#define REG_DE		z80_state.reg.r.de.w
+#define REG_HL		z80_state.reg.r.hl.w
 
-#define REG_IX	(z80_state.ix.word)
-#define REG_IY	(z80_state.iy.word)
+#define REG_AFx		z80_state.reg.r.afx.w
+#define REG_BCx		z80_state.reg.r.bcx.w
+#define REG_DEx		z80_state.reg.r.dex.w
+#define REG_HLx		z80_state.reg.r.hlx.w
 
-#define REG_I	(z80_state.i)
-#define REG_R	((z80_state.rc & 0x7f) | (z80_state.rf & 0x80))
+#define REG_IX		z80_state.reg.r.ix.w
+#define REG_IY		z80_state.reg.r.iy.w
+
+#define REG_IR		z80_state.reg.r.ir.w
+
+#define REG_I		z80_state.reg.r.ir.b.h
+#define REG_R		z80_state.reg.r.ir.b.l
 
 #define TSTATE	z80_state.tc
+
+/* Get/set the R register and update REG_R; this speeds up the counter */
+static inline uint16_t z80_get_ir(void)
+{
+    return (REG_IR & ~0x7f) | (z80_state.rctr & 0x7f);
+}
+
+static inline uint8_t z80_get_r(void)
+{
+    return z80_get_ir();	/* R is just the low byte of IR */
+}
+
+static inline uint8_t z80_set_r(uint8_t val)
+{
+    return z80_state.rctr = REG_R = val;
+}
+
+/* Debugger register accessors */
+static inline int z80_get_reg(unsigned int reg)
+{
+    REG_IR = z80_get_ir();	/* Update REG_R */
+    return (reg >= Z80_REG_NUM) ? -1 : z80_state.reg.dbg[reg];
+}
+
+static inline int z80_set_reg(unsigned int reg, uint16_t val)
+{
+    if (reg >= Z80_REG_NUM)
+	return -1;
+
+    z80_state.reg.dbg[reg] = val;
+    z80_set_r(REG_R);		/* We might have changed REG_R */
+    return 0;
+}
 
 /*
  * Flag accessors:
@@ -159,8 +210,6 @@ struct z80_state_struct {
 #define CARRY_FLAG		(REG_F & CARRY_MASK)
 #define SIGN_FLAG		(REG_F & SIGN_MASK)
 
-extern struct z80_state_struct z80_state;
-
 /* Signal a RESET */
 static inline void z80_reset(void)
 {
@@ -179,29 +228,11 @@ static inline void z80_dump_memory(bool ram)
     atomic_fetch_or(&z80_state.uncond, ram ? UCEV_DUMP_RAM : UCEV_DUMP_MEM);
 }
 
-extern enum z80_cond z80_run(enum z80_cond);
-extern uint8_t mem_read(uint16_t);
-extern uint8_t mem_fetch(uint16_t);
-extern uint8_t mem_fetch_m1(uint16_t);
-extern void mem_write(uint16_t, uint8_t);
-extern uint8_t *mem_rom_address(void);
-extern uint8_t *mem_get_addr(uint16_t);
-extern uint16_t mem_read_word(uint16_t);
-extern uint16_t mem_fetch_word(uint16_t);
-extern void mem_write_word(uint16_t, uint16_t);
-extern void tracemem(void);
-extern void z80_out(uint16_t, uint8_t);
-extern uint8_t z80_in(uint16_t);
+/* Disassembler */
 extern int disassemble(int);
 extern int DAsm(uint16_t pc, char *T, int *target);
-extern enum z80_cond z80_poll_external(void);
-extern void dump_memory(bool);
 
-extern uint8_t ram[];           /* Array for plain RAM */
-
-/* If trapping rfsh cycles is desired, then define this */
-#ifndef mem_rfsh
-# define mem_rfsh() ((void)0)
-#endif
+/* Main loop */
+extern enum z80_cond z80_run(enum z80_cond);
 
 #endif /* Z80_H */

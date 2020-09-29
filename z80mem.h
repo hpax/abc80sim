@@ -17,16 +17,15 @@ extern void mem_write_word(uint16_t, uint16_t);
 extern void tracemem(void);
 extern void z80_out(uint16_t, uint8_t);
 extern uint8_t z80_in(uint16_t);
-extern int disassemble(int);
-extern int DAsm(uint16_t pc, char *T, int *target);
 extern enum z80_cond z80_poll_external(void);
 extern void dump_memory(bool);
 
 extern uint8_t ram[];           /* Array for plain RAM */
 
-/* If trapping rfsh cycles is desired, then define this */
-#ifndef mem_rfsh
-# define mem_rfsh() ((void)0)
-#endif
+/* If trapping rfsh cycles is desired, plug it in here */
+static inline void mem_rfsh(uint16_t addr)
+{
+    (void)addr;
+}
 
 #endif /* Z80MEM_H */
