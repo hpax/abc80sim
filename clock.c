@@ -116,8 +116,10 @@ weird:
 
 /* Poll for timers - these the only external event we look for */
 volatile bool z80_quit;
+bool have_breakpoints;
+extern bool check_breakpoint(uint16_t);
 
-bool z80_poll_external(void)
+enum z80_cond z80_poll_external(void)
 {
     uint64_t now;
     static uint64_t next = 0;
@@ -125,11 +127,11 @@ bool z80_poll_external(void)
     bool sleepy = limit_speed;
     static uint64_t next_check_tstate;
 
-    if (z80_quit)
-        return true;            /* Terminate CPU loop */
+    if (unlikely(z80_quit))
+	return Z80_QUIT;
 
     if (likely(TSTATE < next_check_tstate))
-        return false;
+        return 0;
 
     now = nstime();
 
@@ -168,7 +170,7 @@ bool z80_poll_external(void)
     if (sleepy)
         consider_napping(now, next);
 
-    return false;
+    return 0;
 }
 
 /*

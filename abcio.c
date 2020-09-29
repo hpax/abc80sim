@@ -449,7 +449,7 @@ static void script_next_char(void)
 
 /* This is called in the event handler thread context! */
 
-/* Need to handle ABC800 up/down mode! */
+/* Need to handle ABC802/806 up/down mode, etc. */
 
 void keyboard_down(int key)
 {
@@ -483,6 +483,7 @@ void z80_out(uint16_t port, uint8_t value)
 		abcbus_select, abcbus_select,
                 value, value, REG_PC);
     }
+    check_watchpoint_byte(port, Z80_OTWPT);
 
     op->out(port & op->valid, value);
 }
@@ -501,6 +502,8 @@ uint8_t z80_in(uint16_t port)
                 port >> 8, port & 0xff, port & 0xff,
 		sel, sel, v, v, REG_PC);
     }
+    check_watchpoint_byte(port, Z80_INWPT);
+
     return v;
 }
 

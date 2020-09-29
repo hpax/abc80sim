@@ -1,6 +1,7 @@
 #include "compiler.h"
 #include "screen.h"
 #include "z80.h"
+#include "debug.h"
 #include "abcio.h"
 #include "rom.h"
 #include "hostfile.h"
@@ -35,6 +36,15 @@ static struct mem_page memmaps[MEM_MAPS][PAGE_COUNT];
 
 /* Latch the last M1 address fetched, like ABC800 does */
 static uint16_t last_m1_address;
+
+static inline bool check_bit(const uint8_t *map, uint16_t bit)
+{
+    return (map[bit >> 3] >> (bit & 7)) & 1;
+}
+static inline bool check_2bit(const uint8_t *map, uint16_t bit)
+{
+    return check_bit(map, bit) | check_bit(map, bit+1);
+}
 
 /*
  * Currently active memory map(s)
@@ -119,19 +129,20 @@ uint8_t mem_read(uint16_t address)
     uint8_t value = do_mem_read(address);
 
     mem_trace_record(address, value, 1, false);
+    check_watchpoint_byte(address, Z80_RDWPT);
     return value;
 }
 
+/* Don't trace instruction fetches; code breakpoints handled elsewhere */
+
 uint8_t mem_fetch(uint16_t address)
 {
-    /* Don't trace instruction fetches */
     return do_mem_read(address);
 }
 
 /* This is called when fetching the first opcode byte, corresponding to M1# */
 uint8_t mem_fetch_m1(uint16_t address)
 {
-    /* Don't trace instruction fetches */
     last_m1_address = address;
     return do_mem_read(address);
 }
@@ -153,12 +164,13 @@ uint16_t mem_read_word(uint16_t address)
 {
     uint16_t value = do_mem_read_word(address);
     mem_trace_record(address, value, 2, false);
+    check_watchpoint_word(address, Z80_RDWPT);
     return value;
 }
 
 uint16_t mem_fetch_word(uint16_t address)
 {
-    /* Don't trace instruction fetches */
+    /* Don't trace or breakpoint instruction fetches */
     return do_mem_read_word(address);
 }
 
@@ -188,12 +200,14 @@ static void do_mem_write(uint16_t address, uint8_t value)
 void mem_write(uint16_t address, uint8_t value)
 {
     mem_trace_record(address, value, 1, true);
+    check_watchpoint_byte(address, Z80_WRWPT);
     do_mem_write(address, value);
 }
 
 void mem_write_word(uint16_t address, uint16_t value)
 {
     mem_trace_record(address, value, 2, true);
+    check_watchpoint_word(address, Z80_WRWPT);
     do_mem_write(address, value);
     do_mem_write(address + 1, value >> 8);
 }
@@ -360,7 +374,7 @@ void mem_init(unsigned int flags, const char *memfile)
     case MODEL_ABC80:
     {
 	const uint8_t *devs = abc80_devs;
-	
+
         /* 4 maps * 2 (40/80) */
 
 	sysload_add_memspace("rom", load_rom_4080, rom, -1, sizeof rom);
@@ -379,7 +393,7 @@ void mem_init(unsigned int flags, const char *memfile)
 
 	    devs = basicii + K(16);
 	}
-	
+
         /* Map 0: default (for < 64K, the only available map) */
 
         if (!(flags & MEMFL_NOBASIC)) {
@@ -398,7 +412,7 @@ void mem_init(unsigned int flags, const char *memfile)
 		memcpy(rom,   basicii,     K(24));
 		break;
 	    }
-		
+
 
 	    /*
 	     * The 80-character BASIC ROMs have screen row addresses

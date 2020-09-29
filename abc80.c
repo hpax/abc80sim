@@ -539,7 +539,7 @@ int z80_thread(void *data)
     z80_reset();
     timer_init();
 
-    z80_run(true, false);
+    z80_run(Z80_QUIT);
 
     return 0;
 }

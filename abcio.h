@@ -4,6 +4,7 @@
 #include "compiler.h"
 #include "hostfile.h"
 #include "options.h"
+#include "debug.h"
 
 extern void mem_init(enum memflags flags, const char *memfile);
 extern void io_init(void);

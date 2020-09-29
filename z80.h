@@ -1,25 +1,18 @@
-/*
- * Copyright (C) 1992 Clarendon Hill Software.
- *
- * Permission is granted to any individual or institution to use, copy,
- * or redistribute this software, provided this copyright notice is retained.
- *
- * This software is provided "as is" without any expressed or implied
- * warranty.  If this software brings on any sort of damage -- physical,
- * monetary, emotional, or brain -- too bad.  You've got no one to blame
- * but yourself.
- *
- * The software may be modified for your own purposes, but modified versions
- * must retain this notice.
- */
-
 #ifndef Z80_H
 #define Z80_H
 
 #include "compiler.h"
-#include "trace.h"
+
+#define Z80_ADDRESS_LIMIT	(1 << 16)
+
+#include "compiler.h"
 
 #include <SDL.h>
+
+#include "trace.h"
+#include "z80irq.h"
+#include "z80mem.h"
+#include "z80cond.h"
 
 struct twobyte {
 #if WORDS_LITTLEENDIAN
@@ -65,10 +58,11 @@ struct z80_state_struct {
 
     uint8_t interrupt_mode;
     bool iff1, iff2, ei_shadow, signal_eoi;
+    bool nmi_in_progress;       /* to prevent multiple simultaneous NMIs */
+    bool running;		/* CPU is running */
+    enum z80_cond brkpt;	/* breakpoints triggered */
 
     atomic_uint uncond;		/* Unconditional events: NMI, reset */
-    bool nmi_in_progress;       /* to prevent multiple simultaneous NMIs */
-
     uint64_t tc;                /* T-state (clock cycle) counter */
 };
 
@@ -76,8 +70,6 @@ struct z80_state_struct {
 #define UCEV_RESET	2U
 #define UCEV_DUMP_MEM	4U
 #define UCEV_DUMP_RAM	8U
-
-#define Z80_ADDRESS_LIMIT	(1 << 16)
 
 /*
  * Register accessors:
@@ -187,7 +179,7 @@ static inline void z80_dump_memory(bool ram)
     atomic_fetch_or(&z80_state.uncond, ram ? UCEV_DUMP_RAM : UCEV_DUMP_MEM);
 }
 
-extern int z80_run(bool, bool);
+extern enum z80_cond z80_run(enum z80_cond);
 extern uint8_t mem_read(uint16_t);
 extern uint8_t mem_fetch(uint16_t);
 extern uint8_t mem_fetch_m1(uint16_t);
@@ -202,9 +194,14 @@ extern void z80_out(uint16_t, uint8_t);
 extern uint8_t z80_in(uint16_t);
 extern int disassemble(int);
 extern int DAsm(uint16_t pc, char *T, int *target);
-extern bool z80_poll_external(void);
+extern enum z80_cond z80_poll_external(void);
 extern void dump_memory(bool);
 
 extern uint8_t ram[];           /* Array for plain RAM */
+
+/* If trapping rfsh cycles is desired, then define this */
+#ifndef mem_rfsh
+# define mem_rfsh() ((void)0)
+#endif
 
 #endif /* Z80_H */

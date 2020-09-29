@@ -2,8 +2,8 @@
 #define Z80IRQ_H
 
 #include "compiler.h"
-#include "z80.h"
 
+struct z80_irq;
 typedef int (*irq_func) (struct z80_irq * irq);
 
 struct z80_irq {

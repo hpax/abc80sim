@@ -27,6 +27,7 @@
  */
 #include "z80.h"
 #include "z80irq.h"
+#include "debug.h"
 
 /*
  * The state of our Z-80 registers is kept in this structure:
@@ -162,14 +163,10 @@ static int parity(unsigned value)
     return (parity_table[value]);
 }
 
-static void add_r(uint8_t jump)
+static inline void rfsh(void)
 {
-    z80_state.rc += jump;
-}
-
-static void inc_r(void)
-{
-    add_r(1);
+    z80_state.rc++;
+    mem_rfsh();
 }
 
 static void do_add_flags(int a, int b, int result)
@@ -1179,8 +1176,9 @@ static void do_nmi(void)
     z80_state.iff2 = z80_state.iff1;
     z80_state.iff1 = false;
     z80_state.nmi_in_progress = true;
+    z80_state.running = true;
     REG_PC = 0x66;
-    inc_r();
+    rfsh();
     TSTATE += 11;
 
     atomic_fetch_and(&z80_state.uncond, ~UCEV_NMI);
@@ -1226,6 +1224,7 @@ static void do_int(void)
         break;
     }
 
+    z80_state.running = true;
     z80_state.iff1 = false;
 
     if (tracing(TRACE_CPU | TRACE_IO)) {
@@ -1234,7 +1233,7 @@ static void do_int(void)
                 when, i_vector, i_vector, z80_state.i, old_pc, REG_PC);
     }
 
-    inc_r();
+    rfsh();
 }
 
 static void do_reset(void)
@@ -1247,13 +1246,15 @@ static void do_reset(void)
     z80_state.interrupt_mode = 0;
     z80_state.nmi_in_progress = false;
     z80_state.signal_eoi = false;
+    z80_state.running = true;
     atomic_fetch_and(&z80_state.uncond, ~(UCEV_NMI|UCEV_RESET));
 }
 
 /* Check for an unconditional event (NMI, reset) */
-static bool check_cpu_event(void)
+static enum z80_cond check_cpu_events(void)
 {
     unsigned int ucevent;
+    enum z80_cond cond = 0;
 
     ucevent = atomic_load(&z80_state.uncond);
 
@@ -1272,20 +1273,20 @@ static bool check_cpu_event(void)
 
 	if (unlikely(ucevent & UCEV_RESET)) {
 	    do_reset();
-	    return true;
+	    cond = Z80_RESET|Z80_RUNNING;
 	} else if ((ucevent & UCEV_NMI) && !z80_state.nmi_in_progress) {
 	    do_nmi();
-	    return true;
+	    cond = Z80_NMI|Z80_RUNNING;
 	}
     }
 
     if (z80_state.iff1 && !z80_state.ei_shadow && poll_irq()) {
 	do_int();
-	return true;
-    } else {
-	/* Nothing happened, no wakeup */
-	return false;
+	cond = Z80_INT|Z80_RUNNING;
     }
+
+    cond |= check_breakpoint(REG_PC);
+    return cond;
 }
 
 static uint16_t get_hl_addr(wordregister * ix)
@@ -1314,7 +1315,7 @@ static void do_CB_instruction(wordregister * ix)
          */
 
         instruction = mem_fetch(REG_PC++);
-        inc_r();
+        rfsh();
 
         /* (HL) = 7 additional clocks, otherwise 4 */
         if ((instruction & 7) == 6) {
@@ -2221,7 +2222,7 @@ static void do_ED_instruction(wordregister * ix)
      */
 
     instruction = mem_fetch(REG_PC++);
-    inc_r();
+    rfsh();
     TSTATE += clk_ED[instruction];
 
     switch (instruction) {
@@ -2475,36 +2476,40 @@ static inline void check_eoi(void)
     z80_eoi();
 }
 
-int z80_run(bool continuous, bool halted)
+enum z80_cond z80_run(enum z80_cond condrq)
 {
     uint8_t instruction;
     uint16_t address;           /* generic temps */
     wordregister *ix;
+    enum z80_cond cond;
+
+    cond = z80_state.running ? Z80_RUNNING : 0;
+    z80_state.brkpt = 0;	/* No breakpoints hit */
 
     /* loop to do a z80 instruction */
     do {
-        if (tracing(TRACE_CPU)) {
-            diffstate();
-            tracemem();
-            fputc('\n', tracef);
-        }
         check_eoi();
-        for (;;) {
+	for (;;) {
             /* Poll for external event */
-            if (z80_poll_external())
-                return halted;
+	    cond |= z80_poll_external();
+	    if (cond & condrq)
+		return cond;
 
             /* Check for an interrupt or reset */
-	    if (check_cpu_event())
-		halted = false;
-
+	    cond |= check_cpu_events();
             z80_state.ei_shadow = false;
-            if (!halted)
-                break;
-            TSTATE += 4;
+	    if (cond & condrq)
+		return cond;
 
-            if (!continuous)
-                return halted;
+            if (cond & Z80_RUNNING)
+                break;
+
+	    /* Halt cycle */
+            TSTATE += 4;
+	    cond |= Z80_STEP;
+
+            if (cond & condrq)
+		return cond;
         }
 
         if (tracing(TRACE_CPU)) {
@@ -2518,7 +2523,7 @@ int z80_run(bool continuous, bool halted)
 
 indexed:
         TSTATE += clk_main[instruction];
-        inc_r();
+        rfsh();
 
         switch (instruction) {
         case 0xCB:             /* CB.. extended instruction */
@@ -2882,7 +2887,9 @@ indexed:
             break;
 
         case 0x76:             /* halt */
-            halted = 1;
+	    z80_state.running = false;
+            cond &= ~Z80_RUNNING;
+	    cond |= Z80_HALT;
             break;
 
         case 0xDB:             /* in a, (port) */
@@ -3594,8 +3601,18 @@ indexed:
             do_xor_byte(mem_read(get_hl_addr(ix)));
             break;
         }
-    } while (continuous);
-    return halted;
+
+	/* Executed an instruction, also add watchpoints */
+	cond |= z80_state.brkpt | Z80_STEP;
+
+        if (tracing(TRACE_CPU)) {
+            diffstate();
+            tracemem();
+            fputc('\n', tracef);
+        }
+    } while (!(cond & condrq));
+
+    return cond;
 }
 
 #define WREG(U,L) \
@@ -3612,9 +3629,6 @@ indexed:
 static void diffstate(void)
 {
     static struct z80_state_struct old_state;
-
-    if (!tracing(TRACE_CPU))
-        return;
 
     BREG(A, af.byte.high);
     WREG(BC, bc);
