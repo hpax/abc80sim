@@ -3468,45 +3468,18 @@ indexed:
             break;
 
         case 0xC7:             /* rst 00h */
-            REG_SP -= 2;
-            mem_write_word(REG_SP, REG_PC);
-            REG_PC = 0x00;
-            break;
         case 0xCF:             /* rst 08h */
-            REG_SP -= 2;
-            mem_write_word(REG_SP, REG_PC);
-            REG_PC = 0x08;
-            break;
         case 0xD7:             /* rst 10h */
-            REG_SP -= 2;
-            mem_write_word(REG_SP, REG_PC);
-            REG_PC = 0x10;
-            break;
         case 0xDF:             /* rst 18h */
-            REG_SP -= 2;
-            mem_write_word(REG_SP, REG_PC);
-            REG_PC = 0x18;
-            break;
         case 0xE7:             /* rst 20h */
-            REG_SP -= 2;
-            mem_write_word(REG_SP, REG_PC);
-            REG_PC = 0x20;
-            break;
         case 0xEF:             /* rst 28h */
-            REG_SP -= 2;
-            mem_write_word(REG_SP, REG_PC);
-            REG_PC = 0x28;
-            break;
         case 0xF7:             /* rst 30h */
-            REG_SP -= 2;
-            mem_write_word(REG_SP, REG_PC);
-            REG_PC = 0x30;
-            break;
         case 0xFF:             /* rst 38h */
             REG_SP -= 2;
             mem_write_word(REG_SP, REG_PC);
-            REG_PC = 0x38;
-            break;
+            REG_PC = instruction & 0x38;
+	    cond |= Z80_RST00 << (REG_PC >> 3);
+	    break;
 
         case 0x37:             /* scf */
             REG_F = (REG_F | CARRY_MASK) & ~(SUBTRACT_MASK | HALF_CARRY_MASK);

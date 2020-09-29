@@ -31,23 +31,35 @@
  * any time the CPU would exit halt.
  */
 enum z80_cond {
-    Z80_RUNNING      =    1,	/* Z80 is NOT halted (out) */
-    Z80_STEP         =    2,	/* Single step request (in/out) */
+    Z80_RUNNING      = 1 << 0,	/* Z80 is NOT halted (out) */
+    Z80_STEP         = 1 << 1,	/* Single step request (in/out) */
 
     /* The following 5 *must* be in the low byte */
-    Z80_BRKPT        =    4,	/* Hit a breakpoint) */
-    Z80_RDWPT        =    8,	/* Hit a read memory watchpoint */
-    Z80_WRWPT        =   16,	/* Hit a write memory watchpoint */
-    Z80_INWPT        =   32,	/* Hit a read I/O watchpoint */
-    Z80_OTWPT        =   64,    /* Hit a write I/O watchpoint */
+    Z80_BRKPT        = 1 << 2,	/* Hit a breakpoint) */
+    Z80_RDWPT        = 1 << 3,	/* Hit a read memory watchpoint */
+    Z80_WRWPT        = 1 << 4,	/* Hit a write memory watchpoint */
+    Z80_INWPT        = 1 << 5,	/* Hit a read I/O watchpoint */
+    Z80_OTWPT        = 1 << 6,   /* Hit a write I/O watchpoint */
 
-    Z80_SWBRK        =  128,	/* Break on "LD H,H" = 0x64  */
+    /* Interrupt, halt */
+    Z80_INT          = 1 << 7,       /* Exit on INT (in/out) */
+    Z80_NMI          = 1 << 8,	/* Exit on NMI (in/out) */
+    Z80_RESET        = 1 << 9,	/* Exit on RESET (in/out) */
+    Z80_HALT         = 1 << 10,	/* Exit on HALT instruction (in/out) */
 
-    Z80_INT          =  256,       /* Exit on INT (in/out) */
-    Z80_NMI          =  512,	/* Exit on NMI (in/out) */
-    Z80_RESET        = 1024,	/* Exit on RESET (in/out) */
-    Z80_HALT         = 2048,	/* Exit on HALT instruction (in/out) */
-    Z80_QUIT         = 4096	/* External quit event */
+    /* Usable as software breakpoints */
+    Z80_SWBRK        =  1 << 11,	/* Executed "LD H,H" = 0x64  */
+    Z80_RST00	     =  1 << 12,
+    Z80_RST08        =  1 << 13,
+    Z80_RST10        =  1 << 14,
+    Z80_RST18        =  1 << 15,
+    Z80_RST20        =  1 << 16,
+    Z80_RST28        =  1 << 17,
+    Z80_RST30        =  1 << 18,
+    Z80_RST38        =  1 << 19,
+
+    /* External */
+    Z80_QUIT         =  1 << 30	/* External quit event */
 };
 
 #define Z80_BREAKPOINTS  (Z80_BRKPT|Z80_RDWPT|Z80_WRWPT|\
