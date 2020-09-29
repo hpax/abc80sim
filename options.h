@@ -49,6 +49,7 @@ struct opts {
     bool startup_width40;	/* Start in 40-char mode (if applicable) */
     enum abc80_basic basic;	/* BASIC version (ABC80 only) */
     bool color;			/* Color screen */
+    bool magic;			/* Allow magic I/O port */
     enum autobool faketype;	/* ABC80 keyboard fake for high speeds */
     enum memflags memflags;	/* Memory configuration */
     double hz;			/* Frequency in Hz (HUGE_VAL if unlimited) */

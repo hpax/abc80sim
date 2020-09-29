@@ -245,7 +245,8 @@ static void abc80_register_ioports(void)
     register_ioport(58, 0x16, 0x1, abc80_piob_out, abc80_piob_in);
 
     /* Magic events */
-    register_outport(0xfd, 0xff, 0xff, do_magic_out);
+    if (opts.magic)
+	register_outport(184, 0xff, 0xff, do_magic_out);
 }
 
 /*
@@ -410,7 +411,8 @@ static void abc802_register_ioports(void)
     register_ioport(0x60, 0xf0, 0x03, abc800_ctc_out, abc800_ctc_in);
 
     /* Magic events */
-    register_outport(0xfd, 0xff, 0xff, do_magic_out);
+    if (opts.magic)
+	register_outport(184, 0xff, 0xff, do_magic_out);
 }
 
 /*

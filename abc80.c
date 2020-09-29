@@ -69,9 +69,11 @@ static no_return help(void)
            "  -Ft, --tracefile file    redirect trace output to a file\n"
            "  -v, - -version           print the version string\n"
            "  -h,  --help              print this help message\n"
-           "  -s,  --speed #.#|max     set the CPU frequency to #.# MHz [3.0]\n"
+           "  -s,  --speed #.#|max     set the CPU frequency to #.# MHz [original]\n"
            "       --color             allow ABC800C-style color (default)\n"
            "       --no-color          black and white only\n"
+	   "       --magic             enable magic I/O port 184 (default)\n"
+	   "       --no-magic          disable magic I/O port 184\n"
            "  -Dd, --diskdir dir       set directory for disk images [abcdisk]\n"
            "  -Df, --filedir dir       set directory for file sharing [abcdir]\n"
            "  -Ds, --scrndir dir       set directory for screen shots [.]\n"
@@ -102,7 +104,8 @@ static no_return help(void)
            "Options for ABC802 only:\n"
            "  -Fm, --memfile file      load a file into the ABC802 MEM: device\n"
            "\n"
-           "The simulator supports the following hotkeys:\n"
+           "The simulator supports the following hotkeys; the same events can also be\n"
+	   "triggered by outputting the equivalent character to \"magic\" I/O port 184:\n"
            "  Alt-q    quit the simulator\n"
            "  Alt-s    take a screenshot\n"
            "  Alt-r    CPU reset\n"
@@ -254,6 +257,7 @@ struct opts opts = {
     .tkn80		= TKN80_MYAB,
     .startup_width40	= false,
     .color		= true,
+    .magic              = true,
     .faketype		= A_AUTO,
     .memflags           = MEMFL_DEFAULT,
 };
@@ -361,6 +365,8 @@ int main(int argc, char **argv)
                 opts.faketype = A_YES;
             } else if (!strcmp(optstr, "realtype")) {
                 opts.faketype = A_NO;
+	    } else if (!strcmp(optstr, "magic")) {
+		opts.magic = enable;
 	    } else if (!strcmp(optstr, "tkn80")) {
 		if (!enable) {
 		    opts.tkn80 = TKN80_NONE;
