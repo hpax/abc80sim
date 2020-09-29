@@ -101,6 +101,8 @@ breakpoint_add(struct breakpoint *brk, unsigned int num,
 	    if (!num)
 		num = ++breakpoint_ctr;
 	    brk = calloc(1, sizeof(*brk));
+	    if (!brk)
+		return NULL;
 	    brk->next = brkpts;
 	    brk->back = &brkpts;
 	    if (brkpts)
