@@ -44,6 +44,7 @@ enum z80_regnums {
     Z80_IX,  Z80_IY,
     Z80_AFx, Z80_BCx, Z80_DEx, Z80_HLx, /* AF' BC' DE' HL' */
     Z80_IR,
+    Z80_LAST_PC,		/* PC of last started instruction */
     Z80_REG_NUM
 };
 struct z80_state_struct {
@@ -64,9 +65,13 @@ struct z80_state_struct {
 	    regpair hlx;
 
 	    regpair ir;
+
+	    regpair last_pc;
 	} r;
 	uint16_t dbg[Z80_REG_NUM];
     } reg;
+
+
 
     uint8_t rctr;		/* counter part of REG_R */
 
@@ -106,6 +111,7 @@ extern struct z80_state_struct z80_state;
 
 #define REG_SP		z80_state.reg.r.sp.w
 #define REG_PC		z80_state.reg.r.pc.w
+#define REG_LAST_PC	z80_state.reg.r.last_pc.w
 
 #define REG_AF		z80_state.reg.r.af.w
 #define REG_BC		z80_state.reg.r.bc.w

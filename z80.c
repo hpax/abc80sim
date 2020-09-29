@@ -2488,7 +2488,11 @@ enum z80_cond z80_run(enum z80_cond condrq)
 
     /* loop to do a z80 instruction */
     do {
+	/* PC of instruction about to started; useful for events */
+	REG_LAST_PC = REG_PC;
+
         check_eoi();
+
 	for (;;) {
             /* Poll for external event */
 	    cond |= z80_poll_external();
@@ -2519,9 +2523,25 @@ enum z80_cond z80_run(enum z80_cond condrq)
 
         ix = &z80_state.reg.r.hl;     /* Not an index instruction */
 
-        instruction = mem_fetch_m1(REG_PC++);
+        instruction = mem_fetch_m1(REG_PC);
 
-indexed:
+	/*
+	 * Software breakpoint check; do this early to avoid
+	 * needless state changes.
+	 */
+	if (instruction == 0x64) { /* LD H,H */
+	    cond |= Z80_SWBRK;
+	    if (cond & condrq)
+		return cond;
+	} else if (!(uint8_t)(~instruction & ~0x38)) {
+	    cond |= Z80_RST00 << ((instruction >> 3) & 7);
+	    if (cond & condrq)
+		return cond;
+	}
+
+	REG_PC++;
+
+    indexed:
         TSTATE += clk_main[instruction];
         rfsh();
 
@@ -3164,7 +3184,6 @@ indexed:
             ix->b.h = REG_E;
             break;
         case 0x64:             /* ld h, h  -- also software breakpoint */
-	    cond |= Z80_SWBRK;
             break;
         case 0x65:             /* ld h, l */
             ix->b.h = ix->b.l;
@@ -3477,8 +3496,7 @@ indexed:
         case 0xFF:             /* rst 38h */
             REG_SP -= 2;
             mem_write_word(REG_SP, REG_PC);
-            REG_PC = instruction & 0x38;
-	    cond |= Z80_RST00 << (REG_PC >> 3);
+	    REG_PC = instruction & 0x38;
 	    break;
 
         case 0x37:             /* scf */
