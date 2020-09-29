@@ -41,14 +41,17 @@ enum z80_cond {
     Z80_INWPT        =   32,	/* Hit a read I/O watchpoint */
     Z80_OTWPT        =   64,    /* Hit a write I/O watchpoint */
 
-    Z80_INT          =  128,       /* Exit on INT (in/out) */
-    Z80_NMI          =  256,	/* Exit on NMI (in/out) */
-    Z80_RESET        =  512,	/* Exit on RESET (in/out) */
-    Z80_HALT         = 1024,	/* Exit on HALT instruction (in/out) */
-    Z80_QUIT         = 2048	/* External quit event */
+    Z80_SWBRK        =  128,	/* Break on "LD H,H" = 0x64  */
+
+    Z80_INT          =  256,       /* Exit on INT (in/out) */
+    Z80_NMI          =  512,	/* Exit on NMI (in/out) */
+    Z80_RESET        = 1024,	/* Exit on RESET (in/out) */
+    Z80_HALT         = 2048,	/* Exit on HALT instruction (in/out) */
+    Z80_QUIT         = 4096	/* External quit event */
 };
 
-#define Z80_BREAKPOINTS  (Z80_BRKPT|Z80_RDWPT|Z80_WRWPT|Z80_INWPT|Z80_OTWPT)
+#define Z80_BREAKPOINTS  (Z80_BRKPT|Z80_RDWPT|Z80_WRWPT|\
+			  Z80_INWPT|Z80_OTWPT|Z80_SWBRK)
 #define Z80_ALWAYS_BREAK (Z80_QUIT|Z80_BREAKPOINTS)
 
 #endif /* Z80COND_H */

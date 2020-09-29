@@ -3047,7 +3047,6 @@ indexed:
             break;
 
         case 0x7F:             /* ld a, a */
-            REG_A = REG_A;
             break;
         case 0x78:             /* ld a, b */
             REG_A = REG_B;
@@ -3071,7 +3070,6 @@ indexed:
             REG_B = REG_A;
             break;
         case 0x40:             /* ld b, b */
-            REG_B = REG_B;
             break;
         case 0x41:             /* ld b, c */
             REG_B = REG_C;
@@ -3095,7 +3093,6 @@ indexed:
             REG_C = REG_B;
             break;
         case 0x49:             /* ld c, c */
-            REG_C = REG_C;
             break;
         case 0x4A:             /* ld c, d */
             REG_C = REG_D;
@@ -3166,8 +3163,8 @@ indexed:
         case 0x63:             /* ld h, e */
             ix->b.h = REG_E;
             break;
-        case 0x64:             /* ld h, h */
-            ix->b.h = ix->b.h;
+        case 0x64:             /* ld h, h  -- also software breakpoint */
+	    cond |= Z80_SWBRK;
             break;
         case 0x65:             /* ld h, l */
             ix->b.h = ix->b.l;
@@ -3191,7 +3188,6 @@ indexed:
             ix->b.l = ix->b.h;
             break;
         case 0x6D:             /* ld l, l */
-            ix->b.l = ix->b.l;
             break;
 
         case 0x02:             /* ld (bc), a */
