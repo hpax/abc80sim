@@ -22,9 +22,8 @@
 ;
 	defc selcode=60			; ABC-bus select code
 	defc DOSINIT=6543h		; Where to chain to in DOS
+	defc SELECT=64831		; Current select code
 	defc DEVLIST=65034		; BASIC device list
-
-	org 0x7800
 
 	; jp table for PR:
 pr_jptable:
@@ -63,10 +62,10 @@ pr_print_not_ff:
 	jr pr_print_loop
 
 select:
-	ld a,(0xFD3F)			; Old select code
+	ld a,(SELECT)			; Old select code
 	ld (ram_select),a		; Save old select code
 	ld a,selcode			; Select code
-	ld (0xFD3F),a
+	ld (SELECT),a
 	out (1),a
 	ret
 
@@ -98,7 +97,7 @@ done:
 done_err:
 	push af
 	ld a,(ram_select)
-	ld (0xFD3F),a
+	ld (SELECT),a
 	out (1),a
 	pop af
 	and a
@@ -489,10 +488,10 @@ prabc_init:
 	jp done
 
 device_list:
-;pr_device:
-;	defw pra_device
-;	defm "PR "
-;	defw pr_jptable
+pr_device:
+	defw pra_device
+	defm "PR "
+	defw pr_jptable
 pra_device:
 	defw prb_device
 	defm "PRA"

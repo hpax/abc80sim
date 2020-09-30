@@ -424,7 +424,8 @@ void mem_init(unsigned int flags, const char *memfile)
     switch (opts.model) {
     case MODEL_ABC80:
     {
-	const uint8_t *devs = abc80_devs;
+	const uint8_t *dos = ufddos80;
+	const uint8_t *pr  = print80;
 
         /* 4 maps (for now... ) */
 
@@ -437,8 +438,6 @@ void mem_init(unsigned int flags, const char *memfile)
 	if (opts.basic == BASIC_II) {
 	    if (opts.tkn80 != TKN80_NONE)
 		opts.tkn80 = TKN80_GEJO; /* 30-32K */
-
-	    devs = basicii80 + K(16);
 	}
 
         /* Map 0: default (for < 64K, the only available map) */
@@ -446,23 +445,27 @@ void mem_init(unsigned int flags, const char *memfile)
         if (!(flags & MEMFL_NOBASIC)) {
 	    switch (opts.basic) {
 	    case BASIC_NEW:
+	    default:		/* ??? */
 		memcpy(rom, abc80new,  K(16));
 		break;
 	    case BASIC_OLD:
 		memcpy(rom, abc80old,  K(16));
 		break;
-	    default:
+	    case BASIC_II:
 		memcpy(rom, basicii80, K(24));
+		dos = basicii80 + K(24);
+		pr  = basicii80 + K(28);
 		break;
+
 	    }
 	}
 
 	map_memory(0x01, 0, K(32), rom, write_rom);
 
-        if (!(flags & MEMFL_NODOS))
-	    memcpy(rom+K(24), devs+K(8), K(4));
+	if (!(flags & MEMFL_NODOS))
+	    memcpy(rom+K(24), dos, K(4));
 	if (!(flags & MEMFL_NOPR))
-	    memcpy(rom+K(28), devs+K(12), K(4));
+	    memcpy(rom+K(28), pr, K(4));
 
 	/* Hack: allow printer ROMs to be written to */
 	map_memory(0x01, K(28), K(4), &rom[K(28)], write_ram);
