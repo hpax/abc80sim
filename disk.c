@@ -53,7 +53,6 @@ struct ctl_state {
     struct drive_state drv[8];  /* Per-drive  */
     uint8_t buf[4][256];	/* 4 buffers @ 256 bytes */
 };
-
 #define NOT_READY 4		/* How many times to report not ready */
 
 static struct ctl_state mo_state = {
@@ -359,12 +358,14 @@ static void do_next_command(struct ctl_state *state)
 	    }
 
 	    clearerr(hf->f);
+	    state->error = 0;
 
 	    for (s = s0; s < s1; s++) {
 		unsigned int ps = virt2phys(drv, s);
-		if (ps >= drv->sectors)
+		if (ps >= drv->sectors) {
+		    state->error |= 0x02; /* Track 0/Lost data? */
 		    continue;
-		if (hf->map) {
+		} else if (hf->map) {
 		    memcpy(hf->map + (ps << 8), data, 256);
 		} else {
 		    fseek(hf->f, ps << 8, SEEK_SET);
@@ -372,7 +373,7 @@ static void do_next_command(struct ctl_state *state)
 		}
 	    }
 	    if (ferror(hf->f))
-		state->error = 0x20; /* Write fault */
+		state->error |= 0x20; /* Write fault */
 	}
 	state->k[1] &= ~0x08;
     }
