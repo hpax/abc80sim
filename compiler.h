@@ -200,4 +200,7 @@ typedef unsigned __int128 uint128_t;
 #define is_constant(x) false
 #endif
 
+/* Useful construct */
+#define ARRAY_SIZE(x) ((sizeof x)/(sizeof *(x)))
+
 #endif /* COMPILER_H */

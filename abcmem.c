@@ -14,7 +14,6 @@
 
 uint8_t ram[MEMORY_SIZE];
 static uint8_t rom[MEMORY_SIZE];
-static uint8_t rom80[K(16)];	/* BASIC rom for 80 characters on ABC80 */
 
 #define write_ram	NULL    /* Optimized fast path */
 #define write_screen	write_ram
@@ -218,18 +217,91 @@ void mem_write_word(uint16_t address, uint16_t value)
  */
 static unsigned int abc80_map;
 
-void abc80_mem_mode40(bool mode40)
+struct patch_location {
+    uint16_t address;
+    uint8_t  rom[2];		/* 40, then 80 */
+};
+
+/* 48/80 char ROM patches, *excluding* the line table at address 884 */
+static const struct patch_location rompatch80[] = {
+    {  472, {  40,  80 } },
+    {  529, {  40,  80 } },
+    {  590, {  40,  80 } },
+    {  623, {  39,  79 } },
+    {  734, {  40,  80 } },
+    {  828, {  40,  80 } },
+    { 8946, {  80, 160 } },	/* New BASIC */
+    { 8948, {  80, 160 } }	/* Old BASIC */
+};
+
+void abc80_mem_mode80(bool mode80)
 {
-    abc80_map = (abc80_map & ~1) | mode40;
-    current_map[0] = current_map[1] = memmaps[abc80_map];
+    size_t i, row;
+    const struct patch_location *pl;
+
+    if (opts.tkn80 == TKN80_NONE)
+	return;
+
+    /* If this doesn't look like ABC80-BASIC, don't patch it... */
+    if (memcmp(&rom[1836], "\xbc\r\nABC80", 8))
+	return;
+
+    pl = rompatch80;
+    for (i = 0; i < ARRAY_SIZE(rompatch80); i++) {
+	if (rom[pl->address] == pl->rom[!mode80])
+	    rom[pl->address] = pl->rom[mode80];
+	pl++;
+    }
+
+    /*
+     * The 80-character BASIC ROMs have screen row addresses
+     * relative to the start of VRAM, since those addresses
+     * vary. Fix them up here.
+     */
+    for (row = 0; row < 24; row++) {
+	uint8_t *ptr = &rom[884 + (row << 1)];
+	uint16_t addr[2];
+
+	/* 40 characters */
+	addr[0] = 0x7c00 + ((row & 7) << 7) + (40 * (row >> 3));
+
+	switch (opts.tkn80) {
+	default:
+	    addr[1] = addr[0];		/* No TKN80 */
+	    break;
+
+	case TKN80_MYAB:
+	    addr[1] = 0x5800 + ((row & 7) << 8) + (80 * (row >> 3));
+	    break;
+
+	case TKN80_GEJO:
+	    addr[1] = 0x7800 + ((row & 7) << 8) + (80 * (row >> 3));
+	    break;
+
+	case TKN80_29K:
+	    addr[1] = 0x7400 + ((row & 4) << 16) + ((row & 3) << 8)
+		+ (80 * (row >> 3));
+	    break;
+	}
+
+	if (ptr[0] == (uint8_t)addr[!mode80] &&
+	    ptr[1] == (uint8_t)(addr[!mode80] >> 8)) {
+	    ptr[0] = addr[mode80];
+	    ptr[1] = addr[mode80] >> 8;
+	}
+
+	ptr += 2;
+    }
 }
 
 void abc80_mem_setmap(unsigned int map)
 {
     if (opts.kb < 64)
-        return;                 /* Only 64K models can remap memory */
+	map = 0;		/* No extended memory? It's all map 0... */
 
-    abc80_map = ((map & 3) << 1) | (abc80_map & ~6);
+    abc80_map = map & 3;	/* Until SRAM card is supported... */
+
+    /* ABC80 doesn't contain execution-address sensitive memory map hardware */
     current_map[0] = current_map[1] = memmaps[abc80_map];
 }
 
@@ -317,27 +389,6 @@ exit:
 }
 
 /*
- * Special handling of various sysload memspaces
- */
-static void load_rom_4080(const struct load_data *ws, uint32_t addr,
-			 uint8_t val)
-{
-    if (addr < sizeof rom80)
-	rom80[addr] = val;
-
-    ((uint8_t *)(ws->buf))[addr] = val;
-}
-
-static void load_rom_80(const struct load_data *ws, uint32_t addr,
-			uint8_t val)
-{
-    if (addr < sizeof rom80)
-	rom80[addr] = val;
-    else
-	((uint8_t *)(ws->buf))[addr] = val;
-}
-
-/*
  * This writes to the CPU view of memory, but does not trigger any
  * MMIO actions, nor does it enforce write protect of ROM areas.
  */
@@ -362,10 +413,10 @@ void mem_init(unsigned int flags, const char *memfile)
     /* Register common sysload memory spaces */
     sysload_add_memspace("ram", NULL, ram, -1, sizeof ram);
     sysload_add_memspace("cpu", load_sys, NULL, -1, Z80_ADDRESS_LIMIT);
+    sysload_add_memspace("rom", NULL, rom, -1, sizeof rom);
 
     /* Unused ROM contains 0xff */
     memset(rom, 0xff, sizeof rom);
-    memset(rom80, 0xff, sizeof rom80);
 
     /* Start by initializing all memory maps to all RAM */
     map_memory(ALL_MAPS, 0, K(64), ram, write_ram);
@@ -375,11 +426,7 @@ void mem_init(unsigned int flags, const char *memfile)
     {
 	const uint8_t *devs = abc80_devs;
 
-        /* 4 maps * 2 (40/80) */
-
-	sysload_add_memspace("rom", load_rom_4080, rom, -1, sizeof rom);
-	sysload_add_memspace("rom40", NULL, rom, -1, sizeof rom);
-	sysload_add_memspace("rom80", load_rom_80, rom, -1, sizeof rom);
+        /* 4 maps (for now... ) */
 
         if ((opts.kb < 1 || opts.kb > 32) && opts.kb != 64) {
             fprintf(stderr, "%s: invalid ABC80 memory size %uK, using 64K\n",
@@ -391,58 +438,26 @@ void mem_init(unsigned int flags, const char *memfile)
 	    if (opts.tkn80 != TKN80_NONE)
 		opts.tkn80 = TKN80_GEJO; /* 30-32K */
 
-	    devs = basicii + K(16);
+	    devs = basicii80 + K(16);
 	}
 
         /* Map 0: default (for < 64K, the only available map) */
 
         if (!(flags & MEMFL_NOBASIC)) {
-	    int i;
-
 	    switch (opts.basic) {
 	    case BASIC_NEW:
-		memcpy(rom,   abc80bas40n, K(16));
-		memcpy(rom80, abc80bas80n, K(16));
+		memcpy(rom, abc80new,  K(16));
 		break;
 	    case BASIC_OLD:
-		memcpy(rom,   abc80bas40o, K(16));
-		memcpy(rom80, abc80bas80o, K(16));
+		memcpy(rom, abc80old,  K(16));
 		break;
 	    default:
-		memcpy(rom,   basicii,     K(24));
+		memcpy(rom, basicii80, K(24));
 		break;
 	    }
+	}
 
-
-	    /*
-	     * The 80-character BASIC ROMs have screen row addresses
-	     * relative to the start of VRAM, since those addresses
-	     * vary. Fix them up here.
-	     */
-	    switch (opts.tkn80) {
-	    case TKN80_MYAB:
-		for (i = 885; i < 885+2*24; i += 2)
-		    rom80[i] += 0x58;
-		break;
-
-	    case TKN80_GEJO:
-		for (i = 885; i < 885+2*24; i += 2)
-		    rom80[i] += 0x78;
-		break;
-
-	    case TKN80_29K:
-		for (i = 885; i < 885+2*24; i += 2)
-		    rom80[i] += (rom80[i] & 4) + 0x74;
-		break;
-
-	    default:
-		break;
-	    }
-        }
-
-	map_memory(0x03, 0, K(32), rom, write_rom);
-	if (opts.tkn80 != TKN80_NONE && opts.basic != BASIC_II)
-	    map_memory(0x01, 0, K(16), rom80, write_rom);
+	map_memory(0x01, 0, K(32), rom, write_rom);
 
         if (!(flags & MEMFL_NODOS))
 	    memcpy(rom+K(24), devs+K(8), K(4));
@@ -450,7 +465,7 @@ void mem_init(unsigned int flags, const char *memfile)
 	    memcpy(rom+K(28), devs+K(12), K(4));
 
 	/* Hack: allow printer ROMs to be written to */
-	map_memory(0x03, K(28), K(4), &rom[K(28)], write_ram);
+	map_memory(0x01, K(28), K(4), &rom[K(28)], write_ram);
 
 	/*
 	 * Note: leave 80-character VRAM always mapped, there is no
@@ -462,17 +477,17 @@ void mem_init(unsigned int flags, const char *memfile)
 	    /* Nothing to map */
 	    break;
 	case TKN80_GEJO:
-	    map_memory(0x03, K(30), K(1), &video_ram[K(0)], write_screen);
+	    map_memory(0x01, K(30), K(1), &video_ram[K(0)], write_screen);
 	    break;
 	case TKN80_MYAB:
-	    map_memory(0x03, K(22), K(2), &video_ram[K(0)], write_screen);
+	    map_memory(0x01, K(22), K(2), &video_ram[K(0)], write_screen);
 	    break;
 	case TKN80_29K:
-	    map_memory(0x03, K(29), K(1), &video_ram[K(0)], write_screen);
+	    map_memory(0x01, K(29), K(1), &video_ram[K(0)], write_screen);
 	    break;
 	}
 	/* Standard 40-char video RAM */
-	map_memory(0x03, K(31), K(1), &video_ram[K(1)], write_screen);
+	map_memory(0x01, K(31), K(1), &video_ram[K(1)], write_screen);
 
 	if (opts.tkn80 == TKN80_NONE)
 	    sysload_add_memspace("vram", NULL, &video_ram[K(1)], K(1)-1, K(2));
@@ -485,16 +500,21 @@ void mem_init(unsigned int flags, const char *memfile)
 	 * will be uninitialized here.
 	 */
         if (opts.kb < 32)
-	    map_memory(0x03, K(32), K(32 - opts.kb), &rom[K(32)], write_rom);
+	    map_memory(0x01, K(32), K(32 - opts.kb), &rom[K(32)], write_rom);
+
+	/*
+	 * Adjust ROM for TKN80 if applicable
+	 */
+	abc80_mem_mode80(!opts.startup_width40);
 
         /* Map 1: RAM over ROM areas. Video RAM always at 30K for TKN80. */
         /* Map 2: video RAM at the end */
 	if (opts.tkn80 == TKN80_NONE) {
-	    map_memory(0x0c, K(31), K(1), &video_ram[K(1)], write_screen);
-	    map_memory(0x30, K(63), K(1), &video_ram[K(1)], write_screen);
+	    map_memory(0x02, K(31), K(1), &video_ram[K(1)], write_screen);
+	    map_memory(0x04, K(63), K(1), &video_ram[K(1)], write_screen);
 	} else {
-	    map_memory(0x0c, K(30), K(2), &video_ram[K(0)], write_screen);
-	    map_memory(0x30, K(62), K(2), &video_ram[K(0)], write_screen);
+	    map_memory(0x02, K(30), K(2), &video_ram[K(0)], write_screen);
+	    map_memory(0x04, K(62), K(2), &video_ram[K(0)], write_screen);
 	}
 
         /* Map 3: all RAM */
@@ -506,7 +526,6 @@ void mem_init(unsigned int flags, const char *memfile)
     }
 
     case MODEL_ABC802:
-	sysload_add_memspace("rom", NULL, rom, -1, sizeof rom);
 	sysload_add_memspace("vram", NULL, video_ram, -1, sizeof video_ram);
 
         /* Map 0: normal execution */

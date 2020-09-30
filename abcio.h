@@ -38,7 +38,7 @@ struct abcbus_dev {
 };
 extern void register_abcbus_dev(uint8_t sel, const struct abcbus_dev *dev);
 
-extern void abc80_mem_mode40(bool);
+extern void abc80_mem_mode80(bool);
 extern void abc80_mem_setmap(unsigned int);
 extern void abc802_set_mem(bool);
 

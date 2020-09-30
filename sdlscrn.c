@@ -287,7 +287,7 @@ void setmode40(bool m40)
 {
     cpu.mode40 = m40;
     if (opts.model == MODEL_ABC80)
-        abc80_mem_mode40(m40);
+        abc80_mem_mode80(!m40);
 }
 
 /*
