@@ -31,6 +31,7 @@ struct drive_state {
     char name[4];               /* Drive name */
     unsigned int sectors;
     uint8_t ilmsk, ilfac;       /* Interlacing parameters */
+    bool disabled;		/* Explicitly disabled */
 };
 
 /* Per-controller state */
@@ -176,12 +177,63 @@ static void disk_reset_state(struct ctl_state *state)
         flush_file(state->drv[i].hf);
 }
 
+static struct drive_state *
+name_to_drive(const char *drive)
+{
+    int sel;
+    struct ctl_state *state;
+    unsigned int ndrive;
+
+    /* All drive names are three letters long */
+    if (strlen(drive) != 3)
+	return NULL;
+
+    ndrive = drive[2] - '0';
+    if (ndrive > 7)
+	return NULL;
+
+    for (sel = 0; state = NULL, sel < 64; sel++) {
+	state = sel_to_state[sel];
+	if (!state)
+	    continue;
+	if (!memcmp(state->name, drive, 2))
+	    break;
+    }
+
+    if (!state)
+	return NULL;		/* No such disk */
+
+    return &state->drv[ndrive];
+}
+
+bool valid_drive_name(const char *drive)
+{
+    return name_to_drive(drive) != NULL;
+}
+
+int disk_mount(const char *drive, const char *filename)
+{
+    struct drive_state *drv = name_to_drive(drive);
+
+    if (!drv)
+	return -1;
+
+    if (drv->hf)
+	close_file(&drv->hf);
+
+    if (!filename) {
+	drv->disabled = true;
+	return 0;
+    } else {
+	drv->disabled = false;
+	drv->hf = open_host_file(HF_BINARY | HF_RETRY, NULL, filename, O_RDWR);
+	return drv->hf ? 0 : -1;
+    }
+}
+
 static void disk_init(struct ctl_state *state)
 {
     int i;
-
-    if (!disk_path)
-        return;                 /* Nowhere to get disk files */
 
     /* If any of these don't exist we simply report device not ready */
     for (i = 0; i < 8; i++) {
@@ -190,11 +242,13 @@ static void disk_init(struct ctl_state *state)
 
         snprintf(drv->name, sizeof drv->name, "%-.2s%c", state->name, i + '0');
 
-        /* Try open RDWR first, then RDONLY, but don't create */
-        drv->hf =
-            open_host_file(HF_BINARY | HF_RETRY, disk_path, drv->name, O_RDWR);
+	if (!drv->disabled && !drv->hf && disk_path) {
+	  /* Try open RDWR first, then RDONLY, but don't create */
+	    drv->hf = open_host_file(HF_BINARY | HF_RETRY,
+				     disk_path, drv->name, O_RDWR);
+	}
 
-        if (!drv->hf)
+	if (!drv->hf)
 	    continue; /* File not present = drive not ready */
 
         state->drives++;

@@ -43,6 +43,8 @@ extern void abc80_mem_setmap(unsigned int);
 extern void abc802_set_mem(bool);
 
 extern void disk_register_devices(void);
+extern bool valid_drive_name(const char *drive);
+extern int disk_mount(const char *drive, const char *filename);
 
 extern void rtc_init(void);
 

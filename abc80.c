@@ -87,6 +87,10 @@ static no_return help(void)
            "  -e,  --console           enable console output device (PRC:)\n"
            "  -Fe, --consolefile file  enable console output device to a file\n"
            "       --detach            detach from console if run from a command line\n"
+	   "       --mo# file          mount file as drive MO#:\n"
+	   "       --mf# file          mount file as drive MF#:\n"
+	   "       --sf# file          mount file as drive SF#:\n"
+	   "       --hd# file          mount file as drive HD#:\n"
            "\n"
            "Options for ABC80 only:\n"
            "  -k,  --kb #              set the memory size K (1-32 or 64) [64]\n"
@@ -390,6 +394,8 @@ int main(int argc, char **argv)
 			opts.tkn80 = TKN80_MYAB;
 		    }
 		}
+	    } else if (valid_drive_name(optstr)) {
+		disk_mount(optstr, enable ? LONG_ARG() : NULL);
             } else {
                 if (set_path(optstr - 1, *option++)) {
                     fprintf(stderr, "%s: unknown option: --%s\n",
