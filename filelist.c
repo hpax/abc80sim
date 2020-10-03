@@ -4,9 +4,10 @@
 struct file_node {
     struct file_node *next;
     char *name;
+    int type;
 };
 
-static int filelist_add(struct file_list *list, char *name)
+static int filelist_add(struct file_list *list, char *name, int type)
 {
     struct file_node *node;
 
@@ -15,6 +16,7 @@ static int filelist_add(struct file_list *list, char *name)
         return -1;
 
     node->name = name;
+    node->type = type;
     node->next = NULL;
     if (list->last)
         list->last->next = node;
@@ -25,18 +27,18 @@ static int filelist_add(struct file_list *list, char *name)
     return 0;
 }
 
-void filelist_add_file(struct file_list *list, const char *filename)
+void filelist_add_file(struct file_list *list, const char *filename, int type)
 {
     char *name = strdup(filename);
 
     if (!name)
         return;
 
-    if (filelist_add(list, name))
+    if (filelist_add(list, name, type))
         free(name);
 }
 
-void filelist_add_list(struct file_list *list, const char *listfile)
+void filelist_add_list(struct file_list *list, const char *listfile, int type)
 {
     FILE *f;
     char *listpath, *p;
@@ -68,7 +70,7 @@ void filelist_add_list(struct file_list *list, const char *listfile)
         if (!p)
             continue;
 
-        if (filelist_add(list, p))
+        if (filelist_add(list, p, type))
             free(p);
     }
 
@@ -88,18 +90,40 @@ void filelist_free(struct file_list *list)
     list->first = list->last = NULL;
 }
 
-char *filelist_pop(struct file_list *list)
+char *filelist_pop(struct file_list *list, int *typep)
 {
     char *filename = NULL;
     struct file_node *node = list->first;
+    int type = 0;
 
     if (node) {
         filename = node->name;
+	type = node->type;
         list->first = node->next;
         if (list->last == node)
             list->last = NULL;
         free(node);
     }
+
+    if (typep)
+	*typep = type;
+
+    return filename;
+}
+
+char *filelist_peek(struct file_list *list, int *typep)
+{
+    char *filename = NULL;
+    struct file_node *node = list->first;
+    int type = 0;
+
+    if (node) {
+        filename = node->name;
+	type = node->type;
+    }
+
+    if (typep)
+	*typep = type;
 
     return filename;
 }

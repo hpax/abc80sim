@@ -15,7 +15,8 @@ static uint8_t keyb_fakedata;
 #define KEYB_NEW  0x100
 #define KEYB_DOWN 0x800
 
-struct host_file *scriptfile;
+struct file_list script_files;
+static bool scripting;
 
 static void script_next_char(void);
 static int keyb_intack_80(struct z80_irq *irq);
@@ -204,10 +205,10 @@ static uint8_t abc80_pioa_in(uint16_t port)
 	return 0xff;
 
     /* Data port */
-    if (opts.faketype || scriptfile) {
+    if (opts.faketype || scripting) {
 	v = keyb_fakedata;
 	keyb_fakedata &= ~0x80;
-	if (!(v & 0x80) && scriptfile)
+	if (!(v & 0x80) && scripting)
 	    script_next_char();
     } else {
 	unsigned int kbd = atomic_load(&keyb_data);
@@ -321,20 +322,20 @@ static void dart_keyb_out(uint16_t port, uint8_t value)
         keyb_irq->vector = (dart_keyb_ctl[2] & ~0x01);
     }
 
-    if (scriptfile && old_vector != keyb_irq->vector)
+    if (scripting && old_vector != keyb_irq->vector)
 	z80_interrupt(keyb_irq);
 }
 
 /* Get the keyboard data, clearing the KEYB_NEW flag */
 static unsigned int get_key(void)
 {
-    unsigned int mask = scriptfile ? KEYB_NEW|KEYB_DOWN : KEYB_NEW;
+    unsigned int mask = scripting ? KEYB_NEW|KEYB_DOWN : KEYB_NEW;
     return atomic_fetch_and(&keyb_data, ~mask);
 }
 
 static int keyb_intack_80(struct z80_irq *irq)
 {
-    if (opts.faketype || scriptfile) {
+    if (opts.faketype || scripting) {
 	unsigned int data = get_key();
 	keyb_fakedata = (data & 0x7f) | ((data & KEYB_NEW) ? 0x80 : 0x00);
     }
@@ -351,7 +352,7 @@ void cursor_enable_hook(void)
      * in the buffer, so only do ghost typing when the cursor gets
      * enabled.
      */
-    if (scriptfile) {
+    if (scripting) {
 	if (!(atomic_load(&keyb_data) & KEYB_NEW))
 	    script_next_char();
     }
@@ -420,26 +421,52 @@ static void abc802_register_ioports(void)
  */
 static void script_next_char(void)
 {
-    int nextchar;
+    static const char *cmdp;
+    static char *cmdstr;
+    static struct host_file *hf;
+    int nextchar = EOF;
 
-    if (!scriptfile)
+    if (!scripting)
 	return;
 
-    do {
-	nextchar = fgetc(scriptfile->f);
-    } while (nextchar == '\r');	/* Drop CR */
+    while (nextchar == EOF) {
+	if (cmdp) {
+	    nextchar = *cmdp++;
+	    if (!nextchar) {
+		nextchar = '\r';
+		cmdp = NULL;
+		free(cmdstr);
+	    }
+	} else if (hf) {
+	    do {
+		nextchar = fgetc(hf->f);
+	    } while (nextchar == '\r'); /* Drop CRs */
 
-    if (nextchar == EOF) {
-	close_file(&scriptfile);
-	atomic_store(&keyb_data, 0); /* Nothing there */
-	enable_real_keyboard();
-	return;
+	    if (nextchar == EOF) {
+		close_file(&hf);
+	    }
+	} else {
+	    int type;
+	    char *filename;
+
+	    filename = filelist_pop(&script_files, &type);
+
+	    if (!filename) {
+		scripting = false;
+		atomic_store(&keyb_data, 0); /* Nothing there */
+		enable_real_keyboard();
+		return;
+	    }
+
+	    if (type == 1) {
+		/* It is a single command */
+		cmdp = cmdstr = filename;
+	    } else {
+		hf = open_host_file(HF_BINARY, NULL, filename, O_RDONLY);
+		free(filename);
+	    }
+	}
     }
-
-    if (nextchar == '\n' + 128)
-	nextchar = '\n';
-    else if (nextchar == '\n')
-	nextchar = '\r';
 
     atomic_store(&keyb_data, (uint8_t)nextchar | KEYB_NEW | KEYB_DOWN);
     z80_interrupt(keyb_irq);
@@ -536,4 +563,8 @@ void io_init(void)
     disk_register_devices();
 
     abcbus_reset();
+
+    scripting = !!filelist_peek(&script_files, NULL);
+    if (!scripting)
+	enable_real_keyboard();
 }

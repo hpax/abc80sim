@@ -93,7 +93,7 @@ static void cas_enable(bool enable)
     /* Do we have a filename list? */
     while (!hf) {
         /* Empty filename or file not found */
-        char *casfile = filelist_pop(&cas_files);
+	char *casfile = filelist_pop(&cas_files, NULL);
         if (!casfile)
             break;              /* Nothing more in the filename list */
         mangle_filename((char *)block.data, casfile);

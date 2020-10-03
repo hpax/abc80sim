@@ -98,7 +98,7 @@ enum abc800_irq {
 extern const char *fileop_path, *disk_path, *screen_path, *memdump_path,
     *cas_path;
 extern struct file_list cas_files;
-extern struct host_file *scriptfile;
+extern struct file_list script_files;
 
 /* Program name for error messages */
 extern const char *program_name;

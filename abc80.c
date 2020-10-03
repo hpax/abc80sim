@@ -28,7 +28,6 @@ const char *program_name;
 static const char *tracefile = NULL;
 static const char *memfile = NULL;
 static const char *console_filename = NULL;
-static const char *script_filename = NULL;
 
 enum tracing traceflags;
 FILE *tracef;
@@ -82,7 +81,9 @@ static no_return help(void)
            "  -Fc, --casfile file      input file for cassette (CAS:)\n"
            "  -Lc, --caslist file      read list of files for the cassette from a file\n"
            "  -Dc, --casdir dir        set directory for named cassette files [= filedir]\n"
+	   "  -Cs, --scriptcmd cmd     command line to auto-type on startup\n"
 	   "  -Fs, --scriptfile file   script file to auto-type on startup\n"
+	   "  -Ls, --scriptlist file   read list of script files\n"
            "  -e,  --console           enable console output device (PRC:)\n"
            "  -Fe, --consolefile file  enable console output device to a file\n"
            "       --detach            detach from console if run from a command line\n"
@@ -181,24 +182,25 @@ static void set_speed(const char *arg)
     }
 }
 
-static void add_casfile(const char *what, const char **pvt)
+static void add_file_to_list(const char *what, void *pvt)
 {
-    (void)pvt;
-
-    filelist_add_file(&cas_files, what);
+    filelist_add_file(pvt, what, 0);
 }
 
-static void add_caslist(const char *what, const char **pvt)
+static void add_list_to_list(const char *what, void *pvt)
 {
-    (void)pvt;
+    filelist_add_list(pvt, what, 0);
+}
 
-    filelist_add_list(&cas_files, what);
+static void add_command_to_list(const char *what, void *pvt)
+{
+    filelist_add_file(pvt, what, 1);
 }
 
 struct path_option {
     const char *opt[2];         /* Short and long */
-    const char **what;
-    void (*set_special) (const char *, const char **);
+    void *what;
+    void (*set_special)(const char *, void *);
 };
 
 static const struct path_option path_options[] = {
@@ -210,10 +212,12 @@ static const struct path_option path_options[] = {
     {{"Cp", "-printcmd"}, &lpr_command, NULL},
     {{"Fe", "-consolefile"}, &console_filename, NULL},
     {{"Fm", "-memfile"}, &memfile, NULL},
-    {{"Fc", "-casfile"}, NULL, add_casfile},
-    {{"Lc", "-caslist"}, NULL, add_caslist},
+    {{"Fc", "-casfile"}, &cas_files, add_file_to_list},
+    {{"Lc", "-caslist"}, &cas_files, add_list_to_list},
     {{"Dc", "-casdir"}, &cas_path, NULL},
-    {{"Fs", "-scriptfile"}, &script_filename, NULL},
+    {{"Cs", "-scriptcmd"}, &script_files, add_command_to_list},
+    {{"Fs", "-scriptfile"}, &script_files, add_file_to_list},
+    {{"Ls", "-scriptlist"}, &script_files, add_list_to_list},
 };
 
 static int set_path(const char *opt, const char *what)
@@ -241,9 +245,9 @@ found:
     }
 
     if (po->set_special) {
-        po->set_special(what, po->what);
+        po->set_special(what, (void *)po->what);
     } else {
-        *po->what = what;
+        *(const char **)po->what = what;
     }
 
     return 0;
@@ -512,12 +516,6 @@ int main(int argc, char **argv)
 
     mem_init(opts.memflags, memfile);
     io_init();
-
-    if (script_filename)
-	scriptfile = open_host_file(HF_BINARY, NULL, script_filename, O_RDONLY);
-
-    if (!scriptfile)
-	enable_real_keyboard();
 
     /*
      * Load any other program files the

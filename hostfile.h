@@ -110,9 +110,10 @@ struct file_list {
     struct file_node *first, *last;
 };
 
-extern void filelist_add_file(struct file_list *, const char *);
-extern void filelist_add_list(struct file_list *, const char *);
+extern void filelist_add_file(struct file_list *, const char *, int);
+extern void filelist_add_list(struct file_list *, const char *, int);
 extern void filelist_free(struct file_list *);
-extern char *filelist_pop(struct file_list *);
+extern char *filelist_peek(struct file_list *, int *);
+extern char *filelist_pop(struct file_list *, int *);
 
 #endif /* HOSTFILE_H */
