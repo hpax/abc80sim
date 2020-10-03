@@ -468,6 +468,12 @@ static void script_next_char(void)
 	}
     }
 
+    /* Convert newlines to CR */
+    if (nextchar == '\n')
+	nextchar = '\r';
+    else if (nextchar == '\n'+128)
+	nextchar = '\n';
+
     atomic_store(&keyb_data, (uint8_t)nextchar | KEYB_NEW | KEYB_DOWN);
     z80_interrupt(keyb_irq);
 }
