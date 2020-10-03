@@ -197,18 +197,15 @@ name_to_drive(const char *drive)
 	return &mo_state.drv[ndrive];
     }
 
-    for (sel = 0; state = NULL, sel < 64; sel++) {
+    for (sel = 0; sel < 64; sel++) {
 	state = sel_to_state[sel];
 	if (!state)
 	    continue;
 	if (!memcmp(state->name, drive, 2))
-	    break;
+	  return &state->drv[ndrive];
     }
 
-    if (!state)
-	return NULL;		/* No such disk */
-
-    return &state->drv[ndrive];
+    return NULL;		/* No such disk */
 }
 
 bool valid_drive_name(const char *drive)
