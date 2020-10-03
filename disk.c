@@ -192,6 +192,11 @@ name_to_drive(const char *drive)
     if (ndrive > 7)
 	return NULL;
 
+    if (!memcmp("dr", drive, 2)) {
+	/* DRx alias for MOx (matches "old DOS") */
+	return &mo_state.drv[ndrive];
+    }
+
     for (sel = 0; state = NULL, sel < 64; sel++) {
 	state = sel_to_state[sel];
 	if (!state)
