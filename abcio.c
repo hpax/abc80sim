@@ -452,9 +452,9 @@ static void script_next_char(void)
 	    filename = filelist_pop(&script_files, &type);
 
 	    if (!filename) {
-		scripting = false;
 		atomic_store(&keyb_data, 0); /* Nothing there */
 		enable_real_keyboard();
+		scripting = false;
 		return;
 	    }
 
