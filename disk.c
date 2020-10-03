@@ -55,6 +55,13 @@ struct ctl_state {
 };
 #define NOT_READY 4		/* How many times to report not ready */
 
+/*
+ * DOSGEN depends on this value... and different DOSGEN
+ * expect different values. If this value is wrong, DOSGEN
+ * will spin forever on "testing sector..."
+ */
+#define OUT_OF_RANGE 0x21	/* Status code for an invalid sector */
+
 static struct ctl_state mo_state = {
     .clustshift = 0,
     .maxsectors = 40 * 1 * 16,
@@ -130,19 +137,24 @@ static inline unsigned int phys_sector(const struct ctl_state *state)
     return virt2phys(cur_drv(state), cur_sector(state));
 }
 
-static inline bool file_pos_valid(const struct ctl_state *state)
+static inline unsigned int file_pos(const struct ctl_state *state)
+{
+    return phys_sector(state) << 8;
+}
+
+static inline bool cur_sector_valid(const struct ctl_state *state)
 {
     uint8_t k3 = state->k[3];
 
     if (!state->newaddr && ((k3 & 31) >> state->clustshift))
 	return false;
 
-    return phys_sector(state) < cur_drv(state)->sectors;
+    return cur_sector(state) < cur_drv(state)->sectors;
 }
 
-static inline unsigned int file_pos(const struct ctl_state *state)
+static inline bool file_pos_valid(const struct ctl_state *state)
 {
-    return phys_sector(state) << 8;
+    return file_pos(state) < cur_drv(state)->hf->filesize - 255;
 }
 
 static inline uint8_t *cur_buf(struct ctl_state *state)
@@ -232,8 +244,16 @@ static void do_next_command(struct ctl_state *state)
         /* READ SECTOR */
 	if (!hf) {
 	    state->error = 0x80; /* Device not ready */
+	} else if (!cur_sector_valid(state)) {
+	    if (tracing(TRACE_DISK)) {
+		fprintf(tracef, "%s: read: disk sector out of range: %u/%u (cluster %u/%u)\n",
+			drv->name, cur_sector(state), drv->sectors,
+			cur_sector(state) >> state->clustshift,
+			drv->sectors >> state->clustshift);
+	    }
+	    state->error = OUT_OF_RANGE;
 	} else if (!file_pos_valid(state)) {
-	    state->error = 0x21; /* Out of range, DOSGEN expected value */
+	    state->error = 0x08; /* CRC error(?) */
 	} else {
 	    if (hf->map) {
 		memcpy(buf, hf->map + file_pos(state), 256);
@@ -267,8 +287,16 @@ static void do_next_command(struct ctl_state *state)
 	    state->error = 0x80; /* Not ready */
 	} else if (!file_wrok(hf)) {
 	    state->error = 0x40; /* Write protect */
+	} else if (!cur_sector_valid(state)) {
+	    state->error = OUT_OF_RANGE;
+	    if (tracing(TRACE_DISK)) {
+		fprintf(tracef, "%s: write: disk sector out of range: %u/%u (cluster %u/%u)\n",
+			drv->name, cur_sector(state), drv->sectors,
+			cur_sector(state) >> state->clustshift,
+			drv->sectors >> state->clustshift);
+	    }
 	} else if (!file_pos_valid(state)) {
-	    state->error = 0x21; /* Same as for read? */
+	    state->error = 0x08; /* CRC error(?) */
 	} else {
 	    if (hf->map) {
 		memcpy(hf->map + file_pos(state), buf, 256);
@@ -329,7 +357,7 @@ static void do_next_command(struct ctl_state *state)
 			memcpy(data, p, 128);
 			memcpy(data+128, p, 128);
 		    } else {
-			memcpy(data, p, 128);
+			memcpy(data, p, 256);
 		    }
 		}
 	    }
@@ -364,7 +392,7 @@ static void do_next_command(struct ctl_state *state)
 		unsigned int ps = virt2phys(drv, s);
 		if (ps >= drv->sectors) {
 		    state->error |= 0x02; /* Track 0/Lost data? */
-		    continue;
+		    break;
 		} else if (hf->map) {
 		    memcpy(hf->map + (ps << 8), data, 256);
 		} else {
@@ -459,6 +487,7 @@ static void disk_out(uint8_t sel, uint16_t port, uint8_t value)
 			(k & 0x80) ? " ?k7" : "");
 		state->trace_dump |= (state->k[0] & 15) != 0;
 	    }
+	    state->error = 0;	/* Clear error */
 	    do_next_command(state);
             break;
         case disk_upload:
