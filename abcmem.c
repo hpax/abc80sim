@@ -449,7 +449,7 @@ void mem_init(unsigned int flags, const char *memfile)
 	 * address, which means using a printer ROM with the appropriate
 	 * ORG.
 	 */
-	if (tkn80 == TKN80_GEJO) {
+	if (opts.tkn80 == TKN80_GEJO) {
 	    pr = print80_29;
 	    praddr = K(29);
 	}
