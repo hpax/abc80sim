@@ -546,8 +546,14 @@ void mem_init(unsigned int flags, const char *memfile)
 	 * For GeJo TKN80 we need to map the printer ROM at a different
 	 * address, which means using a printer ROM with the appropriate
 	 * ORG.
+	 *
+	 * This also applies to SRAM users and 64K users with *any*
+	 * TKN80, since the standard is that the VRAM is moved to
+	 * 30-32K in that case... assume a user with such a modded
+	 * machine will have modded this too.
 	 */
-	if (opts.tkn80 == TKN80_GEJO) {
+	if (opts.tkn80 == TKN80_GEJO ||
+	    (opts.tkn80 != TKN80_NONE && (opts.sram || opts.kb == 64))) {
 	    pr = print80_29;
 	    praddr = K(29);
 	}
