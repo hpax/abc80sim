@@ -104,6 +104,7 @@ static no_return help(void)
 	   "       --tkn80 none        no 80-character support\n"
 	   "       --no-tkn80          same as --tkn80 none\n"
 	   "       --tkn80 myab        MyAB TKN80 (video RAM at 22-24K) (default)\n"
+	   "       --tkn80 gejo        GeJo TKN80 (video RAM at 30-32K)\n"
 	   "       --tkn80 29k         vendor unknown, video RAM at 29K-30K, no double map\n"
            "\n"
            "Options for ABC802 only:\n"
@@ -384,8 +385,12 @@ int main(int argc, char **argv)
 			!strcmp(typestr, "off")) {
 			opts.tkn80 = TKN80_NONE;
 		    } else if (!strcmp(typestr, "myab") ||
-			       !strcmp(typestr, "std")) {
+			       !strcmp(typestr, "std") ||
+			       !strcmp(typestr, "22k")) {
 			opts.tkn80 = TKN80_MYAB;
+		    } else if (!strcmp(typestr, "gejo") ||
+			       !strcmp(typestr, "30k")) {
+			opts.tkn80 = TKN80_GEJO;
 		    } else if (!strcmp(typestr, "29k")) {
 			opts.tkn80 = TKN80_29K;
 		    } else {

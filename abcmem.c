@@ -425,7 +425,9 @@ void mem_init(unsigned int flags, const char *memfile)
     case MODEL_ABC80:
     {
 	const uint8_t *dos = ufddos80;
-	const uint8_t *pr  = print80;
+	const uint8_t *pr  = print80_30;
+	size_t prlen  = K(1);
+	size_t praddr = K(30);
 
         /* 4 maps (for now... ) */
 
@@ -437,11 +439,21 @@ void mem_init(unsigned int flags, const char *memfile)
 
 	if (opts.basic == BASIC_II) {
 	    if (opts.tkn80 != TKN80_NONE)
-		opts.tkn80 = TKN80_GEJO; /* 30-32K */
+		opts.tkn80 = TKN80_GEJO; /* Always 30-32K */
 	}
 
         /* Map 0: default (for < 64K, the only available map) */
 
+	/*
+	 * For GeJo TKN80 we need to map the printer ROM at a different
+	 * address, which means using a printer ROM with the appropriate
+	 * ORG.
+	 */
+	if (tkn80 == TKN80_GEJO) {
+	    pr = print80_29;
+	    praddr = K(29);
+	}
+	
         if (!(flags & MEMFL_NOBASIC)) {
 	    switch (opts.basic) {
 	    case BASIC_NEW:
@@ -455,6 +467,8 @@ void mem_init(unsigned int flags, const char *memfile)
 		memcpy(rom, basicii80, K(24));
 		dos = basicii80 + K(24);
 		pr  = basicii80 + K(28);
+		prlen  = K(4);
+		praddr = K(28);
 		break;
 
 	    }
@@ -465,7 +479,7 @@ void mem_init(unsigned int flags, const char *memfile)
 	if (!(flags & MEMFL_NODOS))
 	    memcpy(rom+K(24), dos, K(4));
 	if (!(flags & MEMFL_NOPR))
-	    memcpy(rom+K(28), pr, K(4));
+	    memcpy(rom+praddr, pr, prlen);
 
 	/* Hack: allow printer ROMs to be written to */
 	map_memory(0x01, K(28), K(4), &rom[K(28)], write_ram);

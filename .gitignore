@@ -10,6 +10,10 @@
 *.err
 *.map
 *.sym
+*.def
+*.dis
+*.hex
+*.log
 *.reloc
 *.bac
 *.bas

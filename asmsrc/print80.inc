@@ -25,6 +25,7 @@
 	defc SELECT=64831		; Current select code
 	defc DEVLIST=65034		; BASIC device list
 
+_start:
 	; jp table for PR:
 pr_jptable:
 	jp pr_open			; OPEN
@@ -36,10 +37,6 @@ pr_jptable:
 	jp notthere			; WRBLK
 	jp notthere			; DELETE
 	jp notthere			; RENAME
-
-prabc_jp_init:
-	call prabc_init
-	jp DOSINIT
 
 pr_print:
 	call select
@@ -109,6 +106,19 @@ not_eof:
 	scf
 	ret
 
+pra_open:
+	ld c,0xA0
+	jr prx_open
+prb_open:
+	call prb_setup_buf
+	ld c,0xA1
+	jr prx_open
+
+	; Init JP vector is at org+0x7C
+	defs ((_start + 0x7c) - ASMPC)
+prx_init_jp:
+	jp prx_init
+
 	; jp table for PRA:
 pra_jptable:
 	jp pra_open			; OPEN
@@ -138,13 +148,6 @@ prb_jptable:
 	jp notthere			; DELETE
 	jp notthere			; RENAME
 
-pra_open:
-	ld c,0xA0
-	jr prx_open
-prb_open:
-	call prb_setup_buf
-	ld c,0xA1
-	jr prx_open
 pra_prepare:
 	ld c,0xA2
 	jr prx_open
@@ -473,7 +476,7 @@ prc_skip:
 	inc hl
 	jr prc_print_loop
 
-prabc_init:
+prx_init:
 	ld hl,prc_device_rom-2
 	ld de,prc_device
 	ld bc,7
