@@ -481,7 +481,7 @@ void mem_init(unsigned int flags, const char *memfile)
 	if (!(flags & MEMFL_NOPR))
 	    memcpy(rom+praddr, pr, prlen);
 
-	/* Hack: allow printer ROMs to be written to */
+	/* Hack: allow device ROMs to be written to */
 	map_memory(0x01, K(28), K(4), &rom[K(28)], write_ram);
 
 	/*
