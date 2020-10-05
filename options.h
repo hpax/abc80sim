@@ -36,6 +36,7 @@ enum memflags {
 };
 
 enum abc80_basic {
+    BASIC_NONE,			/* No BASIC */
     BASIC_NEW,			/* Checksum 9913 */
     BASIC_OLD,			/* Checksum 11723 */
     BASIC_II			/* BASIC II (modified ABC800 BASIC) */
@@ -44,12 +45,13 @@ enum abc80_basic {
 /* System options set on the command line */
 struct opts {
     enum model model;
-    unsigned int kb;	        /* Memory in kilobytes */
+    unsigned int kb;	        /* Main memory in kilobytes */
     enum tkn80 tkn80;		/* ABC80 form of 80 characters */
     bool startup_width40;	/* Start in 40-char mode (if applicable) */
     enum abc80_basic basic;	/* BASIC version (ABC80 only) */
     bool color;			/* Color screen */
     bool magic;			/* Allow magic I/O port */
+    bool sram;			/* SRAM card [more options later] */
     enum autobool faketype;	/* ABC80 keyboard fake for high speeds */
     enum memflags memflags;	/* Memory configuration */
     double hz;			/* Frequency in Hz (HUGE_VAL if unlimited) */

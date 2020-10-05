@@ -223,12 +223,6 @@ static uint8_t abc80_set_width_in(uint16_t port)
     return 0xff;
 }
 
-static void abc80_set_map_out(uint16_t port, uint8_t value)
-{
-    (void)port;
-    abc80_mem_setmap(value & 3);
-}
-
 static void abc80_register_ioports(void)
 {
     register_ioport(0, 0x10, 0xffff, abcbus_out, abcbus_in);
@@ -240,10 +234,16 @@ static void abc80_register_ioports(void)
     register_inport(5, 0x17, 0xffff, NULL); /* INP 5 unusable on 80 */
     register_inport(6, 0x17, 0xffff, NULL); /* INP 6 unusable on 80 */
     register_outport(6, 0x17, 0, abc80_sound_out);
-    register_outport(7, 0x17, 0, abc80_set_map_out);
 
-    register_ioport(56, 0x16, 0x1, abc80_pioa_out, abc80_pioa_in);
-    register_ioport(58, 0x16, 0x1, abc80_piob_out, abc80_piob_in);
+    register_ioport(56, 0x12, 0x1, abc80_pioa_out, abc80_pioa_in);
+    register_ioport(58, 0x12, 0x1, abc80_piob_out, abc80_piob_in);
+
+    if (opts.sram) {
+	register_ioport(0x14, 0x14, ~0x14, abc80_sram_out, abc80_sram_in);
+	register_outport(7, 0x17, 0, abc80_sram_control_out);
+    } else if (opts.kb == 64) {
+	register_outport(7, 0x17, 0, abc80_64k_control_out);
+    }
 
     /* Magic events */
     if (opts.magic)

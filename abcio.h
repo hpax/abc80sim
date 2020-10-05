@@ -39,7 +39,11 @@ struct abcbus_dev {
 extern void register_abcbus_dev(uint8_t sel, const struct abcbus_dev *dev);
 
 extern void abc80_mem_mode80(bool);
-extern void abc80_mem_setmap(unsigned int);
+extern void abc80_64k_control_out(uint16_t addr, uint8_t val);
+extern uint8_t abc80_sram_in(uint16_t addr);
+extern void abc80_sram_out(uint16_t addr, uint8_t val);
+extern void abc80_sram_control_out(uint16_t addr, uint8_t val);
+
 extern void abc802_set_mem(bool);
 
 extern void disk_register_devices(void);

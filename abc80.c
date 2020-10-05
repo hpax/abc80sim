@@ -106,6 +106,7 @@ static no_return help(void)
 	   "       --tkn80 myab        MyAB TKN80 (video RAM at 22-24K) (default)\n"
 	   "       --tkn80 gejo        GeJo TKN80 (video RAM at 30-32K)\n"
 	   "       --tkn80 29k         vendor unknown, video RAM at 29K-30K, no double map\n"
+	   "       --sram              simulate hpa's SRAM/flash card (1.5 MB SRAM)\n"
            "\n"
            "Options for ABC802 only:\n"
            "  -Fm, --memfile file      load a file into the ABC802 MEM: device\n"
@@ -401,6 +402,8 @@ int main(int argc, char **argv)
 			opts.tkn80 = TKN80_MYAB;
 		    }
 		}
+	    } else if (!strcmp(optstr, "sram")) {
+		opts.sram = enable;
 	    } else if (valid_drive_name(optstr)) {
 		disk_mount(optstr, enable ? LONG_ARG() : NULL);
             } else {
@@ -535,7 +538,7 @@ int main(int argc, char **argv)
      * user gave on the command line.
      */
     while (*option)
-      load_sysfile(*option++);
+	load_sysfile(*option++);
 
     /*
      * Off we go...
