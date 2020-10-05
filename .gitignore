@@ -1,4 +1,5 @@
 \#*
+.\#*
 *~
 *.o
 *.obj
@@ -38,3 +39,6 @@ abc*/
 /configure
 /Makefile
 /baudtospeed.c
+unused/
+/abcdir*
+/abcdisk*
