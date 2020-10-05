@@ -67,8 +67,6 @@ extern void cursor_enable_hook(void);
 
 extern void abc802_vsync(void);
 
-extern void dump_memory(bool ramonly);
-
 extern void abc80_piob_out(uint16_t port, uint8_t v);
 extern uint8_t abc80_piob_in(uint16_t port);
 extern void abc80_cas_init(void);

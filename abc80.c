@@ -117,7 +117,9 @@ static no_return help(void)
            "  Alt-r    CPU reset\n"
            "  Alt-n    send NMI\n"
            "  Alt-m    dump memory as currently seen from the CPU\n"
-           "  Alt-u    dump underlying RAM only (even nonexistent)\n"
+           "  Alt-p    dump primary RAM (64K, even nonexistent)\n"
+	   "  Alt-x    dump extended/graphics RAM (if any)\n"
+	   "  Alt-d    dump all memory spaces (atomically)\n"
            "  Alt-f    turn faketype on or off\n", program_name);
     exit(1);
 }

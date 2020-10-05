@@ -177,7 +177,7 @@ struct host_file *open_host_file(enum host_file_mode mode, const char *dir,
  * Create a numbered dump file for writing (only)
  */
 struct host_file *dump_file(enum host_file_mode mode, const char *dir,
-                            const char *pattern)
+                            const char *prefix, const char *suffix)
 {
     int err;
     unsigned int n;
@@ -193,7 +193,7 @@ struct host_file *dump_file(enum host_file_mode mode, const char *dir,
         make_dir(dir);
 
     for (n = 1; n <= 9999; n++) {
-        asprintf(&filename, pattern, n);
+        asprintf(&filename, "%s%04u%s", prefix, n, suffix);
         if (!filename)
             return NULL;
         hf = open_host_file(mode, dir, filename, openflags);

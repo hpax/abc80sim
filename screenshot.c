@@ -348,7 +348,7 @@ static int do_screenshot(SDL_Surface * surf, struct allocable *a)
         return -1;
 
     /* Open screenshot file */
-    a->hf = dump_file(HF_BINARY, screen_path, "scrn%04u.png");
+    a->hf = dump_file(HF_BINARY, screen_path, "scrn", ".png");
     if (!a->hf)
         return -1;
     png_init_io(a->png, a->hf->f);

@@ -392,14 +392,30 @@ exit:
  * This writes to the CPU view of memory, but does not trigger any
  * MMIO actions, nor does it enforce write protect of ROM areas.
  */
-static void load_sys(const struct load_data *ws, uint32_t addr,
-		     uint8_t val)
+static void load_cpu(void *buf, uint32_t addr, uint8_t val)
 {
     const struct mem_page *page;
-    (void)ws;
+    (void)buf;
 
     page = get_page(addr);
     page->data[addr & PAGE_MASK] = val;
+}
+
+/*
+ * This reads a chunk from the CPU view of memory. It returns
+ * a pointer to a chunk of data starting at the requested address.
+ */
+static struct dump_data dump_cpu(void *buf, uint32_t addr)
+{
+    const struct mem_page *page;
+    struct dump_data dd;
+    (void)buf;
+
+    page = get_page(addr);
+    addr &= PAGE_MASK;		/* Address within page */
+    dd.data = &page->data[addr];
+    dd.len = PAGE_SIZE - addr;
+    return dd;
 }
 
 /*
@@ -411,9 +427,9 @@ static void load_sys(const struct load_data *ws, uint32_t addr,
 void mem_init(unsigned int flags, const char *memfile)
 {
     /* Register common sysload memory spaces */
-    sysload_add_memspace("ram", NULL, ram, -1, sizeof ram);
-    sysload_add_memspace("cpu", load_sys, NULL, -1, Z80_ADDRESS_LIMIT);
-    sysload_add_memspace("rom", NULL, rom, -1, sizeof rom);
+    sysload_add_memspace("ram", NULL, NULL, ram, -1, sizeof ram);
+    sysload_add_memspace("cpu", load_cpu, dump_cpu, NULL, -1, Z80_ADDRESS_LIMIT);
+    sysload_add_memspace("rom", NULL, NULL, rom, -1, sizeof rom);
 
     /* Unused ROM contains 0xff */
     memset(rom, 0xff, sizeof rom);
@@ -453,7 +469,7 @@ void mem_init(unsigned int flags, const char *memfile)
 	    pr = print80_29;
 	    praddr = K(29);
 	}
-	
+
         if (!(flags & MEMFL_NOBASIC)) {
 	    switch (opts.basic) {
 	    case BASIC_NEW:
@@ -507,9 +523,9 @@ void mem_init(unsigned int flags, const char *memfile)
 	map_memory(0x01, K(31), K(1), &video_ram[K(1)], write_screen);
 
 	if (opts.tkn80 == TKN80_NONE)
-	    sysload_add_memspace("vram", NULL, &video_ram[K(1)], K(1)-1, K(2));
+	    sysload_add_memspace("vram", NULL, NULL, &video_ram[K(1)], K(1)-1, K(2));
 	else
-	    sysload_add_memspace("vram", NULL, video_ram, -1, K(2));
+	    sysload_add_memspace("vram", NULL, NULL, video_ram, K(2)-1, K(2));
 
 	/*
 	 * ABC80 memory grows from the top down. Memory between 32K and
@@ -543,7 +559,7 @@ void mem_init(unsigned int flags, const char *memfile)
     }
 
     case MODEL_ABC802:
-	sysload_add_memspace("vram", NULL, video_ram, -1, sizeof video_ram);
+	sysload_add_memspace("vram", NULL, NULL, video_ram, -1, K(2));
 
         /* Map 0: normal execution */
 
@@ -567,29 +583,4 @@ void mem_init(unsigned int flags, const char *memfile)
     }
 
     load_memfile(memfile);
-}
-
-/*
- * Dump memory to a file
- */
-const char *memdump_path;
-
-void dump_memory(bool ramonly)
-{
-    const struct mem_page *map = ramonly ? memmaps[7] : current_map[0];
-    struct host_file *hf;
-    size_t i;
-
-    hf = dump_file(HF_BINARY, memdump_path,
-                   ramonly ? "ram%04u.bin" : "mem%04u.bin");
-    if (!hf)
-        return;
-
-    for (i = 0; i < PAGE_COUNT; i++)
-        fwrite(map[i].data, 1, PAGE_SIZE, hf->f);
-
-    if (!ferror(hf->f))
-        keep_file(hf);          /* It's good */
-
-    close_file(&hf);
 }

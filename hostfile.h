@@ -82,8 +82,9 @@ extern struct host_file *open_host_file(enum host_file_mode mode,
 extern void *map_file(struct host_file *file, size_t len);
 
 /* Create a numbered dump file */
-extern struct host_file *dump_file(enum host_file_mode mode, const char *dir,
-                                   const char *pattern);
+extern struct host_file *
+dump_file(enum host_file_mode mode, const char *dir,
+	  const char *prefix, const char *suffix);
 
 /* Create a temporary file */
 extern struct host_file *temp_file(enum host_file_mode mode,

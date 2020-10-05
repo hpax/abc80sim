@@ -1,5 +1,3 @@
-#include "sysload.h"
-
 /*
  * Load a file into memory. The syntax is:
  *
@@ -18,26 +16,44 @@
  * ram   - regular working memory; includes paged-out memory
  *         (ABC80 > 32K, ABC802 etc.)
  * vram  - text video memory
- * sys   - system memory as seen by CPU at system reset (default)
+ * cpu   - memory as seen by CPU
  *
  * Not yet implemented:
  *    sram  - auxiliary SRAM for ABC80 128K+
  *    fg/hr - high res graphics memory
  */
 
-/* write_op will never be called when limit == 0 */
-static struct load_data memspace_null = { "null", NULL, NULL, NULL, 0, 0 };
+#include "compiler.h"
+#include "sysload.h"
+#include "hostfile.h"
+
+/* Namespace definition */
+struct load_data {
+    const char *name;		/* memspace name */
+    const char *dump_name;	/* name when dumping to a file */
+    const struct load_data *next;
+    load_op load_op;
+    dump_op dump_op;
+    void *buf;
+    uint32_t mask;
+    uint32_t limit;
+};
+
+/* No operations will ever be called when limit == 0 */
+static struct load_data memspace_null =
+{ "null", "null", NULL, NULL, NULL, NULL, 0, 0 };
 static const struct load_data *memspaces = &memspace_null;
 
-static inline uint32_t write_byte(const struct load_data *ws, uint32_t addr,
-				  uint8_t val)
+static inline uint32_t
+write_byte(const struct load_data *ws, uint32_t addr, uint8_t val)
 {
     if (likely(addr < ws->limit)) {
-	if (!ws->write_op) {
+	addr &= ws->mask;
+	if (!ws->load_op) {
 	    uint8_t *p = ws->buf;
-	    p[addr & ws->mask] = val;
+	    p[addr] = val;
 	} else {
-	    ws->write_op(ws, addr & ws->mask, val);
+	    ws->load_op(ws->buf, addr, val);
 	}
     }
     return addr + 1;
@@ -358,8 +374,8 @@ static int load_bin(FILE *file, const struct load_data *ws, uint32_t addr)
     }
 }
 
-void sysload_add_memspace(const char *name, load_op write_op, void *buf,
-			  uint32_t mask, uint32_t limit)
+void sysload_add_memspace(const char *name, load_op load_op, dump_op dump_op,
+			  void *buf, uint32_t mask, uint32_t limit)
 {
     struct load_data *ws;
 
@@ -368,7 +384,9 @@ void sysload_add_memspace(const char *name, load_op write_op, void *buf,
 	return;
 
     ws->name = name;
-    ws->write_op = write_op;
+    ws->dump_name = !strcmp(name, "cpu") ? "mem" : name; /* Historic */
+    ws->load_op = load_op;
+    ws->dump_op = dump_op;
     ws->buf = buf;
     ws->mask = mask;
     ws->limit = limit;
@@ -486,4 +504,46 @@ int load_sysfile(const char *filespec)
     fclose(f);
 
     return rv;
+}
+
+
+/*
+ * Dump an arbitrary memory namespace space to a file
+ */
+const char *memdump_path;
+
+void dump_memory(const char *namespace)
+{
+    const struct load_data *ws;
+    struct host_file *hf;
+    struct dump_data dd;
+    uint32_t addr, limit;
+
+    ws = get_memspace(namespace, strlen(namespace));
+    if (!ws)
+	return;			/* Nothing to dump */
+
+    limit = ws->limit & ws->mask;
+    if (!limit)
+	return;			/* Empty namespace */
+
+    hf = dump_file(HF_BINARY, memdump_path, ws->dump_name, ".bin");
+    if (!hf)
+        return;
+
+    if (!ws->dump_op) {
+	fwrite(ws->buf, 1, ws->limit, hf->f);
+    } else {
+	addr = 0;
+	while (addr < limit) {
+	    dd = ws->dump_op(ws->buf, addr);
+	    fwrite(dd.data, 1, dd.len, hf->f);
+	    addr += dd.len;
+	}
+    }
+
+    if (!ferror(hf->f))
+        keep_file(hf);          /* It's good */
+
+    close_file(&hf);
 }

@@ -18,7 +18,6 @@ extern void tracemem(void);
 extern void z80_out(uint16_t, uint8_t);
 extern uint8_t z80_in(uint16_t);
 extern enum z80_cond z80_poll_external(void);
-extern void dump_memory(bool);
 
 extern uint8_t ram[];           /* Array for plain RAM */
 

@@ -86,10 +86,15 @@ struct z80_state_struct {
 };
 extern struct z80_state_struct z80_state;
 
-#define UCEV_NMI	1U
-#define UCEV_RESET	2U
-#define UCEV_DUMP_MEM	4U
-#define UCEV_DUMP_RAM	8U
+/* Unconditional events, can be triggered asynchronously */
+enum uncond {
+    UCEV_NMI         =  1,
+    UCEV_RESET       =  2,
+    UCEV_DUMP_MEM    =  4,
+    UCEV_DUMP_RAM    =  8,
+    UCEV_DUMP_XRAM   = 16,
+    UCEV_ALL_DUMPS   = UCEV_DUMP_MEM|UCEV_DUMP_RAM|UCEV_DUMP_XRAM
+};
 
 /*
  * Register accessors:
@@ -216,22 +221,23 @@ static inline int z80_set_reg(unsigned int reg, uint16_t val)
 #define CARRY_FLAG		(REG_F & CARRY_MASK)
 #define SIGN_FLAG		(REG_F & SIGN_MASK)
 
+
+/* Trigger a unconditional event, asynchonously */
+static inline void z80_trigger_uncond(enum uncond ev)
+{
+    atomic_fetch_or(&z80_state.uncond, ev);
+}
+
 /* Signal a RESET */
 static inline void z80_reset(void)
 {
-    atomic_fetch_or(&z80_state.uncond, UCEV_RESET);
+    z80_trigger_uncond(UCEV_RESET);
 }
 
 /* Signal an NMI */
 static inline void z80_nmi(void)
 {
-    atomic_fetch_or(&z80_state.uncond, UCEV_NMI);
-}
-
-/* Request a memory dump */
-static inline void z80_dump_memory(bool ram)
-{
-    atomic_fetch_or(&z80_state.uncond, ram ? UCEV_DUMP_RAM : UCEV_DUMP_MEM);
+    z80_trigger_uncond(UCEV_NMI);
 }
 
 /* Disassembler */

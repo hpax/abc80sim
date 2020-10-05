@@ -8,20 +8,28 @@
 #include "compiler.h"
 
 struct load_data;
-typedef void (*load_op)(const struct load_data *ws, uint32_t addr,
-			uint8_t val);
 
-struct load_data {
-    const char *name;		/* memspace name */
-    const struct load_data *next;
-    load_op write_op;
-    void *buf;
-    uint32_t mask;
-    uint32_t limit;
+/*
+ * Note: if a load_op and a dump_op are provided, then "buf" is just
+ * a private pointer for the operations to use.
+ */
+
+/* Memory space write operation (if not just memcpy) */
+typedef void
+(*load_op)(void *buf, uint32_t addr, uint8_t val);
+
+/* Memory space read operation (if not just memcpy) */
+struct dump_data {
+    const void *data;
+    size_t len;
 };
 
-void sysload_add_memspace(const char *name, load_op write_op, void *buf,
-			  uint32_t mask, uint32_t limit);
+typedef struct dump_data
+(*dump_op)(void *buf, uint32_t addr);
+
+void sysload_add_memspace(const char *name, load_op write_op, dump_op read_op,
+			  void *buf, uint32_t mask, uint32_t limit);
 int load_sysfile(const char *name);
+void dump_memory(const char *name);
 
 #endif /* SYSLOAD_H */

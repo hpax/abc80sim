@@ -27,6 +27,7 @@
  */
 #include "z80.h"
 #include "z80irq.h"
+#include "sysload.h"
 #include "debug.h"
 
 /*
@@ -1250,6 +1251,16 @@ static void do_reset(void)
     atomic_fetch_and(&z80_state.uncond, ~(UCEV_NMI|UCEV_RESET));
 }
 
+struct dump_type {
+    unsigned int event;
+    const char *memspace;
+};
+static const struct dump_type memdumps[] = {
+    { UCEV_DUMP_MEM,  "cpu" },
+    { UCEV_DUMP_RAM,  "ram" },
+    { UCEV_DUMP_XRAM, "xram" },
+};
+
 /* Check for an unconditional event (NMI, reset) */
 static enum z80_cond check_cpu_events(void)
 {
@@ -1259,15 +1270,13 @@ static enum z80_cond check_cpu_events(void)
     ucevent = atomic_load(&z80_state.uncond);
 
     if (unlikely(ucevent)) {
-	if (unlikely(ucevent & UCEV_DUMP_MEM)) {
-	    atomic_fetch_and(&z80_state.uncond, ~UCEV_DUMP_MEM);
-	    dump_memory(false);
-	    ucevent = atomic_load(&z80_state.uncond);
-	}
-
-	if (unlikely(ucevent & UCEV_DUMP_RAM)) {
-	    atomic_fetch_and(&z80_state.uncond, ~UCEV_DUMP_MEM);
-	    dump_memory(true);
+	if (unlikely(ucevent & UCEV_ALL_DUMPS)) {
+	    size_t i;
+	    atomic_fetch_and(&z80_state.uncond, ~(ucevent & UCEV_ALL_DUMPS));
+	    for (i = 0; i < ARRAY_SIZE(memdumps); i++) {
+		if (ucevent & memdumps[i].event)
+		    dump_memory(memdumps[i].memspace);
+	    }
 	    ucevent = atomic_load(&z80_state.uncond);
 	}
 

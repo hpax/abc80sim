@@ -591,10 +591,17 @@ static void do_magic_from_event_loop(int abcsym)
 	z80_nmi();
 	break;
     case 'm':
-	z80_dump_memory(false);
+	z80_trigger_uncond(UCEV_DUMP_MEM);
 	break;
-    case 'u':
-	z80_dump_memory(true);
+    case 'u':			/* Backwards compatibility */
+    case 'p':
+	z80_trigger_uncond(UCEV_DUMP_RAM);
+	break;
+    case 'x':
+	z80_trigger_uncond(UCEV_DUMP_XRAM);
+	break;
+    case 'd':
+	z80_trigger_uncond(UCEV_ALL_DUMPS);
 	break;
     case 'f':
 	opts.faketype = !opts.faketype;
