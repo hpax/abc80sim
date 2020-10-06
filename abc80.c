@@ -52,7 +52,7 @@ static no_return show_version(void)
 
 static no_return help(void)
 {
-    printf("Usage: %s [options] [ihex_files...]\n"
+    printf("Usage: %s [options] [[[memspace][@start],]romfile...]\n"
            "Simulate a microcomputer from the Luxor ABC series.\n"
            "\n"
            "Options (defaults in brackets):\n"
