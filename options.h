@@ -52,6 +52,7 @@ struct opts {
     bool color;			/* Color screen */
     bool magic;			/* Allow magic I/O port */
     bool sram;			/* SRAM card [more options later] */
+    const char *sram_config;	/* SRAM card per-socket configuration */
     enum autobool faketype;	/* ABC80 keyboard fake for high speeds */
     enum memflags memflags;	/* Memory configuration */
     double hz;			/* Frequency in Hz (HUGE_VAL if unlimited) */

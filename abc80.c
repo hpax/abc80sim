@@ -300,7 +300,7 @@ static char *long_arg(bool enable, const char *opt, char *arg)
 }
 
 #define SHORT_ARG()	short_arg(optchr, *option++)
-#define LONG_ARG()	long_arg(enable, optstr,  *option++)
+#define LONG_ARG()	long_arg(enable, optstr,  optarg ? optarg : *option++)
 
 int main(int argc, char **argv)
 {
@@ -324,6 +324,8 @@ int main(int argc, char **argv)
         optchr = *optstr++;
         if (optchr == '-') {
             bool enable = true;
+	    char *optarg = NULL;
+	    char *eq;
 
             /* Long option */
 
@@ -333,7 +335,11 @@ int main(int argc, char **argv)
             if (!strncmp(optstr, "no-", 3)) {
                 enable = false;
                 optstr += 3;
-            }
+            } else if ((eq = strchr(optstr, '='))) {
+		*eq = 0;
+		optarg = eq+1;
+	    }
+
             if (!strcmp(optstr, "abc80")) {
                 opts.model = MODEL_ABC80;
             } else if (!strcmp(optstr, "abc802")) {
@@ -404,6 +410,8 @@ int main(int argc, char **argv)
 		}
 	    } else if (!strcmp(optstr, "sram")) {
 		opts.sram = enable;
+		if (optarg)
+		    opts.sram_config = optarg;
 	    } else if (valid_drive_name(optstr)) {
 		disk_mount(optstr, enable ? LONG_ARG() : NULL);
             } else {

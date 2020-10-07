@@ -34,6 +34,15 @@ struct mem_page {
 };
 static struct mem_page memmaps[MEM_MAPS][PAGE_COUNT];
 
+static void write_rom(uint8_t * p, uint8_t v)
+{
+    /* Do nothing */
+    (void)p;
+    (void)v;
+}
+static uint8_t empty_page_data[PAGE_SIZE];
+static const struct mem_page empty_page = { empty_page_data, write_rom };
+
 /* Latch the last M1 address fetched, like ABC800 does */
 static uint16_t last_m1_address;
 
@@ -167,13 +176,6 @@ uint16_t mem_fetch_word(uint16_t address)
 /*
  * Simple write operations
  */
-static void write_rom(uint8_t * p, uint8_t v)
-{
-    /* Do nothing */
-    (void)p;
-    (void)v;
-}
-
 static void do_mem_write(uint16_t address, uint8_t value)
 {
     const struct mem_page *page;
@@ -205,7 +207,7 @@ void mem_write_word(uint16_t address, uint16_t value)
 /*
  * The ABC80 memory map is controlled by OUT 7 (64K) or 7+31 (SRAM)
  */
-static unsigned int abc80_map, abc80_map_mask;
+static unsigned int abc80_map;
 
 
 /* 48/80 char ROM patches, *excluding* the line table at address 884 */
@@ -429,37 +431,57 @@ static inline bool sram_addr_is_memmap(size_t xaddr)
     return !(xaddr & ~(size_t)0x101fe7);
 }
 
+static uint8_t sram_mask[4];
+
 #if PAGE_SHIFT != 9
 # error "Need to change write_sram() to deal with PAGE_SHIFT != 9"
 #endif
+/*
+ * This can be called internally to sync the memory maps, or
+ * externally if and only if this is actually a low 8K actual SRAM page
+ */
 static void write_sram(uint8_t *p, uint8_t ppage)
 {
     size_t xaddr = p - xram;
-    unsigned int map = ((xaddr & 0x01e0) >> 5) + 1; /* Map 0 is system */
-    unsigned int vpage = ((xaddr & 0x1e00) + ((xaddr & 7) << 13)) >> PAGE_SHIFT;
-    size_t pageaddr = ((size_t)ppage << 13) + (xaddr & 0x1e00);
-    struct mem_page *page = &memmaps[map][vpage];
+
+    if (!sram_mask[xaddr >> 19])
+	ppage = 255;		/* Unpopulated slot, can only write FF */
 
     *p = ppage;
-    if (!sram_addr_is_memmap(xaddr))
-	return;			/* Nothing magic about this address */
 
-    if (ppage >= 0xc0) {
-	/* System map; map 0 is the preserved initial system map */
-	*page = memmaps[0][(pageaddr & 0xffff) >> PAGE_SHIFT];
-    } else {
-	page->data = xram + pageaddr;
-	if ((ppage & 0x7f) == 0) {
-	    /* Bottom 8K in IC1 or IC3; this is a memory map */
-	    page->write = write_sram;
+    if (sram_addr_is_memmap(xaddr)) {
+	unsigned int map, vpage, pslot;
+	size_t pageaddr;
+	struct mem_page *page;
+
+	pslot = ppage >> 6;
+	ppage &= sram_mask[pslot];
+
+	map = ((xaddr & 0x01e0) >> 5) + 1; /* Map 0 is system */
+	vpage = ((xaddr & 0x1e00) + ((xaddr & 7) << 13)) >> PAGE_SHIFT;
+	pageaddr = ((size_t)ppage << 13) + (xaddr & 0x1e00);
+	page = &memmaps[map][vpage];
+
+	if (pslot == 3) {
+	    /* System map; map 0 is the preserved initial system map */
+	    *page = memmaps[0][pageaddr >> PAGE_SHIFT];
 	} else {
-	    /* No need to intercept this write */
-	    page->write = NULL;
+	    page->data = xram + pageaddr;
+	    if (!sram_mask[pslot]) {
+		/* Unpopulated slot, treat as ROM containing FF */
+		*page = empty_page;
+	    } else if ((ppage & 0x7f) == 0) {
+		/* Bottom 8K in IC1 or IC3; this is a memory map */
+		page->write = write_sram;
+	    } else {
+		/* No need to intercept this write */
+		page->write  = NULL;
+	    }
 	}
     }
 }
 
-static uint8_t *io_to_sram(uint16_t addr)
+static inline uint8_t *io_to_sram(uint16_t addr)
 {
     size_t xaddr = addr;
 
@@ -467,21 +489,93 @@ static uint8_t *io_to_sram(uint16_t addr)
     if ((xaddr & 3) == 3)
 	xaddr &= ~3;
 
+    if (!sram_mask[xaddr & 3])
+	return NULL;		/* Not present */
+
     return &xram[(xaddr & 0x1fe8) + (xaddr >> 13) + ((xaddr & 3) << 19)];
 }
 
 uint8_t abc80_sram_in(uint16_t addr)
 {
-    return *io_to_sram(addr);
+    const uint8_t *p = io_to_sram(addr);
+    return p ? *p : 0xff;
 }
 
 void abc80_sram_out(uint16_t addr, uint8_t val)
 {
     uint8_t *p = io_to_sram(addr);
 
-    write_sram(p, val);
+    if (p)			/* If p == NULL then socket empty */
+	write_sram(p, val);
+
     if ((addr & 3) == 3)
 	abc80_sram_control_out(addr, val);
+}
+
+/*
+ * Initialize SRAM/flash card if present
+ */
+static uint8_t *init_sram(void)
+{
+    unsigned int kb[3];
+    static const char default_config[] = "512,512,512";
+    const char *config = default_config;
+    uint8_t *sram;
+    int i;
+
+    if (opts.sram_config && *opts.sram_config)
+	config = opts.sram_config;
+
+    memset(kb, 0, sizeof kb);
+    sscanf(config, "%u,%u,%u", &kb[0], &kb[1], &kb[2]);
+
+    for (i = 0; i < 3; i++) {
+	sram_mask[i] = 0;
+	if (!kb[i])
+	    continue;
+	/* Configurations < 128K are of theoretical interest only */
+	if ((kb[i] & (kb[i]-1)) || kb[i] < 8 || kb[i] > 512) {
+	    fprintf(stderr, "%s: invalid SRAM configuration: %s\n",
+		    program_name, opts.sram_config);
+	    return NULL;
+	}
+	sram_mask[i] = ((kb[i]-1) >> 3) | 0xc0;
+    }
+
+    sram_mask[3] = 0x07;	/* System memory */
+
+    sram = calloc(3, K(512));
+    if (!sram)
+	return NULL;
+
+    for (i = 0; i < 3; i++) {
+	if (!sram_mask[i]) {
+	    /* Unpopulated slot, fill with FF */
+	    memset(sram + (i << 19), 0xff, K(512));
+	}
+    }
+
+    return sram;
+}
+
+/*
+ * Sync SRAM mappings with system map
+ */
+static void sram_sync_mappings(void)
+{
+    uint8_t *p;
+    unsigned int i, j;
+
+    if (!opts.sram)
+	return;
+
+    for (i = 0; i < 2; i++) {
+	p = xram + (i << 20);	/* IC1, IC3 */
+	for (j = 0; j < 8192; j++) {
+	    write_sram(p, *p);
+	    p++;
+	}
+    }
 }
 
 /*
@@ -492,6 +586,9 @@ void abc80_sram_out(uint16_t addr, uint8_t val)
  */
 void mem_init(unsigned int flags, const char *memfile)
 {
+    /* Initialize empty page */
+    memset(empty_page_data, 0xff, sizeof empty_page_data);
+
     /* Register common sysload memory spaces */
     sysload_add_memspace("ram", NULL, NULL, ram, -1, sizeof ram);
     sysload_add_memspace("cpu", load_cpu, dump_cpu, NULL, -1, Z80_ADDRESS_LIMIT);
@@ -514,26 +611,22 @@ void mem_init(unsigned int flags, const char *memfile)
 	if (flags & MEMFL_NOBASIC)
 	    opts.basic = BASIC_NONE;
 
-	abc80_map_mask = 0;
-	if (opts.kb == 64) {
-	    abc80_map_mask = 3;
-	} else if (opts.kb < 1 || opts.kb > 32) {
-            fprintf(stderr, "%s: invalid ABC80 memory size %uK, using 16K\n",
-                    program_name, opts.kb);
-            opts.kb = 16;	/* Standard ABC80 */
-        }
-
 	if (opts.sram) {
-	    xram = calloc(K(1536), 1);
+	    xram = init_sram();
 	    if (!xram) {
 		opts.sram = false;
 	    } else {
-		abc80_map_mask = 31;
 		if (opts.kb > 32)
 		    opts.kb = 32;
 		sysload_add_memspace("xram", NULL, NULL, xram, -1, K(1536));
 	    }
 	}
+	if (opts.kb != 64 && (opts.kb < 1 || opts.kb > 32)) {
+	    unsigned int k = opts.sram ? 16 : 64;
+            fprintf(stderr, "%s: invalid ABC80 memory size %uK, using %uK\n",
+                    program_name, opts.kb, k);
+            opts.kb = k;
+        }
 
 	if (opts.basic == BASIC_II) {
 	    if (opts.tkn80 != TKN80_NONE)
@@ -641,6 +734,7 @@ void mem_init(unsigned int flags, const char *memfile)
 	/* (nothing to do) */
 
         abc80_mem_setmap(0);
+	sram_sync_mappings();
         break;
     }
 
