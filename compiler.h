@@ -203,4 +203,12 @@ typedef unsigned __int128 uint128_t;
 /* Useful construct */
 #define ARRAY_SIZE(x) ((sizeof x)/(sizeof *(x)))
 
+/* min() and max(): useful, pre-defined on Windows */
+#ifndef min
+# define min(x,y) ((x)<(y)?(x):(y))
+#endif
+#ifndef max
+# define max(x,y) ((x)>(y)?(x):(y))
+#endif
+
 #endif /* COMPILER_H */
