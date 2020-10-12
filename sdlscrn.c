@@ -598,7 +598,7 @@ static void do_magic_from_event_loop(int abcsym)
 	z80_trigger_uncond(UCEV_DUMP_RAM);
 	break;
     case 'x':
-	z80_trigger_uncond(UCEV_DUMP_XRAM);
+	z80_trigger_uncond(UCEV_DUMP_XMEM);
 	break;
     case 'd':
 	z80_trigger_uncond(UCEV_ALL_DUMPS);
