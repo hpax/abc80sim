@@ -92,4 +92,5 @@ clean:
 
 spotless: clean
 	$(RM_F)  *~ .\#* \#* *.bak
-	$(RM_F) roms/*.$(O)
+	$(RM_F) configure config.status config.log Makefile config/config.h
+	$(RM_F) autoconf/aclocal.m4 autom4te.cache
