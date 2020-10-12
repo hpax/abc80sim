@@ -13,13 +13,6 @@
 #include "nstime.h"
 #include "trace.h"
 
-#ifndef min
-# define min(x,y) ((x)<(y)?(x):(y))
-#endif
-#ifndef max
-# define max(x,y) ((x)>(y)?(x):(y))
-#endif
-
 #define TS_WIDTH  80
 #define TS_HEIGHT 24
 
