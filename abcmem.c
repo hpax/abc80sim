@@ -14,7 +14,7 @@
 
 uint8_t ram[MEMORY_SIZE];
 static uint8_t rom[MEMORY_SIZE];
-static uint8_t *xram;
+static uint8_t *xmem;
 
 #define write_ram	NULL    /* Optimized fast path */
 #define write_screen	write_ram
@@ -432,17 +432,26 @@ static inline bool sram_addr_is_memmap(size_t xaddr)
 }
 
 static uint8_t sram_mask[4];
+enum sram_ic3 {
+    IC3_RAM,			/* IC3 contains SRAM */
+    IC3_FLASH,			/* IC3 contains programmable flash */
+    IC3_ROM			/* IC3 contains write-protected flash */
+};
+static enum sram_ic3 sram_ic3;
 
 #if PAGE_SHIFT != 9
 # error "Need to change write_sram() to deal with PAGE_SHIFT != 9"
 #endif
 /*
  * This can be called internally to sync the memory maps, or
- * externally if and only if this is actually a low 8K actual SRAM page
+ * externally if and only if this is actually a low 8K actual SRAM page.
+ * It can be called internally even if this memory address is not
+ * actually writable!
  */
+static void write_flash(uint8_t *p, uint8_t v);
 static void write_sram(uint8_t *p, uint8_t ppage)
 {
-    size_t xaddr = p - xram;
+    size_t xaddr = p - xmem;
 
     if (!sram_mask[xaddr >> 19])
 	ppage = 255;		/* Unpopulated slot, can only write FF */
@@ -465,19 +474,145 @@ static void write_sram(uint8_t *p, uint8_t ppage)
 	if (pslot == 3) {
 	    /* System map; map 0 is the preserved initial system map */
 	    *page = memmaps[0][pageaddr >> PAGE_SHIFT];
+	} else if (!sram_mask[pslot]) {
+	    /* Unpopulated slot, treat as ROM containing FF */
+	    *page = empty_page;
 	} else {
-	    page->data = xram + pageaddr;
-	    if (!sram_mask[pslot]) {
-		/* Unpopulated slot, treat as ROM containing FF */
-		*page = empty_page;
-	    } else if ((ppage & 0x7f) == 0) {
-		/* Bottom 8K in IC1 or IC3; this is a memory map */
+	    page->data = xmem + pageaddr;
+	    page->write = write_ram;
+	    if ((ppage & 0x7f) == 0) {
+		/*
+		 * Bottom 8K in IC1 or IC3; this is a memory map,
+		 * so we need to redirect a write back here
+		 */
 		page->write = write_sram;
-	    } else {
-		/* No need to intercept this write */
-		page->write  = NULL;
+	    }
+
+	    if (pslot == 2) {	/* IC3 populated differently? */
+		switch (sram_ic3) {
+		case IC3_RAM:
+		    break;	/* Same as all other slots */
+		case IC3_ROM:
+		    page->write = write_rom;
+		    break;
+		case IC3_FLASH:
+		    page->write = write_flash;
+		    break;
+		}
 	    }
 	}
+    }
+}
+
+/*
+ * Sync SRAM mappings with system map
+ */
+static void sram_sync_mappings(void)
+{
+    uint8_t *p;
+    unsigned int i, j;
+
+    if (!opts.sram)
+	return;
+
+    for (i = 0; i < 2; i++) {
+	p = xmem + (i << 20);	/* IC1, IC3 */
+	for (j = 0; j < 8192; j++) {
+	    write_sram(p, *p);
+	    p++;
+	}
+    }
+}
+
+/*
+ * This only implements some flash commands, and those that it does
+ * are implemented as "infinitely fast." However, it should be enough
+ * to test most software. Notably missing is the ID command.
+ * The current simulator memory model doesn't support read side effects
+ * for memory, so doing everything correctly would need to add that.
+ */
+static void write_flash(uint8_t *p, uint8_t v)
+{
+    /*
+     * The command sequences supported are:
+     * AA 55 A0 xx       = byte write
+     * AA 55 80 AA 55 30 = sector erase
+     * AA 55 80 AA 55 10 = chip erase
+     */
+    enum flash_state {
+	FL_NORM,	/* Normal operation */
+	FL_CP1,		/* AA */
+	FL_CP2,		/* AA 55 */
+	FL_CP3,		/* AA 55 80 */
+	FL_CP4,		/* AA 55 80 AA */
+	FL_CP5,		/* AA 55 80 AA 55 */
+	FL_PROG		/* AA 55 A0 */
+    };
+    static enum flash_state state = FL_NORM;
+    size_t xaddr = p - xmem;
+    const size_t cmdlo = 2 << 19;
+    size_t cmdhi = cmdlo + ((sram_mask[2] & 0x3c) << 13);
+
+    switch (state) {
+    case FL_PROG:
+	/* Progamming can only change 1 bits to 0 */
+	v &= *p;
+	*p = v;
+	state = FL_NORM;
+	if (xaddr < K(1024)+8192)
+	    write_sram(p, v);	/* Update memory mappings */
+	return;
+    case FL_CP5:
+	if (v == 0x30) {
+	    /* Sector erase */
+	    uint8_t *s = p - (xaddr & 0xfff);
+	    memset(s, 0xff, 4096);
+	    state = FL_NORM;
+	    if (xaddr < K(1024)+8192)
+		sram_sync_mappings();
+	    return;
+	}
+	break;
+    default:
+	break;
+    }
+
+    if (xaddr == cmdlo + 0x5555 || xaddr == cmdhi + 0x5555) {
+	/* CMD1 address write */
+	switch (state) {
+	case FL_NORM:
+	case FL_CP3:
+	    if (v == 0xaa)
+		state++;
+	    else
+		state = FL_NORM;
+	    break;
+	case FL_CP2:
+	    if (v == 0xa0)
+		state = FL_PROG;
+	    else if (v == 0x80)
+		state = FL_CP3;
+	    else
+		state = FL_NORM;
+	    break;
+	case FL_CP5:
+	    state = FL_NORM;
+	    if (v == 0x10) {
+		/* Chip erase */
+		memset(xmem+K(1024), 0xff, K(512));
+		sram_sync_mappings();
+	    }
+	    break;
+	default:
+	    state = FL_NORM;
+	}
+    } else if (xaddr == cmdlo + 0x2aaa || xaddr == cmdhi + 0x2aaa) {
+	if (v == 0x55 && (state == FL_CP1 || state == FL_CP4))
+	    state++;
+	else
+	    state = FL_NORM;
+    } else {
+	state = FL_NORM;
     }
 }
 
@@ -492,7 +627,7 @@ static inline uint8_t *io_to_sram(uint16_t addr)
     if (!sram_mask[xaddr & 3])
 	return NULL;		/* Not present */
 
-    return &xram[(xaddr & 0x1fe8) + (xaddr >> 13) + ((xaddr & 3) << 19)];
+    return &xmem[(xaddr & 0x1fe8) + (xaddr >> 13) + ((xaddr & 3) << 19)];
 }
 
 uint8_t abc80_sram_in(uint16_t addr)
@@ -517,17 +652,15 @@ void abc80_sram_out(uint16_t addr, uint8_t val)
  */
 static uint8_t *init_sram(void)
 {
+    static const char default_config[] = "512,512,512,flash";
     unsigned int kb[3];
-    static const char default_config[] = "512,512,512";
-    const char *config = default_config;
+    char ic3[6];
     uint8_t *sram;
     int i;
 
-    if (opts.sram_config && *opts.sram_config)
-	config = opts.sram_config;
-
-    memset(kb, 0, sizeof kb);
-    sscanf(config, "%u,%u,%u", &kb[0], &kb[1], &kb[2]);
+    sscanf(default_config, "%u,%u,%u,%5s", &kb[0], &kb[1], &kb[2], ic3);
+    if (opts.sram_config)
+	sscanf(opts.sram_config, "%u,%u,%u,%5s", &kb[0], &kb[1], &kb[2], ic3);
 
     for (i = 0; i < 3; i++) {
 	sram_mask[i] = 0;
@@ -544,38 +677,40 @@ static uint8_t *init_sram(void)
 
     sram_mask[3] = 0x07;	/* System memory */
 
-    sram = calloc(3, K(512));
+    sram_ic3 = IC3_FLASH;	/* Default */
+
+    if (!strcmp(ic3, "flash") || !strcmp(ic3, "we")) {
+	sram_ic3 = IC3_FLASH;
+    } else if (!strcmp(ic3, "rom") || !strcmp(ic3, "wp")) {
+	sram_ic3 = IC3_ROM;
+    } else if (!strcmp(ic3, "ram") || !strcmp(ic3, "sram")) {
+	sram_ic3 = IC3_RAM;
+    }
+
+    /*
+     * Flash and unpopulated slots want to be filled with FF.
+     * SRAM can be initialized to anything... FF is as good as
+     * anything, no?
+     */
+    sram = malloc(3*K(512));
     if (!sram)
 	return NULL;
 
-    for (i = 0; i < 3; i++) {
-	if (!sram_mask[i]) {
-	    /* Unpopulated slot, fill with FF */
-	    memset(sram + (i << 19), 0xff, K(512));
-	}
+    xmem = sram;
+    memset(sram, 0xff, 3*K(512));
+
+    sysload_add_memspace("xmem", NULL, NULL, sram, -1, K(1536));
+
+    /* XXX: would be nice to cap sram better */
+    if (sram_ic3 == IC3_RAM) {
+	sysload_add_memspace("sram", NULL, NULL, sram, -1, K(1536));
+    } else {
+	sysload_add_memspace("sram", NULL, NULL, sram, -1, K(1024));
+	sysload_add_memspace("flash", NULL, NULL, sram+K(1024), -1,
+			     kb[2] << 10);
     }
 
     return sram;
-}
-
-/*
- * Sync SRAM mappings with system map
- */
-static void sram_sync_mappings(void)
-{
-    uint8_t *p;
-    unsigned int i, j;
-
-    if (!opts.sram)
-	return;
-
-    for (i = 0; i < 2; i++) {
-	p = xram + (i << 20);	/* IC1, IC3 */
-	for (j = 0; j < 8192; j++) {
-	    write_sram(p, *p);
-	    p++;
-	}
-    }
 }
 
 /*
@@ -612,13 +747,11 @@ void mem_init(unsigned int flags, const char *memfile)
 	    opts.basic = BASIC_NONE;
 
 	if (opts.sram) {
-	    xram = init_sram();
-	    if (!xram) {
+	    if (!init_sram()) {
 		opts.sram = false;
 	    } else {
 		if (opts.kb > 32)
 		    opts.kb = 32;
-		sysload_add_memspace("xram", NULL, NULL, xram, -1, K(1536));
 	    }
 	}
 	if (opts.kb != 64 && (opts.kb < 1 || opts.kb > 32)) {

@@ -1258,7 +1258,7 @@ struct dump_type {
 static const struct dump_type memdumps[] = {
     { UCEV_DUMP_MEM,  "cpu" },
     { UCEV_DUMP_RAM,  "ram" },
-    { UCEV_DUMP_XRAM, "xram" },
+    { UCEV_DUMP_XMEM, "xmem" },
 };
 
 /* Check for an unconditional event (NMI, reset) */
