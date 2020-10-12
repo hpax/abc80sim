@@ -138,7 +138,7 @@ static inline unsigned int phys_sector(const struct ctl_state *state)
     return virt2phys(cur_drv(state), cur_sector(state));
 }
 
-static inline unsigned int file_pos(const struct ctl_state *state)
+static inline off_t file_pos(const struct ctl_state *state)
 {
     return phys_sector(state) << 8;
 }
@@ -524,12 +524,12 @@ static void disk_out(uint8_t sel, uint16_t port, uint8_t value)
             if (tracing(TRACE_DISK)) {
 		uint16_t k = (state->k[1] << 8) + state->k[0];
 		fprintf(tracef, "%s: cmd %02X %02X %02X %02X "
-			"sect %u (phys %u, pos %u) "
+			"sect %u (phys %u, pos %"PRId64") "
 			"buf %u :%s%s%s%s%s%s%s%s%s%s\n",
 			cur_drv(state)->name,
 			state->k[0], state->k[1], state->k[2], state->k[3],
 			cur_sector(state), phys_sector(state),
-			file_pos(state),
+			(int64_t)file_pos(state),
 			k >> (6+8),
 			(k & 0x01) ? " read" : "",
 			(k & 0x02) ? " to_host" : "",
