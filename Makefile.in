@@ -28,6 +28,9 @@ X		= @EXEEXT@
 .SUFFIXES:
 .SUFFIXES: .c .h .$(O) .bin $(X) .i .s .asm
 
+.SECONDARY:
+.DELETE_ON_ERROR:
+
 GENC = $(patsubst %.rom,%.c,$(wildcard roms/*.rom))
 SRCS = abc80.c clock.c sdlscrn.c screenshot.c \
 	z80.c z80irq.c abcmem.c abcio.c debug.c \
@@ -57,12 +60,10 @@ abc80$(X): $(OBJS)
 abc80win$(X): winwrap.c
 	$(CC) $(LDFLAGS) -mwindows -municode -D_UNICODE -o abc80win$(X) $^
 
-.PRECIOUS: %.c
 %.c: %.rom bin2c.pl
 	$(PERL) bin2c.pl $< > $@ || ( rm -f $@ ; false )
 
-.PRECIOUS: %.o
-%.o: %.c $(HDRS)
+%.$(O): %.c $(HDRS)
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 %.i: %.c $(HDRS)
@@ -86,5 +87,9 @@ asmsrc:
 	$(MAKE) -C asmsrc
 
 clean:
-	$(RM_F) $(TARGETS) *.$(O) *~ core *.lst *.i *.s *~
-	$(RM_F) roms/*.c
+	$(RM_F) $(TARGETS) *.$(O) *~ core *.lst *.i *.s
+	$(RM_F) roms/*.$(O) roms/*.c
+
+spotless: clean
+	$(RM_F)  *~ .\#* \#* *.bak
+	$(RM_F) roms/*.$(O)
