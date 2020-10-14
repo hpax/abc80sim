@@ -19,6 +19,11 @@
 #define FONT_XSIZE 6
 #define FONT_YSIZE 10
 
+/*
+ * The ABC80/800 screen pixels have a 4:3 aspect ratio in 40-column
+ * mode and 2:3 in 80-column mode. This reflects 80-column mode, with
+ * 40 columns simply being duplicated pixels thereof.
+ */
 #define FONT_XDUP  2            /* For 80-column mode */
 #define FONT_YDUP  3
 
@@ -344,11 +349,12 @@ void screen_init(bool width40, bool color)
     int debug = 1;              /* False = force clean shutdown */
     int i, x, y;
 
+
+    atexit(SDL_Quit);
+
     if (SDL_Init(SDL_INIT_TIMER | SDL_INIT_VIDEO
                  | (debug ? SDL_INIT_NOPARACHUTE : 0)))
         return;
-
-    atexit(SDL_Quit);
 
     assert((int)UEV_END <= (int)SDL_NUMEVENTS);
 
