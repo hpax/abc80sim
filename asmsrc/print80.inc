@@ -97,13 +97,10 @@ done_err:
 	ld (SELECT),a
 	out (1),a
 	pop af
-	and a				; Clear carry
-	ret p
-	cp 128				; Some errors are returned with A=0
-	jr nz,send_errcode
-	xor a				; ... return A=0 but still carry
-send_errcode:
-	scf
+	add a				; Carry = negative number?
+	ret z				; A=0 success or default error
+	inc a				; Set the carry flag
+	rra				; Restore original value + set carry
 	ret
 
 pra_open:
