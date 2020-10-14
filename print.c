@@ -26,8 +26,7 @@
 #include <locale.h>
 
 #ifdef __WIN32__
-const char *lpr_command =
-    "powershell -windowstyle hidden -nologo -command \"get-content -literalpath '*' | out-printer\"";
+const char *lpr_command = "notepad /p \"*\"";
 #else
 const char *lpr_command = "lpr '*'";
 #endif
