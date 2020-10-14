@@ -169,7 +169,7 @@ static void do_open(struct abcprint *me, char *name)
         break;
 #endif
     default:
-        err = 128 + 21;
+	err = 128;		/* Hittar ej filen (default error) */
         break;
     }
 
@@ -210,8 +210,8 @@ static void do_read_block(struct abcprint *me, uint16_t len)
                 break;
             }
         } else {
-            /* EOF */
-            err = 128 + 34;     /* Slut på filen */
+            /* EOF - definitely not the default return! */
+	    err = 128 + 34;	/* Slut på filen (är det rätt?) */
         }
         send_reply(me, err);
         return;
@@ -293,7 +293,7 @@ static void do_input(struct abcprint *me)
                 }
             } else {
                 /* EOF */
-                err = 128 + 34; /* Slut på filen */
+                err = 128; /* Slut på filen (default error) */
             }
         } else {
             /* Strip CR and change LF -> CR LF */
@@ -335,7 +335,7 @@ static void do_input(struct abcprint *me)
             dlen += sprintf(data1 + 2 + dlen, ",%lu,%lu\r\n", blocks, pad);
             err = 0;
         } else {
-            err = 128 + 34;
+            err = 128;		/* End of file (default error) */
         }
     } else {
         err = 128 + 44;

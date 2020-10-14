@@ -97,12 +97,12 @@ done_err:
 	ld (SELECT),a
 	out (1),a
 	pop af
-	and a
+	and a				; Clear carry
 	ret p
-	cp 128+34			; ERR 34 = end of file
-	jr nz,not_eof
-	xor a				; ... end of file is signalled by A=0
-not_eof:
+	cp 128				; Some errors are returned with A=0
+	jr nz,send_errcode
+	xor a				; ... return A=0 but still carry
+send_errcode:
 	scf
 	ret
 
@@ -156,6 +156,7 @@ prb_prepare:
 	ld (ix+14),1
 	ld c,0xA3
 prx_open:
+	push de
 	push bc
 	ex de,hl			; HL <- filename
 	ld (ix+6),0
@@ -173,6 +174,7 @@ prx_open:
 	call recv_reply
 	and a
 	pop bc
+	pop de
 	jr nz,done_err2
 	bit 0,c				; PRB:?
 	jr z,done_err2
@@ -287,7 +289,6 @@ prbr_recv:
 	ld (hl),a
 	inc hl
 	djnz prbr_recv
-	ld (hl),3		; Terminate with ETX
 	pop hl			; HL -> buf address
 	jp done
 
@@ -307,7 +308,6 @@ prb_wrblk:
 	ld (ix+11),h
 	ld (ix+13),252
 	ld (ix+14),a
-	ld (hl),3
 	ex de,hl		; DE -> buf address
 done_err3:
 	jp done_err
@@ -338,8 +338,8 @@ psb_found:
 	rrca
 	rrca
 	ld h,a
-	ld l,0
-	ld (ix+14),l
+	ld l,3			; Mimic the behavior of DOS (block header)
+	ld (ix+14),0
 	ld de,(0xFD12)		; Address to DOSBUF1
 	add hl,de
 	ld (ix+8),l
@@ -347,7 +347,6 @@ psb_found:
 	ld (ix+10),l
 	ld (ix+11),h
 	ld (ix+13),252
-	ld (hl),3
 	pop de
 	pop hl
 	ret
