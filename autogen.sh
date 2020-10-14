@@ -33,7 +33,7 @@ if test ! x"$autolib" = x; then
 	fi
     done
 fi
-mv -f autoconf/aclocal.m4 autoconf/aclocal.m4.old
+mv -f autoconf/aclocal.m4 autoconf/aclocal.m4.old || true
 mkdir -p autoconf/m4.old autoconf/m4
 mv -f autoconf/m4/*.m4 autoconf/m4.old/ 2>/dev/null || true
 ACLOCAL_PATH="${ACLOCAL_PATH}${ACLOCAL_PATH:+:}`pwd`/autoconf/m4.old"
