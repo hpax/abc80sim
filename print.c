@@ -27,7 +27,7 @@
 
 #ifdef __WIN32__
 const char *lpr_command =
-    "powershell -command \"GetContent -raw -path '*' | OutPrinter\"";
+    "powershell -windowstyle hidden -nologo -command \"get-content -literalpath '*' | out-printer\"";
 #else
 const char *lpr_command = "lpr '*'";
 #endif
