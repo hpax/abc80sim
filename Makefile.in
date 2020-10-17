@@ -32,7 +32,7 @@ X		= @EXEEXT@
 .DELETE_ON_ERROR:
 
 GENC = $(patsubst %.rom,%.c,$(wildcard roms/*.rom))
-SRCS = abc80.c clock.c sdlscrn.c screenshot.c \
+SRCS = abc80.c clock.c sdlscrn.c fgcolor.c screenshot.c \
 	z80.c z80irq.c abcmem.c abcio.c debug.c \
 	abcfont.c disk.c rtc.c simprint.c print.c fileop.c z80dis.c \
 	nstime.c hostfile.c console.c cas.c abcfile.c filelist.c \

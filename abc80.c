@@ -268,6 +268,7 @@ struct opts opts = {
     .basic		= BASIC_NEW,
     .tkn80		= TKN80_MYAB,
     .startup_width40	= false,
+    .hr                 = true,
     .color		= true,
     .magic              = true,
     .faketype		= A_AUTO,
@@ -348,6 +349,8 @@ int main(int argc, char **argv)
                 opts.model = MODEL_ABC800C;
             } else if (!strcmp(optstr, "abc800m")) {
                 opts.model = MODEL_ABC800M;
+	    } else if (!strcmp(optstr, "hr")) {
+		opts.hr = enable;
             } else if (!strcmp(optstr, "40")) {
                 opts.startup_width40 = enable;
             } else if (!strcmp(optstr, "80")) {
@@ -541,6 +544,7 @@ int main(int argc, char **argv)
     case MODEL_ABC80:
 	if (opts.tkn80 == TKN80_NONE)
 	    opts.startup_width40 = true;
+	opts.hr = false;
 	break;
     case MODEL_ABC800C:
 	opts.startup_width40 = true;
@@ -550,6 +554,7 @@ int main(int argc, char **argv)
 	opts.startup_width40 = false;
 	break;
     case MODEL_ABC802:
+	opts.hr = false;
 	break;
     }
     screen_init(opts.startup_width40, opts.color);

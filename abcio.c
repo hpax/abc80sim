@@ -398,7 +398,7 @@ static uint8_t dart_keyb_in(uint16_t port)
 static void abc800_register_ioports(void)
 {
     register_ioport(0x00,  0xf0, 0xffff, abcbus_out, abcbus_in);
-    register_outport(0x06, 0xfe, 0xffff, NULL); /* Used on 800+HR or 806 */
+    register_outport(0x06, 0xfe, 0xffff, opts.hr ? fg_out : NULL);
 
     register_ioport(0x20, 0xf2, 0x01, dart_pr_out, dart_pr_in);
     register_ioport(0x22, 0xf2, 0x01, dart_keyb_out, dart_keyb_in);

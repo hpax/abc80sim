@@ -54,8 +54,10 @@ static SDL_mutex *screen_mutex;	/* Lock screen operation */
 static SDL_mutex *magic_mutex;	/* "Magic" operation started */
 static SDL_cond  *magic_done;	/* "Magic" operation finished */
 
-#define VRAM_SIZE 2048
-#define VRAM_MASK (VRAM_SIZE-1)
+#define VRAM_SIZE  2048
+#define VRAM_MASK  (VRAM_SIZE-1)
+#define FGRAM_SIZE 16384
+#define FGRAM_MASK (FGRAM_SIZE-1)
 
 union crtc {
     uint8_t regs[18];
@@ -90,11 +92,14 @@ struct video_state {
     uint16_t curaddr;           /* Memory position of the CRTC cursor */
     bool mode40;
     bool blink_on;
+    uint8_t fgctl;		/* FG memory color control */
+    uint8_t fgstart;		/* Start fg memory scanning */
     uint8_t vram[VRAM_SIZE];
+    uint8_t fgram[FGRAM_SIZE];
 };
 static struct video_state cpu, xfr, vdu;
 uint8_t *const video_ram = cpu.vram;
-uint8_t *const fgram;
+uint8_t *const fgram = cpu.fgram;
 
 struct xy {
     uint8_t x, y;
@@ -182,14 +187,16 @@ static void
 put_screen(struct surface *s, unsigned int tx, unsigned int ty, bool blink)
 {
     const unsigned char *fontp;
-    unsigned int voffs;
+    unsigned int voffs, fgoffs, fgshift;
     unsigned char v, vv;
-    uint32_t *pixelp, *pixelpp, fgp, bgp;
+    uint32_t *pixelp, *pixelpp, fgp, bgp, fg_color[4];
     unsigned int x, xx, y, yy, gx;
     uint32_t curmask;
     unsigned char gmode, fg, bg;
     unsigned char cc, invmask;
+    uint16_t fgdata;
     unsigned int xdup = FONT_XDUP << vdu.mode40;
+    int i;
 
     if (tx >= (unsigned int)(TS_WIDTH >> vdu.mode40) ||
         ty >= (unsigned int)TS_HEIGHT)
@@ -242,8 +249,16 @@ put_screen(struct surface *s, unsigned int tx, unsigned int ty, bool blink)
     bg ^= invmask;
     fg ^= invmask;
 
-    bgp = s->colors[bg];
-    fgp = s->colors[fg];
+
+    if (vdu.fgctl & 0x80) {
+	bgp = fgp = 0;
+    } else {
+	bgp = s->colors[bg];
+	fgp = s->colors[fg];
+    }
+
+    for (i = 0; i < 4; i++)
+	fg_color[i] = s->colors[fgcolor[vdu.fgctl & 0x7f][i]];
 
     pixelp = ((uint32_t *) s->surf->pixels) +
         ty * PX_WIDTH * FONT_YSIZE * FONT_YDUP +
@@ -259,17 +274,35 @@ put_screen(struct surface *s, unsigned int tx, unsigned int ty, bool blink)
         }
     }
 
+    fgoffs = (((vdu.fgstart + ty*FONT_YSIZE) << 6) +
+	      ((tx*FONT_XSIZE) >> 2)) & FGRAM_MASK;
+
+    /* Sigh. Bigendian bit order. Why? */
+    fgshift = (7-((tx*FONT_XSIZE) & 3)) << 1;
+
     for (y = 0; y < FONT_YSIZE; y++) {
+	fgdata = (vdu.fgram[fgoffs] << 8) + vdu.fgram[fgoffs+1];
+	fgoffs = (fgoffs + 64) & FGRAM_MASK;
+
         vv = *fontp++;
         if (curmask & 1)
             vv = 0x3f;
         curmask >>= 1;
         for (yy = 0; yy < FONT_YDUP; yy++) {
+	    uint16_t fgdtmp = fgdata;
+	    unsigned int fgshtmp = fgshift;
             v = vv;
             pixelpp = pixelp;
             for (x = 0; x < FONT_XSIZE; x++) {
+		uint32_t f, b, hrp;
+
+		hrp = fg_color[(fgdtmp >> fgshtmp) & 3];
+		if ((x | vdu.mode40) & 1)
+		    fgshtmp -= 2;
+		f = hrp | fgp;
+		b = hrp | bgp;
                 for (xx = 0; xx < xdup; xx++) {
-                    *pixelpp++ = (v & 0x80) ? fgp : bgp;
+                    *pixelpp++ = (v & 0x80) ? f : b;
                 }
                 v <<= 1;
             }
@@ -797,4 +830,15 @@ uint8_t crtc_in(uint16_t port)
         return 0xff;
 
     return cpu.crtc.regs[crtc_addr];
+}
+
+void fg_out(uint16_t port, uint8_t val)
+{
+    if (port & 1) {
+	/* Port 7: color control */
+	cpu.fgctl = val;
+    } else {
+	/* Port 6: start line */
+	cpu.fgstart = val;
+    }
 }

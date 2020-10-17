@@ -20,11 +20,15 @@ Uint32 post_periodic(Uint32 interval, void *param);
 extern void crtc_out(uint16_t, uint8_t);
 extern uint8_t crtc_in(uint16_t);
 
+extern void fg_out(uint16_t, uint8_t);
+
 extern void do_magic(int);
 extern void enable_real_keyboard(void);
 
 /* Pointer to video RAM (text and graphics, respectively) */
 extern uint8_t *const video_ram;
 extern uint8_t *const fgram;
+
+extern const uint8_t fgcolor[128][4];
 
 #endif /* _SCREEN_H */
