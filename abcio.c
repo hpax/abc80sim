@@ -404,8 +404,10 @@ static void abc800_register_ioports(void)
     register_ioport(0x22, 0xf2, 0x01, dart_keyb_out, dart_keyb_in);
 
     register_ioport(0x36, 0xfe, 0x01, abc806_rtc_out, abc806_rtc_in);
-    register_outport(0x38, 0xfe, 0x01, crtc_out);
-    register_inport(0x30, 0xfe, 0x01, crtc_in);
+    if (opts.model != MODEL_ABC800C) {
+	register_outport(0x38, 0xfe, 0x01, crtc_out);
+	register_inport(0x30, 0xfe, 0x01, crtc_in);
+    }
 
     register_ioport(0x40, 0xf2, 0x01, abc800_v24_out, abc800_v24_in);
     register_ioport(0x42, 0xf2, 0x01, abc800_sio_cas_out, abc800_sio_cas_in);

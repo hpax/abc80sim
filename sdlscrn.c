@@ -799,11 +799,11 @@ void crtc_out(uint16_t port, uint8_t data)
     uint8_t old_data;
 
     if (!(port & 1)) {
-        crtc_addr = data;
+        crtc_addr = data & 31;	/* 5 bits per datasheet */
         return;
     }
 
-    if (crtc_addr >= sizeof cpu.crtc.regs)
+    if (crtc_addr >= 16)	/* Only R0-R15 are writable */
         return;
 
     SDL_mutexP(screen_mutex);
@@ -824,9 +824,9 @@ void crtc_out(uint16_t port, uint8_t data)
 uint8_t crtc_in(uint16_t port)
 {
     if (!(port & 1))
-        return crtc_addr;
+	return 0xff;		/* Address register is wo per datasheet */
 
-    if (crtc_addr >= sizeof cpu.crtc.regs)
+    if (crtc_addr < 14 || crtc_addr >= 18) /* Only R14-R17 are readable */
         return 0xff;
 
     return cpu.crtc.regs[crtc_addr];
