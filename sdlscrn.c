@@ -274,11 +274,13 @@ put_screen(struct surface *s, unsigned int tx, unsigned int ty, bool blink)
         }
     }
 
+    gx = (tx*FONT_XSIZE) >> !vdu.mode40;
+
     fgoffs = (((vdu.fgstart + ty*FONT_YSIZE) << 6) +
-	      ((tx*FONT_XSIZE) >> 2)) & FGRAM_MASK;
+	      (gx >> 2)) & FGRAM_MASK;
 
     /* Sigh. Bigendian bit order. Why? */
-    fgshift = (7-((tx*FONT_XSIZE) & 3)) << 1;
+    fgshift = (7-(gx & 3)) << 1;
 
     for (y = 0; y < FONT_YSIZE; y++) {
 	fgdata = (vdu.fgram[fgoffs] << 8) + vdu.fgram[fgoffs+1];
@@ -294,16 +296,14 @@ put_screen(struct surface *s, unsigned int tx, unsigned int ty, bool blink)
             v = vv;
             pixelpp = pixelp;
             for (x = 0; x < FONT_XSIZE; x++) {
-		uint32_t f, b, hrp;
+		uint32_t hrp, px;
 
 		hrp = fg_color[(fgdtmp >> fgshtmp) & 3];
 		if ((x | vdu.mode40) & 1)
 		    fgshtmp -= 2;
-		f = hrp | fgp;
-		b = hrp | bgp;
-                for (xx = 0; xx < xdup; xx++) {
-                    *pixelpp++ = (v & 0x80) ? f : b;
-                }
+		px = hrp | ((v & 0x80) ? fgp : bgp);
+                for (xx = 0; xx < xdup; xx++)
+                    *pixelpp++ = px;
                 v <<= 1;
             }
             pixelp += PX_WIDTH;
