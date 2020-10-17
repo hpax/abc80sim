@@ -344,6 +344,10 @@ int main(int argc, char **argv)
                 opts.model = MODEL_ABC80;
             } else if (!strcmp(optstr, "abc802")) {
                 opts.model = MODEL_ABC802;
+            } else if (!strcmp(optstr, "abc800c")) {
+                opts.model = MODEL_ABC800C;
+            } else if (!strcmp(optstr, "abc800m")) {
+                opts.model = MODEL_ABC800M;
             } else if (!strcmp(optstr, "40")) {
                 opts.startup_width40 = enable;
             } else if (!strcmp(optstr, "80")) {
@@ -529,13 +533,25 @@ int main(int argc, char **argv)
     /*
      * Override startup_width40 if not applicable on this machine.
      * ABC80 without TKN80: always 40
-     * ABC800C (future):    always 40
-     * ABC800M (future):    always 80(?)
-     * ABC806 (future):     always 80, uses attribute codes for 40 char?
+     * ABC800C: always 40
+     * ABC800M: always 80(?)
+     * ABC806:  always 80(?), uses attribute codes for 40 char
      */
-    if (is_abc80() && opts.tkn80 == TKN80_NONE)
+    switch (opts.model) {
+    case MODEL_ABC80:
+	if (opts.tkn80 == TKN80_NONE)
+	    opts.startup_width40 = true;
+	break;
+    case MODEL_ABC800C:
 	opts.startup_width40 = true;
-
+	break;
+    case MODEL_ABC800M:
+    case MODEL_ABC806:
+	opts.startup_width40 = false;
+	break;
+    case MODEL_ABC802:
+	break;
+    }
     screen_init(opts.startup_width40, opts.color);
 
     mem_init(opts.memflags, memfile);

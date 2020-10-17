@@ -713,6 +713,47 @@ static uint8_t *init_sram(void)
     return sram;
 }
 
+/* Common memory initialization for all ABC800 models */
+static void mem_init_abc800(unsigned int flags, const uint8_t *master_rom,
+			    unsigned int vram)
+{
+    if (!(flags & MEMFL_NOBASIC))
+	memcpy(rom, master_rom, K(24));
+    if (!(flags & MEMFL_NODOS))
+	memcpy(rom+K(24), master_rom+K(24), K(4));
+    if (!(flags & MEMFL_NOPR))
+	memcpy(rom+K(28), master_rom+K(28), K(4));
+
+    sysload_add_memspace("vram", NULL, NULL, video_ram + K(2) - vram,
+			 vram - 1, vram);
+
+    /*
+     * Map 0: normal execution
+     * Map 1: execution in option ROM - all ROM except for model specific
+     */
+    map_memory(0x03, 0, K(32), rom, write_rom);
+    map_memory(0x01, K(32) - vram, vram, video_ram + K(2) - vram, write_screen);
+
+    current_map[0] = memmaps[0];
+    current_map[1] = memmaps[1];
+}
+
+/* Common memory initialization for ABC800C/M */
+static void mem_init_abc800cm(unsigned int flags, const uint8_t *master_rom,
+			      unsigned int vram)
+{
+    mem_init_abc800(flags, master_rom, vram);
+
+    /*
+     * Map 1: execution in option ROM - HR RAM open, but
+     * 16-32K is ROM
+     */
+    if (opts.hr) {
+	sysload_add_memspace("fgram", NULL, NULL, fgram, -1, K(16));
+	map_memory(0x02, K(0), K(16), fgram, write_screen);
+    }
+}
+
 /*
  * Set up memory maps.  Note: dump_memory() currently relies on
  * map 7 being all RAM, regardless of if there is an actual
@@ -726,7 +767,8 @@ void mem_init(unsigned int flags, const char *memfile)
 
     /* Register common sysload memory spaces */
     sysload_add_memspace("ram", NULL, NULL, ram, -1, sizeof ram);
-    sysload_add_memspace("cpu", load_cpu, dump_cpu, NULL, -1, Z80_ADDRESS_LIMIT);
+    sysload_add_memspace("cpu", load_cpu, dump_cpu, NULL, -1,
+			 Z80_ADDRESS_LIMIT);
     sysload_add_memspace("rom", NULL, NULL, rom, -1, sizeof rom);
 
     /* Unused ROM contains 0xff */
@@ -871,29 +913,32 @@ void mem_init(unsigned int flags, const char *memfile)
         break;
     }
 
+    case MODEL_ABC800C:
+	mem_init_abc800cm(flags, abc800crom, K(1));
+        break;
+
+    case MODEL_ABC800M:
+	mem_init_abc800cm(flags, abc800mrom, K(2));
+	break;
+
     case MODEL_ABC802:
-	sysload_add_memspace("vram", NULL, NULL, video_ram, -1, K(2));
+	mem_init_abc800(flags, abc802rom, K(2));
 
-        /* Map 0: normal execution */
-
-        if (!(flags & MEMFL_NOBASIC))
-	    memcpy(rom, abc802rom, K(24));
-	if (!(flags & MEMFL_NODOS))
-	    memcpy(rom+K(24), &abc802rom[K(24)], K(4));
-	if (!(flags & MEMFL_NOPR))
-	    memcpy(rom+K(28), &abc802rom[K(28)], K(4));
-
-	map_memory(0x01, 0, K(30), abc802rom, write_rom);
-        map_memory(0x01, K(30), K(2), video_ram, write_screen);
+	sysload_add_memspace("mem", NULL, NULL, ram, -1, K(32));
 
         /* Map 1: execution in option ROM - RAM other than the ROM itself */
-        map_memory(0x02, K(30), K(2), &abc802rom[K(30)], write_rom);
+        map_memory(0x02, K(0), K(30), ram, write_ram);
 
-        /* Map 2: MEM area open in its entirety */
+        /* Map 2: MEM area open in its entirety, so all RAM */
+	/* (nothing to do) */
 
-        abc802_set_mem(false);  /* On start, MEM area closed */
+	/* On start, MEM area closed */
+        abc802_set_mem(false);
+
+	load_memfile(memfile);
         break;
-    }
 
-    load_memfile(memfile);
+    case MODEL_ABC806:
+	break;			/* Not implemented yet */
+    }
 }

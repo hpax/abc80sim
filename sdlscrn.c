@@ -94,6 +94,7 @@ struct video_state {
 };
 static struct video_state cpu, xfr, vdu;
 uint8_t *const video_ram = cpu.vram;
+uint8_t *const fgram;
 
 struct xy {
     uint8_t x, y;
@@ -129,13 +130,14 @@ static inline unsigned int screenoffs(uint8_t y, uint8_t x, bool m40)
 
     switch (opts.model) {
     case MODEL_ABC80:
+    case MODEL_ABC800C:
         if (m40)
             offs = 1024 + (((y >> 3) * 5) << 3) + ((y & 7) << 7) + x;
         else
             offs = (((y >> 3) * 5) << 4) + ((y & 7) << 8) + x;
         break;
 
-    case MODEL_ABC802:
+    default:			/* ABC800M, ABC802, ABC806 */
         offs = (y * 80) + (x << m40);
         break;
     }
@@ -197,18 +199,45 @@ put_screen(struct surface *s, unsigned int tx, unsigned int ty, bool blink)
     fg = 7;
 
     gmode = 0;
-    for (gx = 0; gx < tx; gx++) {
-        cc = screendata(ty, gx);
-        if ((cc & 0x68) == 0) {
-            gmode = (cc & 0x10) << 3;
-            fg = (cc & 0x07);
-        }
+    switch (opts.model) {
+    case MODEL_ABC80:
+    case MODEL_ABC800C:
+    case MODEL_ABC802:
+	for (gx = 0; gx < tx; gx++) {
+	    cc = screendata(ty, gx);
+	    if ((cc & 0x68) == 0) {
+		gmode = (cc & 0x10) << 3;
+		fg = (cc & 0x07);
+	    }
+	}
+	break;
+    case MODEL_ABC800M:
+	gmode = 0;
+	break;
+    case MODEL_ABC806:
+	/* Get values from attribute memory */
+	gmode = 0;
+	break;
     }
 
     voffs = screenoffs(ty, tx, vdu.mode40) + vdu.startaddr;
     cc = vdu.vram[voffs & VRAM_MASK];
     fontp = abc_font[(cc & 0x7f) + gmode];
-    invmask = (blink || opts.model != MODEL_ABC80) ? 0x80 : 0;
+    invmask = 0;
+    switch (opts.model) {
+    case MODEL_ABC80:
+	invmask = (uint8_t)blink << 7;
+	break;
+    case MODEL_ABC800M:
+    case MODEL_ABC806:
+	invmask = 0;
+	break;
+    case MODEL_ABC800C:
+    case MODEL_ABC802:
+	invmask = 0x80;
+	break;
+    }
+
     invmask = (cc & invmask) ? 7 : 0;
     bg ^= invmask;
     fg ^= invmask;

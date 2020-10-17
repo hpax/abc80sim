@@ -265,7 +265,7 @@ static uint8_t abc800_v24_in(uint16_t port)
 }
 
 static bool vsync;
-void abc802_vsync(void)
+void abc800_vsync(void)
 {
     vsync_screen();
     vsync = true;
@@ -305,8 +305,10 @@ static void dart_keyb_out(uint16_t port, uint8_t value)
         }
         break;
     case 5:
-        setmode40(!!(value & 2));
-        abc802_set_mem(!!(value & 0x80));
+	if (opts.model == MODEL_ABC802) {
+	    setmode40(!!(value & 2));
+	    abc802_set_mem(!!(value & 0x80));
+	}
         break;
     default:
         break;
@@ -394,7 +396,7 @@ static uint8_t dart_keyb_in(uint16_t port)
     return v;
 }
 
-static void abc802_register_ioports(void)
+static void abc800_register_ioports(void)
 {
     register_ioport(0x00,  0xf0, 0xffff, abcbus_out, abcbus_in);
     register_outport(0x06, 0xfe, 0xffff, NULL); /* Used on 800+HR or 806 */
@@ -546,21 +548,17 @@ void io_init(void)
 {
     register_ioport(0, 0, 0xffff, NULL, NULL);
 
-    switch (opts.model) {
-    case MODEL_ABC80:
+    if (is_abc80()) {
 	abc80_register_ioports();
         keyb_data = 0;
         abc80_cas_init();
         keyb_irq = &keyb_irq_80;
-	break;
-
-    case MODEL_ABC802:
-	abc802_register_ioports();
+    } else {
+	abc800_register_ioports();
         keyb_data = 0xff;
         abc800_cas_init();
         abc800_ctc_init();
         keyb_irq = &keyb_irq_800;
-	break;
     }
 
     z80_register_irq(keyb_irq);

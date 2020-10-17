@@ -69,7 +69,7 @@ extern void keyboard_up(void);
 extern bool faketype;
 extern void cursor_enable_hook(void);
 
-extern void abc802_vsync(void);
+extern void abc800_vsync(void);
 
 extern void abc80_piob_out(uint16_t port, uint8_t v);
 extern uint8_t abc80_piob_in(uint16_t port);

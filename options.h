@@ -6,7 +6,10 @@
 
 enum model {
     MODEL_ABC80,
-    MODEL_ABC802
+    MODEL_ABC800C,
+    MODEL_ABC800M,		/* Partially implemented */
+    MODEL_ABC802,
+    MODEL_ABC806		/* Not yet implemented */
 };
 
 enum tkn80 {
@@ -50,8 +53,9 @@ struct opts {
     bool startup_width40;	/* Start in 40-char mode (if applicable) */
     enum abc80_basic basic;	/* BASIC version (ABC80 only) */
     bool color;			/* Color screen */
+    bool hr;			/* High resolution graphics (ABC800C/M) */
     bool magic;			/* Allow magic I/O port */
-    bool sram;			/* SRAM card [more options later] */
+    bool sram;			/* ABC80 SRAM card */
     const char *sram_config;	/* SRAM card per-socket configuration */
     enum autobool faketype;	/* ABC80 keyboard fake for high speeds */
     enum memflags memflags;	/* Memory configuration */
@@ -66,13 +70,11 @@ static inline bool is_abc80(void)
 {
     return opts.model == MODEL_ABC80;
 }
-#define ANY_ABC80 MODEL_ABC80	/* For use in case statements only */
 
 /* Any ABC800 model */
 static inline bool is_abc800(void)
 {
-    return opts.model == MODEL_ABC802;
+  return opts.model != MODEL_ABC80;
 }
-#define ANY_ABC800 MODEL_ABC802	/* For use in case statements only */
 
 #endif

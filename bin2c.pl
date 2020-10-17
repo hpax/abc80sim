@@ -41,7 +41,7 @@ while (($n = read(IN, $data, 65536, $total_len)) > 0) {
 close(IN);
 
 print "#include \"../rom.h\"\n\n";
-printf "uint8_t %s[%d] = {\n", $table_name, $total_len;
+printf "const uint8_t %s[%d] = {\n", $table_name, $total_len;
 
 $pos = 0;
 $linelen = 8;
