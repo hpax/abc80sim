@@ -113,6 +113,7 @@ static no_return help(void)
 	   "Options for ABC800C/M only:\n"
 	   "  --hr                     enable high resolution graphics (default)\n"
 	   "  --no-hr                  disable high resolution graphics\n"
+	   "\n"
            "Options for ABC802 only:\n"
            "  -Fm, --memfile file      load a file into the ABC802 MEM: device\n"
            "\n"
