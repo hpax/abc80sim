@@ -289,12 +289,13 @@ void abc80_mem_mode80(bool mode80)
 }
 
 /*
- * Open or close the MEM: area on ABC802
+ * Open or close the MEM: area on ABC802, FGRAM on ABC800C/M
  */
-void abc802_set_mem(bool opened)
+void abc800_set_mem(bool opened)
 {
-    current_map[0] = memmaps[opened ? 2 : 0];
-    current_map[1] = memmaps[opened ? 2 : 1];
+    size_t offset = (size_t)opened << 1;
+    current_map[0] = memmaps[offset + 0];
+    current_map[1] = memmaps[offset + 1];
 }
 
 #define ALL_MAPS ((UINT64_C(1) << MEM_MAPS)-1)
@@ -730,12 +731,13 @@ static void mem_init_abc800(unsigned int flags, const uint8_t *master_rom,
     /*
      * Map 0: normal execution
      * Map 1: execution in option ROM - all ROM except for model specific
+     * Map 2: extended RAM (FGRAM, MEM...) mapped in
+     * Map 3: extended RAM (FGRAM, MEM...) mapped in, running in option ROM
      */
-    map_memory(0x03, 0, K(32), rom, write_rom);
-    map_memory(0x01, K(32) - vram, vram, video_ram + K(2) - vram, write_screen);
+    map_memory(0x0f, 0, K(32), rom, write_rom);
+    map_memory(0x05, K(32) - vram, vram, video_ram + K(2) - vram, write_screen);
 
-    current_map[0] = memmaps[0];
-    current_map[1] = memmaps[1];
+    abc800_set_mem(false);	/* Normal memory mode */
 }
 
 /* Common memory initialization for ABC800C/M */
@@ -750,7 +752,7 @@ static void mem_init_abc800cm(unsigned int flags, const uint8_t *master_rom,
      */
     if (opts.hr) {
 	sysload_add_memspace("fgram", NULL, NULL, fgram, -1, K(16));
-	map_memory(0x02, K(0), K(16), fgram, write_screen);
+	map_memory(0x0e, K(0), K(16), fgram, write_screen);
     }
 }
 
@@ -929,12 +931,10 @@ void mem_init(unsigned int flags, const char *memfile)
         /* Map 1: execution in option ROM - RAM other than the ROM itself */
         map_memory(0x02, K(0), K(30), ram, write_ram);
 
-        /* Map 2: MEM area open in its entirety, so all RAM */
-	/* (nothing to do) */
+        /* Map 2-3: MEM area open in its entirety, so all RAM */
+	map_memory(0x0c, K(0), K(64), ram, write_ram);
 
-	/* On start, MEM area closed */
-        abc802_set_mem(false);
-
+	/* If we have a MEM: file from the command line, load it */
 	load_memfile(memfile);
         break;
 

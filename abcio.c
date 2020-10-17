@@ -305,10 +305,9 @@ static void dart_keyb_out(uint16_t port, uint8_t value)
         }
         break;
     case 5:
-	if (opts.model == MODEL_ABC802) {
+	if (opts.model == MODEL_ABC802)
 	    setmode40(!!(value & 2));
-	    abc802_set_mem(!!(value & 0x80));
-	}
+	abc800_set_mem(!!(value & 0x80));
         break;
     default:
         break;

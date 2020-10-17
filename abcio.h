@@ -44,7 +44,7 @@ extern uint8_t abc80_sram_in(uint16_t addr);
 extern void abc80_sram_out(uint16_t addr, uint8_t val);
 extern void abc80_sram_control_out(uint16_t addr, uint8_t val);
 
-extern void abc802_set_mem(bool);
+extern void abc800_set_mem(bool);
 
 extern void disk_register_devices(void);
 extern bool valid_drive_name(const char *drive);
