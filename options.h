@@ -41,6 +41,7 @@ enum memflags {
 enum abc80_basic {
     BASIC_NONE,			/* No BASIC */
     BASIC_NEW,			/* Checksum 9913 */
+    BASIC_10042,		/* Checksum 10042, early "new" */
     BASIC_OLD,			/* Checksum 11723 */
     BASIC_II			/* BASIC II (modified ABC800 BASIC) */
 };

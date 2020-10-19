@@ -98,6 +98,7 @@ static no_return help(void)
            "  -k,  --kb #              set the memory size K (1-32 or 64) [64]\n"
            "       --old-basic         run BASIC 1.0 (checksum 11273)\n"
            "       --11273             same as --old-basic\n"
+	   "       --10042             run BASIC 1.1 (checksum 10042)\n"
            "       --new-basic         run BASIC 1.2 (checksum 9913, default)\n"
            "       --9913              same as --new-basic\n"
 	   "       --basicii           run BASIC II (modified ABC800 BASIC)\n"
@@ -368,6 +369,9 @@ int main(int argc, char **argv)
 		opts.basic = enable ? BASIC_OLD : BASIC_NEW;
             } else if (!strcmp(optstr, "new-basic") || !strcmp(optstr, "9913")) {
                 opts.basic = enable ? BASIC_NEW : BASIC_OLD;
+	    } else if (!strcmp(optstr, "10042")) {
+		if (enable)
+		    opts.basic = BASIC_10042;
 	    } else if (!strcmp(optstr, "basicii") || !strcmp(optstr, "basic2")) {
 		opts.basic = enable ? BASIC_II : BASIC_NEW;
             } else if (!strcmp(optstr, "device")) {

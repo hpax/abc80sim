@@ -831,6 +831,10 @@ void mem_init(unsigned int flags, const char *memfile)
 	switch (opts.basic) {
 	case BASIC_NONE:
 	    break;
+	case BASIC_10042:
+	    memcpy(rom, abc80new, K(16));
+	    rom[0x3843] = 0x81;	/* Only byte that differs!! */
+	    break;
 	case BASIC_NEW:
 	default:		/* ??? */
 	    memcpy(rom, abc80new,  K(16));
