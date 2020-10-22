@@ -30,7 +30,7 @@ abc*/
 /win
 /autoconf/aclocal.m4
 /autoconf/m4.old/
-/autoconf/aux/
+/autoconf/helpers/
 /abc80
 /config/config.h
 /config/config.h.in

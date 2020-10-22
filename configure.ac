@@ -160,31 +160,40 @@ AC_SEARCH_LIBS([png_write_png], [png])
 AC_SEARCH_LIBS([clock_gettime], [rt])
 
 dnl
+dnl Some rather useful gcc extensions...
+dnl
+PA_HAVE_FUNC(__builtin_constant_p, (0))
+PA_HAVE_FUNC(__builtin_choose_expr, (0,1,2))
+
+dnl
 dnl Check for supported gcc attributes; some compilers (e.g. Sun CC)
 dnl support these, but don't define __GNUC__ as they don't support
 dnl some other features of gcc.
 dnl
-PA_ADD_CPPFLAGS([-Werror=attributes])
+PA_ADD_CFLAGS([-Werror=attributes])
 PA_FUNC_ATTRIBUTE(noreturn)
-PA_FUNC_ATTRIBUTE(returns_nonnull)
+PA_FUNC_ATTRIBUTE(returns_nonnull,,,,,never_null)
 PA_FUNC_ATTRIBUTE(malloc)
-PA_FUNC_ATTRIBUTE(alloc_size, (1))
-PA_FUNC_ATTRIBUTE(sentinel,,, [const char *, ...], ["a","b",NULL])
-PA_FUNC_ATTRIBUTE(format, [(printf,1,2)], int, [const char *, ...], ["%d",1])
+PA_FUNC_ATTRIBUTE(alloc_size,[1])
+PA_FUNC_ATTRIBUTE(alloc_size,[1,2])
+PA_FUNC_ATTRIBUTE(sentinel,,, [const char *, ...], ["a","b",NULL],end_with_null)
+PA_FUNC_ATTRIBUTE(format, [printf,1,2], int, [const char *, ...], ["%d",1])
 PA_FUNC_ATTRIBUTE(const)
 PA_FUNC_ATTRIBUTE(pure)
-PA_FUNC_ATTRIBUTE(cold)
+PA_FUNC_ATTRIBUTE(cold,,,,,unlikely_func)
+PA_FUNC_ATTRIBUTE(unused)
 PA_FUNC_ATTRIBUTE_ERROR
 
 dnl
-dnl support function sections (if available)
+dnl Support function sections (if available)
+dnl Would be nice to know how to do this on other compilers...
 dnl
-PA_ARG_ENABLED([sections],
- [compile with function/data section support],
+PA_ARG_DISABLED([gc],
+ [don't compile with dead code elimination],
+ [],
  [PA_ADD_CFLAGS([-ffunction-sections])
   PA_ADD_CFLAGS([-fdata-sections])
-  PA_ADD_CFLAGS([-Wl,--gc-sections])],
- [])
+  PA_ADD_CFLAGS([-Wl,--gc-sections])])
 
 dnl
 dnl support LTO
@@ -228,20 +237,34 @@ dnl This is needed because we intentionally expect strncpy() to fill
 dnl in a zero-padded (not zero-terminated) buffer in several backends
 PA_ADD_CPPFLAGS([-Wstringop-truncation],[-Wno-stringop-truncation])
 dnl PA_ADD_CPPFLAGS([-Wwrite-strings])
+
+dnl Various warnings...
+PA_ADD_CPPFLAGS([-Wimplicit])
+PA_ADD_CPPFLAGS([-Wmissing-braces])
+PA_ADD_CPPFLAGS([-Wreturn-type])
+PA_ADD_CPPFLAGS([-Wtrigraphs])
+PA_ADD_CPPFLAGS([-Wpointer-arith])
+PA_ADD_CPPFLAGS([-Wstrict-prototypes])
+PA_ADD_CPPFLAGS([-Wmissing-prototypes])
+PA_ADD_CPPFLAGS([-Wmissing-declarations])
+PA_ADD_CPPFLAGS([-Wcomment])
+PA_ADD_CPPFLAGS([-Wvla])]
 PA_ARG_ENABLED([werror],
  [compile with -Werror to error out on any warning],
  [PA_ADD_CPPFLAGS([-Werror])],
- [PA_ADD_CPPFLAGS([-Werror=implicit])
-  PA_ADD_CPPFLAGS([-Werror=missing-braces])
-  PA_ADD_CPPFLAGS([-Werror=return-type])
-  PA_ADD_CPPFLAGS([-Werror=trigraphs])
-  PA_ADD_CPPFLAGS([-Werror=pointer-arith])
-  PA_ADD_CPPFLAGS([-Werror=strict-prototypes])
-  PA_ADD_CPPFLAGS([-Werror=missing-prototypes])
-  PA_ADD_CPPFLAGS([-Werror=missing-declarations])
-  PA_ADD_CPPFLAGS([-Werror=comment])
-  PA_ADD_CPPFLAGS([-Werror=vla])]
 )
+
+dnl Warnings that are probabilistic based on the compiler version, and
+dnl only should be used specifically when looking for opportunities to
+dnl address or optimize these cases.
+PA_ARG_ENABLED([suggestions],
+ [compile with compiler suggestion warnings enabled],
+ [PA_ADD_CFLAGS([-Wsuggest-attribute=pure])
+  PA_ADD_CFLAGS([-Wsuggest-attribute=const])
+  PA_ADD_CFLAGS([-Wsuggest-attribute=noreturn])
+  PA_ADD_CFLAGS([-Wsuggest-attribute=format])
+  PA_ADD_CFLAGS([-Wsuggest-attribute=cold])
+  PA_ADD_CFLAGS([-Wsuggest-attribute=malloc])])
 
 dnl
 dnl On some versions of gcc, -Werror=missing-prototypes causes problems
@@ -249,6 +272,7 @@ dnl with C99-style external inlines.  Test this *after* adding the -Werror
 dnl options.
 dnl
 PA_CHECK_BAD_STDC_INLINE
+PA_C_TYPEOF
 
 dnl
 dnl support ccache

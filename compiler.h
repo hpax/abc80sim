@@ -211,4 +211,41 @@ typedef unsigned __int128 uint128_t;
 # define max(x,y) ((x)>(y)?(x):(y))
 #endif
 
+/* Create a NULL pointer of the same type as the address of
+   the argument, without actually evaluating said argument. */
+#define nullas(p) (0 ? &(p) : NULL)
+
+/* Convert an offsetted NULL pointer dereference to a size_t offset.
+   Technically non-portable as taking the offset from a NULL pointer
+   is undefined behavior, but... */
+#define null_offset(p) ((size_t)((const char *)&(p) - (const char *)NULL))
+
+/* Provide a substitute for offsetof() if we don't have one.  This
+   variant works on most (but not *all*) systems... */
+#ifndef offsetof
+# define offsetof(t,m) null_offset(((t *)NULL)->m)
+#endif
+
+/* If typeof is defined as a macro, assume we have typeof even if
+   HAVE_TYPEOF is not declared (e.g. due to not using autoconf.) */
+#ifdef typeof
+# define HAVE_TYPEOF 1
+#endif
+
+/* This is like offsetof(), but takes an object rather than a type. */
+#ifndef offsetin
+# ifdef HAVE_TYPEOF
+#  define offsetin(p,m) offsetof(typeof(p),m)
+# else
+#  define offsetin(p,m)	null_offset(nullas(p)->m)
+# endif
+#endif
+
+/* The container_of construct: if p is a pointer to member m of
+   container class c, then return a pointer to the container of which
+   *p is a member. */
+#ifndef container_of
+# define container_of(p, c, m) ((c *)((char *)(p) - offsetof(c,m)))
+#endif
+
 #endif /* COMPILER_H */
