@@ -15,7 +15,7 @@ tar cvvf "$pv".tar "$pv"
 xz -9ek "$pv".tar
 gzip -9 "$pv".tar
 
-for target in x86_64-w64-mingw32 i686-w64-mingw32; do
+for target in x86_64-w64-mingw32; do
     mkdir "$target"
     cd "$target"
     dlldir="/usr/$target/sys-root/mingw/bin"
@@ -39,4 +39,4 @@ for target in x86_64-w64-mingw32 i686-w64-mingw32; do
 done
 
 ln x86_64-w64-mingw32/"$pv".zip "$pv"-win64.zip
-ln i686-w64-mingw32/"$pv".zip   "$pv"-win32.zip
+#ln i686-w64-mingw32/"$pv".zip   "$pv"-win32.zip
