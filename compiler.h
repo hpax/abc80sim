@@ -61,10 +61,12 @@
 #include <direct.h>
 #endif
 
+#ifndef NOT_USING_SDL
 #include <SDL.h>                /* This includes endian definitions */
 
 #define WORDS_LITTLEENDIAN	(SDL_BYTEORDER == SDL_LIL_ENDIAN)
 #define WORDS_BIGENDIAN		(SDL_BYTEORDER == SDL_BIG_ENDIAN)
+#endif /* NOT_USING_SDL */
 
 #ifndef __cplusplus             /* C++ has false, true, bool as keywords */
 #ifdef HAVE_STDBOOL_H

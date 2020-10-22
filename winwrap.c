@@ -14,25 +14,27 @@
  * depending on the pathname of the original application.
  */
 
+#define NOT_USING_SDL
 #include "compiler.h"
 #include <tchar.h>
-#undef main			/* Undo this particular SDL hack */
+
+static const wchar_t *program;
 
 static wchar_t *format_error(wchar_t *msg, DWORD dw)
 {
 	wchar_t *buf, *errtxt;
 	DWORD len;
 	size_t buflen;
+	DWORD_PTR args[] = { (DWORD_PTR)program };
 
 	if (!dw)
 		return msg;
 
 	len = FormatMessageW(FORMAT_MESSAGE_ALLOCATE_BUFFER |
 			     FORMAT_MESSAGE_FROM_SYSTEM |
-			     FORMAT_MESSAGE_IGNORE_INSERTS,
-			     NULL, dw,
-			     MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
-			     (wchar_t *)&errtxt, 0, NULL);
+			     FORMAT_MESSAGE_ARGUMENT_ARRAY,
+			     NULL, dw, 0,
+			     (wchar_t *)&errtxt, 0, (va_list *)args);
 
 	if (!len)
 		return msg;
@@ -41,8 +43,8 @@ static wchar_t *format_error(wchar_t *msg, DWORD dw)
 	buf = calloc(buflen, sizeof *buf);
 
 	if (buf) {
-		swprintf(buf, buflen, L"%s: %s", msg, errtxt);
-		msg = buf;
+	    swprintf(buf, buflen, L"%s: %s", msg, errtxt);
+	    msg = buf;
 	}
 
 	LocalFree(errtxt);
@@ -52,14 +54,17 @@ static wchar_t *format_error(wchar_t *msg, DWORD dw)
 static no_return ErrorExit(wchar_t *msg)
 {
 	DWORD dw = GetLastError();
+	wchar_t errtitle[24];
 
-	MessageBoxW(NULL, format_error(msg, dw), L"Error", MB_OK);
+	swprintf(errtitle, sizeof errtitle, L"Error %08X", dw);
+	
+	MessageBoxW(NULL, format_error(msg, dw), errtitle, MB_OK);
 	ExitProcess(dw ? dw : ERROR_PATH_NOT_FOUND);
 	abort();
 }
 
 /* Return the current executable filename in a malloc()'d buffer */
-wchar_t *getmyname(size_t *lenp)
+static wchar_t *getmyname(size_t *lenp)
 {
 	wchar_t *buf, *bufx;
 	size_t alen, len;
@@ -155,12 +160,12 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
 
 	memset(&inheritable, 0, sizeof inheritable);
 	inheritable.nLength = sizeof inheritable;
-	inheritable.bInheritHandle = TRUE;
+	inheritable.bInheritHandle = FALSE;
 
 	/* Open relevant handle */
 
 	/* Create null device read handle for input */
-	NullDevR = CreateFileW(L"\\Device\\Null",
+	NullDevR = CreateFileW(L"NUL",
 			       GENERIC_READ,
 			       FILE_SHARE_DELETE|FILE_SHARE_READ|
 			       FILE_SHARE_WRITE,
@@ -176,30 +181,31 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
 	if (!CreatePipe(&OutPipeR, &OutPipeW, &inheritable, BUF_SIZE))
 		ErrorExit(L"Creating pipe failed");
 
+#if 0
 	/* Only inherit the *write* descriptor, please */
-	if (!SetHandleInformation(&OutPipeR, HANDLE_FLAG_INHERIT, 0))
+	if (!SetHandleInformation(OutPipeR, HANDLE_FLAG_INHERIT, 0))
 		ErrorExit(L"STDOUT SetHandleInformation");
+#endif
 
 	/* Get our own filename */
-	filename = getmyname(&mynamelen);
+	program = filename = getmyname(&mynamelen);
 	tail = filename + mynamelen - 7;
 
 	/* Strip "win" from filename */
 	if (mynamelen <= 7 || _wcsicmp(tail, L"win.exe"))
 		ErrorExit(L"Unable to determine subprocess filename");
 
-	memmove(tail, tail+3, 4*sizeof(*tail));
+	memmove(tail, tail+3, 5*sizeof(*tail));
 
 	/* Launch CLI process */
 	memset(&si, 0, sizeof si);
 	si.cb          = sizeof si;
-	si.dwFlags     = STARTF_USESTDHANDLES|STARTF_USESHOWWINDOW;
-	si.wShowWindow = SW_HIDE;
+	si.dwFlags     = STARTF_USESTDHANDLES;
 	si.hStdInput   = NullDevR;
 	si.hStdOutput  = OutPipeW;
 	si.hStdError   = OutPipeW;
 	if (!CreateProcessW(filename, lpCmdLine, NULL, NULL,
-			    TRUE, CREATE_NO_WINDOW, NULL, NULL, &si, &pi))
+			    FALSE, DETACHED_PROCESS, NULL, NULL, &si, &pi))
 		ErrorExit(L"Launching subprocess");
 
 	/* We don't need these anymore... */
