@@ -1,0 +1,6 @@
+36	- HDx:
+44	- MFx:
+45	- MOx:
+46	- SFx:
+55	- Fake bus-connected RTC
+60	- Parallel printer

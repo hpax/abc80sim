@@ -1,0 +1,28 @@
+Byte 0	= hour (24 hrs)
+Byte 1	= minute
+Byte 2  = day
+Byte 3  = month
+Byte 4  = year
+Byte 5 = ?
+Byte 6 = second
+Byte 7 = ?
+
+All numbers in BCD, sent in littleendian byte order
+
+port 0x36 multiplex:
+
+Bit     7 = data
+Bit [2:0] = pin select
+
+Pin 7 = data in open collector (1 for not driven)
+Pin 6 = clock
+Pin 5 = chip select (1 = selected)
+Pin 4 = "TXOFF"
+Pin 3 = INI# on 16H "PROT"
+Pin 2 = A8 to 12G "7621/HRU11" (A7:0 seems to be A15:8 from CPU)
+Pin 1 = 40 char
+Pin 0 = "EME"
+
+Port 0x37:
+
+Bit [3:0] = Q[4:1] from 12G "7621/HRU11"
