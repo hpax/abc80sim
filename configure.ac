@@ -8,7 +8,7 @@ AC_CONFIG_MACRO_DIRS(autoconf)
 AC_INIT(abc80.c)
 AC_CONFIG_HEADERS(config/config.h)
 
-AC_CONFIG_AUX_DIR(autoconf/aux)
+AC_CONFIG_AUX_DIR(autoconf/helpers)
 
 dnl If we have wine installed, don't run it when checking for cross-compile
 WINELOADER=/dev/null
