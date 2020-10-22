@@ -70,4 +70,7 @@ breakpoint_add(struct breakpoint *brk, unsigned int num,
 /* Remove all breakpoints */
 void breakpoint_clear_all(void);
 
+/* Find a breakpoint by number */
+struct breakpoint *breakpoint_find(unsigned int num);
+
 #endif /* DEBUG_H */
