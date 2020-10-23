@@ -52,8 +52,8 @@ void nstime_init(void)
     LARGE_INTEGER tscfreq;
 
     QueryPerformanceFrequency(&tscfreq);
-    /* 2^64*10^9/frequency in Hz */
-    tscfactor = ldexp(1.0e+9, 64)/((uint64_t)tscfreq.QuadPart);
+    /* 10^9/frequency in Hz = ns per tick */
+    tscfactor = 1.0e+9/((uint64_t)tscfreq.QuadPart);
 
     if (timeGetDevCaps(&tc, sizeof tc) != TIMERR_NOERROR)
 	return;			/* Can't improve timer resolution */
