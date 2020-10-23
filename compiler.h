@@ -60,6 +60,9 @@
 #ifdef HAVE_DIRECT_H
 #include <direct.h>
 #endif
+#ifdef HAVE_INTRIN_H
+#include <intrin.h>
+#endif
 
 #ifndef NOT_USING_SDL
 #include <SDL.h>                /* This includes endian definitions */
@@ -248,6 +251,42 @@ typedef unsigned __int128 uint128_t;
    *p is a member. */
 #ifndef container_of
 # define container_of(p, c, m) ((c *)((char *)(p) - offsetof(c,m)))
+#endif
+
+/* Upper half of a 64-bit multiply */
+#ifdef HAVE___UMULH
+static inline uint64_t umulh(uint64_t a, uint64_t b)
+{
+    return __umulh(a,b);
+}
+#elif defined(HAVE_UINT128_T)
+static inline uint64_t umulh(uint64_t a, uint64_t b)
+{
+    return (uint64_t)(((uint128_t)a * b) >> 64);
+}
+#else
+static inline uint64_t umulh(uint64_t a, uint64_t b)
+{
+    uint32_t a0 = a;
+    uint32_t a1 = a >> 32;
+    uint32_t b0 = b;
+    uint32_t b1 = b >> 32;
+
+    uint64_t c0 = (uint64_t)a0 * b0;
+    uint64_t c1 = (uint64_t)a1 * b0;
+    uint64_t c2 = (uint64_t)a0 * b1;
+    uint64_t c3 = (uint64_t)a1 * b1;
+
+    uint64_t c12, c012;
+
+    c12 = c1 + c2;
+    c3 += (c12 < c1);		/* Handle carry */
+
+    c012 = c12 + (c0 >> 32);	/* The low 32 bits can't carry */
+    c3 += (c012 >> 32) + ((c012 < c12) << 32);
+
+    return c3;
+}
 #endif
 
 #endif /* COMPILER_H */

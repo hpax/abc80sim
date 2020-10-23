@@ -14,7 +14,51 @@
 
 #include <SDL.h>
 
-#ifdef _POSIX_TIMERS
+#ifdef __WIN32__
+
+static uint64_t tzero, tscfactor;
+static HANDLE wait_timer;
+
+static inline uint64_t tsc(void)
+{
+#ifdef HAVE___RDTSC
+    return __rdtsc();
+#else
+    LARGE_INTEGER tsc;
+    QueryPerformanceCounter(&tsc);
+    return tsc.QuadPart;
+#endif
+}
+
+uint64_t nstime(void)
+{
+    return umulh(tsc() - tzero, tscfactor);
+}
+
+void nstime_init(void)
+{
+    LARGE_INTEGER tscfreq;
+
+    QueryPerformanceFrequency(&tscfreq);
+    /* Should really be 2^64 not 2^64-1, but very much close enough */
+    tscfactor = UINT64_MAX/((uint64_t)(tscfreq.QuadPart));
+
+    wait_timer = CreateWaitableTimer(NULL, TRUE, NULL);
+}
+
+#define mynssleep mynssleep
+void mynssleep(uint64_t until, uint64_t since)
+{
+    LARGE_INTEGER q;
+
+    q.QuadPart = (until + 99) / UINT64_C(100);
+    SetWaitableTimer(wait_timer, &q, 0, NULL, NULL, FALSE);
+    WaitForSingleObject(wait_timer,
+                        (until - since +
+                         UINT64_C(1999999)) / UINT64_C(1000000));
+}
+
+#elif defined(_POSIX_TIMERS)
 
 #ifdef _POSIX_MONOTONIC_CLOCK
 #define WHICHCLOCK CLOCK_MONOTONIC
@@ -36,50 +80,6 @@ void nstime_init(void)
     struct timespec ts;
     clock_gettime(WHICHCLOCK, &ts);
     tv_sec_zero = ts.tv_sec;
-}
-
-#elif defined(__WIN32__)
-
-static uint64_t tzero, tscfactor;
-static HANDLE wait_timer;
-
-static inline uint64_t tsc(void)
-{
-#ifdef HAVE___RDTSC
-    return __rdtsc();
-#else
-    LARGE_INTEGER tsc;
-    QueryPerformanceCounter(&tsc);
-    return tsc.QuadPart;
-#endif
-}
-
-uint64_t nstime(void)
-{
-    return __muluh(tsc() - tzero, tscmult);
-}
-
-void nstime_init(void)
-{
-    FILETIME ft;
-    LARGE_INTEGER tscfreq;
-
-    QueryPerformanceFrequency(&tscfreq);
-    /* Should really be 2^64 not 2^64-1, but very much close enough */
-    tscmult = UINT64_MAX/((uint64_t)(tscfreq.QuadPart));
-
-    wait_timer = CreateWaitableTimer(NULL, TRUE, NULL);
-}
-
-void mynssleep(uint64_t until, uint64_t since)
-{
-    LARGE_INTEGER q;
-
-    q.QuadPart = (until + 99) / UINT64_C(100);
-    SetWaitableTimer(wait_timer, &q, 0, NULL, NULL, FALSE);
-    WaitForSingleObject(wait_timer,
-                        (until - since +
-                         UINT64_C(1999999)) / UINT64_C(1000000));
 }
 
 #elif defined(HAVE_GETTIMEOFDAY)
@@ -107,7 +107,8 @@ void nstime_init(void)
 #error "Need to implement a different fine-grained timer function here"
 #endif
 
-#if defined(WHICHCLOCK) && defined(HAVE_CLOCK_NANOSLEEP)
+#ifndef mynssleep
+# if defined(WHICHCLOCK) && defined(HAVE_CLOCK_NANOSLEEP)
 
 void mynssleep(uint64_t until, uint64_t since)
 {
@@ -120,7 +121,7 @@ void mynssleep(uint64_t until, uint64_t since)
     clock_nanosleep(WHICHCLOCK, TIMER_ABSTIME, &req, NULL);
 }
 
-#elif defined(HAVE_NANOSLEEP)
+# elif defined(HAVE_NANOSLEEP)
 
 void mynssleep(uint64_t until, uint64_t since)
 {
@@ -134,7 +135,7 @@ void mynssleep(uint64_t until, uint64_t since)
     nanosleep(&req, NULL);
 }
 
-#elif !defined(__WIN32__)
+# else
 
 void mynssleep(uint64_t until, uint64_t since)
 {
@@ -142,5 +143,6 @@ void mynssleep(uint64_t until, uint64_t since)
 
     SDL_Delay((until + UINT64_C(999999)) / UINT64_C(1000000));
 }
+#endif
 
 #endif
