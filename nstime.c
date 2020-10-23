@@ -69,13 +69,13 @@ void nstime_init(void)
 #define mynssleep mynssleep
 void mynssleep(uint64_t until, uint64_t since)
 {
-    int32_t ms;
+    DWORD ms;
 
     while (1) {
-	ms = (until - since + UINT64_C(999999)) / UINT64_C(1000000);
-	if (ms <= 0)
+	if (until <= since)
 	    break;
 
+	ms = (until - since + UINT64_C(999999)) / UINT64_C(1000000);
 	if (SleepEx(ms, FALSE) == 0)
 	    break;
 
