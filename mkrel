@@ -27,7 +27,8 @@ for target in x86_64-w64-mingw32; do
     cd ..
     mv "$pv" _build
     mkdir "$pv"
-    rm -f _build/stdout.exe _build/stderr.txt || true
+    cp $(find _build -type f -name '*.exe') "$pv"/
+    rm -f _build/stdout.txt _build/stderr.txt || true
     for f in $(find _build -type f -name '*.txt'); do
 	todos < "$f" > "$pv"/"$(basename "$f")"
     done
