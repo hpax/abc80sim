@@ -64,6 +64,8 @@ void nstime_init(void)
     wTimerRes = min(max(tc.wPeriodMin, TARGET_TIMER_RESOLUTION), tc.wPeriodMax);
     atexit(nstime_end);
     timeBeginPeriod(wTimerRes);
+
+    tzero = tsc();
 }
 
 #define mynssleep mynssleep
