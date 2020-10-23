@@ -93,6 +93,7 @@ PA_HAVE_FUNC(_addcarry_u64, (1, 1ULL, 1ULL, NULL))
 
 dnl System headers
 PA_ADD_HEADERS(windows.h)
+
 AC_CHECK_HEADERS(dirent.h)
 AC_CHECK_HEADERS(sys/types.h)
 AC_CHECK_HEADERS(sys/stat.h)
@@ -100,9 +101,13 @@ AC_CHECK_HEADERS(sys/time.h)
 AC_CHECK_HEADERS(unistd.h)
 AC_CHECK_HEADERS(fcntl.h)
 AC_CHECK_HEADERS(paths.h)
+AC_CHECK_HEADERS(termios.h)
+
 AC_CHECK_HEADERS(io.h)
 AC_CHECK_HEADERS(direct.h)
-AC_CHECK_HEADERS(termios.h)
+AC_CHECK_HEADERS(synchapi.h)
+AC_CHECK_HEADERS(mmsystem.h)
+AC_CHECK_HEADERS(timeapi.h)
 
 dnl Useful functions which we may lack
 AC_CHECK_FUNCS([mempcpy])
@@ -158,6 +163,7 @@ dnl Checks for library functions.
 AC_SEARCH_LIBS([deflate], [z])
 AC_SEARCH_LIBS([png_write_png], [png])
 AC_SEARCH_LIBS([clock_gettime], [rt])
+AC_SEARCH_LIBS([timeBeginPeriod], [winmm])
 
 dnl
 dnl Some rather useful gcc extensions...

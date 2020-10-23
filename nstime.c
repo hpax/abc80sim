@@ -16,8 +16,13 @@
 
 #ifdef __WIN32__
 
+#include <synchapi.h>
+#include <mmsystem.h>
+#ifdef HAVE_TIMEAPI_H
+# include <timeapi.h>
+#endif
+
 static uint64_t tzero, tscfactor;
-static HANDLE wait_timer;
 
 static inline uint64_t tsc(void)
 {
@@ -35,27 +40,47 @@ uint64_t nstime(void)
     return umulh(tsc() - tzero, tscfactor);
 }
 
+static UINT wTimerRes;
+
+static void nstime_end(void)
+{
+    timeEndPeriod(wTimerRes);
+}
+
+#define TARGET_TIMER_RESOLUTION 1	/* 1 ms */
 void nstime_init(void)
 {
+    TIMECAPS tc;
+    UINT wTimerRes;
     LARGE_INTEGER tscfreq;
 
     QueryPerformanceFrequency(&tscfreq);
     /* Should really be 2^64 not 2^64-1, but very much close enough */
     tscfactor = UINT64_MAX/((uint64_t)(tscfreq.QuadPart));
 
-    wait_timer = CreateWaitableTimer(NULL, TRUE, NULL);
+    if (timeGetDevCaps(&tc, sizeof tc) != TIMERR_NOERROR)
+	return;			/* Can't improve timer resolution */
+
+    wTimerRes = min(max(tc.wPeriodMin, TARGET_TIMER_RESOLUTION), tc.wPeriodMax);
+    atexit(nstime_end);
+    timeBeginPeriod(wTimerRes);
 }
 
 #define mynssleep mynssleep
 void mynssleep(uint64_t until, uint64_t since)
 {
-    LARGE_INTEGER q;
+    int32_t ms;
 
-    q.QuadPart = (until + 99) / UINT64_C(100);
-    SetWaitableTimer(wait_timer, &q, 0, NULL, NULL, FALSE);
-    WaitForSingleObject(wait_timer,
-                        (until - since +
-                         UINT64_C(1999999)) / UINT64_C(1000000));
+    while (1) {
+	ms = (until - since + UINT64_C(999999)) / UINT64_C(1000000);
+	if (ms <= 0)
+	    break;
+
+	if (SleepEx(ms, FALSE) == 0)
+	    break;
+
+	since = nstime();
+    }
 }
 
 #elif defined(_POSIX_TIMERS)
@@ -107,8 +132,11 @@ void nstime_init(void)
 #error "Need to implement a different fine-grained timer function here"
 #endif
 
-#ifndef mynssleep
-# if defined(WHICHCLOCK) && defined(HAVE_CLOCK_NANOSLEEP)
+#ifdef mynssleep
+
+/* Already defined */
+
+#elif defined(WHICHCLOCK) && defined(HAVE_CLOCK_NANOSLEEP)
 
 void mynssleep(uint64_t until, uint64_t since)
 {
@@ -121,7 +149,7 @@ void mynssleep(uint64_t until, uint64_t since)
     clock_nanosleep(WHICHCLOCK, TIMER_ABSTIME, &req, NULL);
 }
 
-# elif defined(HAVE_NANOSLEEP)
+#elif defined(HAVE_NANOSLEEP)
 
 void mynssleep(uint64_t until, uint64_t since)
 {
@@ -135,7 +163,7 @@ void mynssleep(uint64_t until, uint64_t since)
     nanosleep(&req, NULL);
 }
 
-# else
+#else
 
 void mynssleep(uint64_t until, uint64_t since)
 {
@@ -143,6 +171,5 @@ void mynssleep(uint64_t until, uint64_t since)
 
     SDL_Delay((until + UINT64_C(999999)) / UINT64_C(1000000));
 }
-#endif
 
 #endif
