@@ -71,16 +71,11 @@ void mynssleep(uint64_t until, uint64_t since)
 {
     DWORD ms;
 
-    while (1) {
-	if (until <= since)
-	    break;
+    if (until <= since)
+	return;
 
-	ms = (until - since + UINT64_C(999999)) / UINT64_C(1000000);
-	if (SleepEx(ms, FALSE) == 0)
-	    break;
-
-	since = nstime();
-    }
+    ms = (until - since + UINT64_C(999999)) / UINT64_C(1000000);
+    Sleep(ms);
 }
 
 #elif defined(_POSIX_TIMERS)
