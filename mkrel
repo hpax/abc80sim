@@ -31,7 +31,7 @@ for target in x86_64-w64-mingw32; do
     for f in $(find _build -type f -name '*.txt'); do
 	todos < "$f" > "$pv"/"$(basename "$f")"
     done
-    for d in SDL.dll libwinpthread-1.dll libpng16-16.dll zlib1.dll; do
+    for d in SDL.dll libpng16-16.dll zlib1.dll; do
 	cp "$dlldir"/"$d" "$pv"/
     done
     zip -9r -o "$pv".zip "$pv"
