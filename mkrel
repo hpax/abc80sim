@@ -19,7 +19,7 @@ for target in x86_64-w64-mingw32; do
     mkdir "$target"
     cd "$target"
     dlldir="/usr/$target/sys-root/mingw/bin"
-    tar xfz ../"$pv".tar.gz
+    tar xf ../"$pv".tar.xz
     cd "$pv"
     ./configure --host="$target"
     make clean
@@ -27,7 +27,7 @@ for target in x86_64-w64-mingw32; do
     cd ..
     mv "$pv" _build
     mkdir "$pv"
-    cp $(find _build -type f -name '*.exe') "$pv"/
+    rm -f _build/stdout.exe _build/stderr.txt || true
     for f in $(find _build -type f -name '*.txt'); do
 	todos < "$f" > "$pv"/"$(basename "$f")"
     done
