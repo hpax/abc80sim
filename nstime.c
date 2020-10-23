@@ -26,13 +26,9 @@ static uint64_t tzero, tscfactor;
 
 static inline uint64_t tsc(void)
 {
-#ifdef HAVE___RDTSC
-    return __rdtsc();
-#else
     LARGE_INTEGER tsc;
     QueryPerformanceCounter(&tsc);
     return tsc.QuadPart;
-#endif
 }
 
 uint64_t nstime(void)
