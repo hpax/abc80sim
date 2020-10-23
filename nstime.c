@@ -22,7 +22,8 @@
 # include <timeapi.h>
 #endif
 
-static uint64_t tzero, tscfactor;
+static uint64_t tzero;
+static double tscfactor;
 
 static inline uint64_t tsc(void)
 {
@@ -33,7 +34,7 @@ static inline uint64_t tsc(void)
 
 uint64_t nstime(void)
 {
-    return umulh(tsc() - tzero, tscfactor);
+    return llround((tsc() - tzero) * tscfactor);
 }
 
 static UINT wTimerRes;
@@ -51,8 +52,8 @@ void nstime_init(void)
     LARGE_INTEGER tscfreq;
 
     QueryPerformanceFrequency(&tscfreq);
-    /* Should really be 2^64 not 2^64-1, but very much close enough */
-    tscfactor = UINT64_MAX/((uint64_t)(tscfreq.QuadPart));
+    /* 2^64*10^9/frequency in Hz */
+    tscfactor = ldexp(1.0e+9, 64)/((uint64_t)tscfreq.QuadPart);
 
     if (timeGetDevCaps(&tc, sizeof tc) != TIMERR_NOERROR)
 	return;			/* Can't improve timer resolution */
