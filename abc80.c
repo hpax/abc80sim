@@ -139,14 +139,14 @@ static void parse_trace(char *arg)
         unsigned int mask;
         const char *help;
     } trace_args[] = {
-        {
-        "all", TRACE_ALL, "all traceable events"}, {
-        "cpu", TRACE_CPU, "cpu execution and memory accesses"}, {
-        "io", TRACE_IO, "port I/O"}, {
-        "disk", TRACE_DISK, "disk commands"}, {
-        "cas", TRACE_CAS, "cassette I/O"}, {
-        "pr", TRACE_PR, "printer interface"}, {
-        NULL, 0, NULL}
+	{"all", TRACE_ALL, "all traceable events"},
+	{"cpu", TRACE_CPU, "cpu execution and memory accesses"},
+	{"io", TRACE_IO, "port I/O"},
+	{"disk", TRACE_DISK, "disk commands"},
+	{"cas", TRACE_CAS, "cassette I/O"},
+	{"pr", TRACE_PR, "printer interface"},
+	{"flash", TRACE_FLASH, "SRAM card flash programming"},
+	{NULL, 0, NULL}
     };
     const struct trace_args *trp;
 

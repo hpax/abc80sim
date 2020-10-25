@@ -12,6 +12,7 @@ enum tracing {
     TRACE_DISK = 0x04,
     TRACE_CAS = 0x08,
     TRACE_PR = 0x10,
+    TRACE_FLASH = 0x20,
     TRACE_ALL = 0x1f
 };
 

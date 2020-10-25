@@ -551,14 +551,21 @@ static void write_flash(uint8_t *p, uint8_t v)
     };
     static enum flash_state state = FL_NORM;
     size_t xaddr = p - xmem;
+    unsigned int faddr = xaddr & 0x7ffff;
     const size_t cmdlo = 2 << 19;
     size_t cmdhi = cmdlo + ((sram_mask[2] & 0x3c) << 13);
+    uint8_t op, np;
 
     switch (state) {
     case FL_PROG:
 	/* Progamming can only change 1 bits to 0 */
-	v &= *p;
-	*p = v;
+	op = *p;
+	np = v & op;
+	*p = np;
+	if (tracing(TRACE_FLASH)) {
+	    fprintf(tracef, "FLASH: write: %05X - %02X : %02X -> %02X%s\n",
+		    faddr, v, op, np, (v != np) ? " (!)" : "");
+	}
 	state = FL_NORM;
 	if (xaddr < K(1024)+8192)
 	    write_sram(p, v);	/* Update memory mappings */
@@ -567,6 +574,10 @@ static void write_flash(uint8_t *p, uint8_t v)
 	if (v == 0x30) {
 	    /* Sector erase */
 	    uint8_t *s = p - (xaddr & 0xfff);
+	    if (tracing(TRACE_FLASH)) {
+		fprintf(tracef, "FLASH: erase: %05X ... %05X (sector)\n",
+			faddr & ~0xfff, faddr | 0xfff);
+	    }
 	    memset(s, 0xff, 4096);
 	    state = FL_NORM;
 	    if (xaddr < K(1024)+8192)
@@ -600,6 +611,10 @@ static void write_flash(uint8_t *p, uint8_t v)
 	    state = FL_NORM;
 	    if (v == 0x10) {
 		/* Chip erase */
+		if (tracing(TRACE_FLASH)) {
+		    fprintf(tracef, "FLASH: erase: 00000 ... %05X (chip)\n",
+			    ((sram_mask[2] & 63) << 13) | 0x1fff);
+		}
 		memset(xmem+K(1024), 0xff, K(512));
 		sram_sync_mappings();
 	    }
