@@ -532,6 +532,53 @@ static void sram_sync_mappings(void)
  * The current simulator memory model doesn't support read side effects
  * for memory, so doing everything correctly would need to add that.
  */
+
+/*
+ * In "software ID mode", the first two bytes of flash contents are
+ * replaced with vendor ID and product ID, respectively.
+ */
+static bool sram_ic3_flash_id_active;	  /* Software ID mode active */
+static uint8_t sram_ic3_flash_id[2];	  /* The flash ID for this chip */
+static uint8_t sram_ic3_flash_id_save[2]; /* Saved real contents */
+
+static inline void flash_resume_flash_id(void)
+{
+    uint8_t * const fl = xmem + K(1024);
+    if (likely(!sram_ic3_flash_id_active))
+	return;
+
+    sram_ic3_flash_id_save[0] = fl[0];
+    sram_ic3_flash_id_save[1] = fl[1];
+    write_sram(&fl[0], sram_ic3_flash_id[0]);
+    write_sram(&fl[1], sram_ic3_flash_id[1]);
+}
+
+static void flash_exit_flash_id(void)
+{
+    uint8_t * const fl = xmem + K(1024);
+    if (!sram_ic3_flash_id_active)
+	return;
+
+    /* At this point the flash array should contain "true" values */
+    sram_ic3_flash_id_active = false;
+    write_sram(&fl[0], fl[0]);
+    write_sram(&fl[1], fl[1]);
+
+    if (tracing(TRACE_FLASH)) {
+	fprintf(tracef, "FLASH: sw_id: exit  %02X %02X\n",
+		fl[0], fl[1]);
+    }
+}
+
+static inline bool is_cmd(size_t faddr, unsigned int cmdmask)
+{
+    if (likely((faddr & 0x7fff) != cmdmask))
+	return false;
+
+    faddr >>= 15;
+    return !faddr || (faddr == (sram_mask[2] & 0x3c) >> 2);
+}
+
 static void write_flash(uint8_t *p, uint8_t v)
 {
     /*
@@ -552,9 +599,19 @@ static void write_flash(uint8_t *p, uint8_t v)
     static enum flash_state state = FL_NORM;
     size_t xaddr = p - xmem;
     unsigned int faddr = xaddr & 0x7ffff;
-    const size_t cmdlo = 2 << 19;
-    size_t cmdhi = cmdlo + ((sram_mask[2] & 0x3c) << 13);
     uint8_t op, np;
+
+    if (unlikely(sram_ic3_flash_id_active)) {
+	/* Restore true contents */
+	uint8_t * const fl = xmem + K(1024);
+	fl[0] = sram_ic3_flash_id_save[0];
+	fl[1] = sram_ic3_flash_id_save[1];
+
+	if (state == FL_NORM && v == 0xf0) {
+	    flash_exit_flash_id();
+	    return;
+	}
+    }
 
     switch (state) {
     case FL_PROG:
@@ -566,10 +623,11 @@ static void write_flash(uint8_t *p, uint8_t v)
 	    fprintf(tracef, "FLASH: write: %05X - %02X : %02X -> %02X%s\n",
 		    faddr, v, op, np, (v != np) ? " (!)" : "");
 	}
-	state = FL_NORM;
-	if (xaddr < K(1024)+8192)
+	if (faddr < 8192)
 	    write_sram(p, v);	/* Update memory mappings */
-	return;
+	state = FL_NORM;
+	break;
+
     case FL_CP5:
 	if (v == 0x30) {
 	    /* Sector erase */
@@ -579,57 +637,83 @@ static void write_flash(uint8_t *p, uint8_t v)
 			faddr & ~0xfff, faddr | 0xfff);
 	    }
 	    memset(s, 0xff, 4096);
-	    state = FL_NORM;
-	    if (xaddr < K(1024)+8192)
+	    if (faddr < 8192)
 		sram_sync_mappings();
-	    return;
+	} else if (v == 0x10 && is_cmd(faddr, 0x5555)) {
+	    /* Chip erase */
+	    if (tracing(TRACE_FLASH)) {
+		fprintf(tracef, "FLASH: erase: 00000 ... %05X (chip)\n",
+			((sram_mask[2] & 63) << 13) | 0x1fff);
+	    }
+	    memset(xmem+K(1024), 0xff, K(512));
+	    sram_sync_mappings();
 	}
+	state = FL_NORM;
 	break;
-    default:
-	break;
-    }
 
-    if (xaddr == cmdlo + 0x5555 || xaddr == cmdhi + 0x5555) {
-	/* CMD1 address write */
-	switch (state) {
-	case FL_NORM:
-	case FL_CP3:
-	    if (v == 0xaa)
+    default:
+	if (is_cmd(faddr, 0x5555)) {
+	    /* CMD1 address write */
+	    switch (state) {
+	    case FL_NORM:
+	    case FL_CP3:
+		if (v == 0xaa)
+		    state++;
+		else
+		    state = FL_NORM;
+		break;
+	    case FL_CP2:
+		switch (v) {
+		case 0xa0:
+		    state = FL_PROG;
+		    break;
+		case 0x80:
+		    state = FL_CP3;
+		    break;
+		case 0x90:
+		    /*
+		     * If the vendor ID is zero, we don't have a
+		     * software ID mode - probably < 128K is an EEPROM
+		     * anyway, which did not have this feature it seems.
+		     */
+		    if (!sram_ic3_flash_id_active && sram_ic3_flash_id[0]) {
+			if (tracing(TRACE_FLASH)) {
+			    fprintf(tracef, "FLASH: sw_id: enter %02X %02X\n",
+				    sram_ic3_flash_id[0],
+				    sram_ic3_flash_id[1]);
+			}
+			sram_ic3_flash_id_active = true;
+		    }
+		    state = FL_NORM;
+		    break;
+		case 0xf0:
+		    state = FL_NORM;
+		    flash_exit_flash_id();
+		    return;
+		default:
+		    state = FL_NORM;
+		    break;
+		}
+		break;
+	    case FL_CP5:
+		state = FL_NORM;
+		break;
+	    default:
+		state = FL_NORM;
+		break;
+	    }
+	} else if (is_cmd(faddr, 0x2aaa)) {
+	    if (v == 0x55 && (state == FL_CP1 || state == FL_CP4))
 		state++;
 	    else
 		state = FL_NORM;
-	    break;
-	case FL_CP2:
-	    if (v == 0xa0)
-		state = FL_PROG;
-	    else if (v == 0x80)
-		state = FL_CP3;
-	    else
-		state = FL_NORM;
-	    break;
-	case FL_CP5:
-	    state = FL_NORM;
-	    if (v == 0x10) {
-		/* Chip erase */
-		if (tracing(TRACE_FLASH)) {
-		    fprintf(tracef, "FLASH: erase: 00000 ... %05X (chip)\n",
-			    ((sram_mask[2] & 63) << 13) | 0x1fff);
-		}
-		memset(xmem+K(1024), 0xff, K(512));
-		sram_sync_mappings();
-	    }
-	    break;
-	default:
+	} else {
 	    state = FL_NORM;
 	}
-    } else if (xaddr == cmdlo + 0x2aaa || xaddr == cmdhi + 0x2aaa) {
-	if (v == 0x55 && (state == FL_CP1 || state == FL_CP4))
-	    state++;
-	else
-	    state = FL_NORM;
-    } else {
-	state = FL_NORM;
+	break;
     }
+
+    flash_resume_flash_id();
 }
 
 static inline uint8_t *io_to_sram(uint16_t addr)
@@ -701,6 +785,37 @@ static uint8_t *init_sram(void)
 	sram_ic3 = IC3_ROM;
     } else if (!strcmp(ic3, "ram") || !strcmp(ic3, "sram")) {
 	sram_ic3 = IC3_RAM;
+    }
+
+    /*
+     * Flash software identification ID.
+     * Vendor ID = BF (SST)
+     * Device ID = B5 (128K)
+     * Device ID = B6 (256K)
+     * Device ID = B7 (512K)
+     *
+     * Smaller devices are theoretical, but in practice would probably
+     * have to be EEPROM devices which don't support the software ID
+     * feature, so if the device ID is zero the flash write code
+     * will ignore a software ID mode command.
+     */
+    switch (kb[2]) {
+    case 128:
+	sram_ic3_flash_id[0] = 0xbf;
+	sram_ic3_flash_id[1] = 0xb5;
+	break;
+    case 256:
+	sram_ic3_flash_id[0] = 0xbf;
+	sram_ic3_flash_id[1] = 0xb6;
+	break;
+    case 512:
+	sram_ic3_flash_id[0] = 0xbf;
+	sram_ic3_flash_id[1] = 0xb7;
+	break;
+    default:
+	sram_ic3_flash_id[0] = 0;
+	sram_ic3_flash_id[1] = 0;
+	break;
     }
 
     /*
