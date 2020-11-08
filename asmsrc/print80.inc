@@ -1,4 +1,4 @@
-; -*- fundamental -*-
+; -*- asm -*-
 ;
 ; Simple option ROM for printer for ABC80; this is not authentic, but
 ; was done for the FPGA project.  This assumes the following hardware
@@ -21,7 +21,6 @@
 ; Because the DOS ROM is basically full, hard-code the offset here.
 ;
 	defc selcode=60			; ABC-bus select code
-	defc DOSINIT=6543h		; Where to chain to in DOS
 	defc SELECT=64831		; Current select code
 	defc DEVLIST=65034		; BASIC device list
 
@@ -363,7 +362,7 @@ wb_loop:
 send_cmd:
 	push af
 	out (4),a		; Clear input FIFO
-	
+
 	ld a,255
 	call send_byte
 	pop af
@@ -444,7 +443,7 @@ rr_done:
 prc_jptable:
 	jp pr_open			; OPEN
 	jp pr_open			; PREPARE
-	jp done				; CLOSE
+	jp trivial			; CLOSE
 	jp notthere			; INPUT
 	jp prc_print			; PRINT
 	jp notthere			; RDBLK
@@ -486,7 +485,49 @@ prx_init:
 	call send_cmd
 	jp done
 
+trivial:			; Trivially successful call
+	xor a			; A <- 0  carry <- 0
+	ret
+
+eof:				; End of file or file not found
+	xor a
+	scf
+	ret
+
+;;;
+;;; Simple CON and NUL devices for ABC800 compatibility
+;;;
+con_jptable:
+	jp trivial			; OPEN
+	jp trivial			; PREPARE
+	jp trivial			; CLOSE
+	jp 0005h			; INPUT
+	jp 000Bh			; PRINT
+	jp notthere			; RDBLK
+	jp notthere			; WRBLK
+	jp notthere			; DELETE
+	jp notthere			; RENAME
+
+nul_jptable:
+	jp trivial			; OPEN
+	jp trivial			; PREPARE
+	jp trivial			; CLOSE
+	jp eof				; INPUT
+	jp trivial			; PRINT
+	jp notthere			; RDBLK
+	jp notthere			; WRBLK
+	jp notthere			; DELETE
+	jp notthere			; RENAME
+
 device_list:
+con_device:
+	defw nul_device
+	defm "CON"
+	defw con_jptable
+nul_device:
+	defw pr_device
+	defm "NUL"
+	defw nul_jptable
 pr_device:
 	defw pra_device
 	defm "PR "
