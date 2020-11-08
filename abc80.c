@@ -146,6 +146,7 @@ static void parse_trace(char *arg)
 	{"cas", TRACE_CAS, "cassette I/O"},
 	{"pr", TRACE_PR, "printer interface"},
 	{"flash", TRACE_FLASH, "SRAM card flash programming"},
+	{"map", TRACE_MAP, "memory map settings"},
 	{NULL, 0, NULL}
     };
     const struct trace_args *trp;

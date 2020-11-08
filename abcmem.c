@@ -467,10 +467,17 @@ static void write_sram(uint8_t *p, uint8_t ppage)
 	pslot = ppage >> 6;
 	ppage &= sram_mask[pslot];
 
-	map = ((xaddr & 0x01e0) >> 5) + 1; /* Map 0 is system */
+	/* Map 0 reflects the system map, so add 1 */
+	map = ((xaddr & 0x1e0) >> 5) + ((xaddr & (2 << 19)) >> 16) + 1;
 	vpage = ((xaddr & 0x1e00) + ((xaddr & 7) << 13)) >> PAGE_SHIFT;
 	pageaddr = ((size_t)ppage << 13) + (xaddr & 0x1e00);
 	page = &memmaps[map][vpage];
+
+	if (tracing(TRACE_MAP)) {
+	    fprintf(tracef, "MAP: IC%u 0x%04x map %2d vpage %3u <- slot %u addr 0x%05x\n",
+		    (unsigned int)((xaddr >> 19) + 1), (unsigned int)(xaddr & 0x7ffff),
+		    (int)map-1, vpage, pslot, (unsigned int)(ppage << 13));
+	}
 
 	if (pslot == 3) {
 	    /* System map; map 0 is the preserved initial system map */
