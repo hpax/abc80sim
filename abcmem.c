@@ -518,16 +518,18 @@ static void write_sram(uint8_t *p, uint8_t ppage)
 static void sram_sync_mappings(void)
 {
     uint8_t *p;
-    unsigned int i, j;
+    unsigned int i, j, k;
 
     if (!opts.sram)
 	return;
 
-    for (i = 0; i < 2; i++) {
-	p = xmem + (i << 20);	/* IC1, IC3 */
-	for (j = 0; j < 8192; j++) {
-	    write_sram(p, *p);
-	    p++;
+    /* IC1, IC3; subpage; page */
+    for (i = 0; i <= (1 << 20); i += (1 << 20)) {
+	for (j = 0; j < 8192; j += 32) {
+	    for (k = 0; k < 8; k++) {
+		p = xmem + i + j + k;
+		write_sram(p, *p);
+	    }
 	}
     }
 }
