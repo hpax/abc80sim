@@ -33,7 +33,7 @@
 
 	defc ERROR=12h			; BASIC entry point for error A=<err>
 
-_start:
+__begin:
 	; jp table for PR:
 pr_jptable:
 	jp pr_open			; OPEN
@@ -121,9 +121,9 @@ prb_open:
 	jr prx_open
 
 	; Init JP vector is at org+0x7C
-	defs ((_start + 0x7c) - ASMPC)
-prx_init_jp:
-	jp prx_init
+	defs ((__begin + 0x7c) - ASMPC)
+_start:
+	jp init
 
 	; jp table for PRA:
 pra_jptable:
@@ -417,7 +417,7 @@ recv_byte:
 
 rb_with_timeout:
 	push bc
-	ld b,0			; 256/50 Hz = 5.12 s
+	ld b,100		; 100/50 Hz = 2 s
 rb_ctr:
 	ld a,(65008)
 	ld c,a
@@ -514,7 +514,7 @@ prc_skip:
 	inc hl
 	jr prc_print_loop
 
-prx_init:
+init:
 	ld hl,prc_device_rom-2
 	ld de,prc_device
 	ld bc,7
