@@ -89,7 +89,7 @@ static void output(struct abcprint *me, unsigned char c)
         L"\340\341\342\343{}\346\347\350`\352\353\354\355\356\357"
         L"\360\361\362\363\364\365|\367\370\371\372\373~\375\376\377";
 
-    if (hf) {
+    if (!hf) {
         if (c < '\b' || (c > '\r' && c < 31))
             me->prfile = hf = temp_file(HF_BINARY, temp_prefix);
         else
