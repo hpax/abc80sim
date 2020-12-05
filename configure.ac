@@ -108,6 +108,8 @@ AC_CHECK_HEADERS(synchapi.h)
 AC_CHECK_HEADERS(mmsystem.h)
 AC_CHECK_HEADERS(timeapi.h)
 
+AC_CHECK_TYPES(ssize_t)
+
 dnl termios and speed_t
 PA_ADD_HEADERS(termios.h)
 AC_CHECK_TYPES(speed_t)

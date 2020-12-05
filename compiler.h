@@ -14,7 +14,6 @@
 /* On Microsoft platforms we support multibyte character sets in filenames */
 #define _MBCS 1
 
-
 /* These header files should pretty much always be included... */
 #include <assert.h>
 #include <stddef.h>
@@ -100,10 +99,13 @@ extern int asprintf(char **, const char *, ...);
 #endif
 
 /*
- * mode_t
+ * mode_t, speed_t
  */
 #ifndef HAVE_MODE_T
 typedef int mode_t;
+#endif
+#ifndef HAVE_SSIZE_T
+typedef int ssize_t;
 #endif
 
 /*

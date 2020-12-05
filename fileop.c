@@ -73,8 +73,8 @@ static void pr_send(struct abcprint *me, const void *buf, size_t len)
 
     trace_data(buf, len, "SEND");
     while (len) {
-	size_t sent = me->sd.func(me->sd.pvt, p, len);
-	if (sent == (size_t)-1)
+	ssize_t sent = me->sd.func(me->sd.pvt, p, len);
+	if (sent < 0)
 	    sent = 0;
 	len -= sent;
 	p += sent;

@@ -60,6 +60,7 @@ static no_return help(void)
 	   "       --abc800c           simulate an ABC800C\n"
 	   "       --abc800m           simulate an ABC800C\n"
            "       --abc802            simulate an ABC802\n"
+	   "       --server port       act as a fileserver\n"
            "  -4,  --40                start in 40-column mode\n"
            "  -8,  --80                start in 80-column mode (default)\n"
            "  -b,  --no-basic          no BASIC ROM (uninitialized ROM instead)\n"
@@ -88,7 +89,7 @@ static no_return help(void)
 	   "  -Ls, --scriptlist file   read list of script files\n"
            "  -e,  --console           enable console output device (PRC:)\n"
            "  -Fe, --consolefile file  enable console output device to a file\n"
-           "       --detach            detach from console if run from a command line\n"
+           "       --detach            detach from console (default for --server)\n"
 	   "       --mo# file          mount file as drive MO#: (0-7)\n"
 	   "       --mf# file          mount file as drive MF#: (0-7)\n"
 	   "       --sf# file          mount file as drive SF#: (0-7)\n"
@@ -118,6 +119,9 @@ static no_return help(void)
            "Options for ABC802 only:\n"
            "  -Fm, --memfile file      load a file into the ABC802 MEM: device\n"
            "\n"
+	   "Option for fileserver only:\n"
+	   "       --baud baudrate     set serial port speed\n"
+	   "\n"
            "The simulator supports the following hotkeys; the same events can also be\n"
 	   "triggered by outputting the equivalent character to \"magic\" I/O port 184:\n"
            "  Alt-q    quit the simulator\n"
@@ -316,9 +320,12 @@ int main(int argc, char **argv)
     char **option;
     const char *optstr;
     char optchr;
-    bool detach = false;
+    enum autobool detach = A_AUTO; /* Default to true for --server */
     bool console = false;
     SDL_Thread *cpu_thread;
+    const char *server_port = NULL;
+    unsigned int server_baud = 0;
+    int server_fd = -1;
 
     (void)argc;
     program_name = argv[0];
@@ -430,6 +437,10 @@ int main(int argc, char **argv)
 		opts.sram = enable;
 		if (optarg)
 		    opts.sram_config = optarg;
+	    } else if (!strcmp(optstr, "server")) {
+		server_port = LONG_ARG();
+	    } else if (!strcmp(optstr, "baud")) {
+		server_baud = strtoul(LONG_ARG(), NULL, 0);
 	    } else if (valid_drive_name(optstr)) {
 		disk_mount(optstr, enable ? LONG_ARG() : NULL);
             } else {
@@ -532,6 +543,8 @@ int main(int argc, char **argv)
     if (console) {
         if (is_stdio(console_filename)) {
             console_file = stdout;
+	    if (detach == A_AUTO)
+		detach = A_NO;
         } else {
             console_file = fopen(console_filename, "wt");
             if (!console_file) {
@@ -541,8 +554,36 @@ int main(int argc, char **argv)
         }
     }
 
+    if (server_port) {
+	server_fd = abcprint_daemon_open(server_port, server_baud);
+	if (server_fd < 0) {
+	    fprintf(stderr, "%s: %s: %s\n",
+		    program_name, server_port, strerror(errno));
+	    exit(1);
+	}
+    }
+
+    if (detach == A_AUTO)
+	detach = !!server_port;
+
     if (detach)
         detach_console();
+
+    /*
+     * ---------------------------------------------------------------------
+     *  Initialization that affect file server mode should be executed
+     *  before this code; anything that is not applicable to server mode
+     *  should be run after this.
+     * ---------------------------------------------------------------------
+     */
+    if (server_fd >= 0) {
+	if (abcprint_daemon_thread(server_fd)) {
+	    fprintf(stderr, "%s: %s: %s\n",
+		    program_name, server_port, strerror(errno));
+	    exit(1);
+	}
+	exit(0);
+    }
 
     /*
      * Override startup_width40 if not applicable on this machine.

@@ -241,7 +241,19 @@ static int config_port(int fd, unsigned long baud, enum flowctrl flowctrl)
 
 #else
 
-# error "Don't know how to configure a serial port on this system"
+/*
+ * Don't know how to configure serial on this system; either the user has
+ * to do it manually, or it is not necessary...
+ */
+static int config_port(int fd, unsigned long baud, enum flowctrl flowctrl)
+{
+    (void)fd;
+    (void)baud;
+    (void)flowctrl;
+
+    errno = ENOTTY;
+    return -1;
+}
 
 #endif
 
@@ -258,7 +270,11 @@ int open_serial(const char *port, unsigned long baud, enum flowctrl flowctrl)
     if (fd < 0)
 	goto fail;
 
-    if (config_port(fd, baud, flowctrl))
+    /*
+     * Allow a port to not be an actual serial port;
+     * if it is some other kind of device then config_port() fails.
+     */
+    if (config_port(fd, baud, flowctrl) && errno != ENOTTY)
 	goto fail;
 
     return fd;

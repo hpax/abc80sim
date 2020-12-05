@@ -8,9 +8,8 @@ static unsigned char output_buf[BUF_SIZE];
 static int output_head, output_tail;
 static struct abcprint *me;
 
-
 /* Called to send data abcprint -> abc */
-static size_t abcprint_send(void *pvt, const void *buf, size_t count)
+static ssize_t abcprint_send(void *pvt, const void *buf, size_t count)
 {
     const unsigned char *bp = buf;
     size_t sent = 0;

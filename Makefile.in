@@ -31,16 +31,17 @@ X		= @EXEEXT@
 .SECONDARY:
 .DELETE_ON_ERROR:
 
-GENC = $(patsubst %.rom,%.c,$(wildcard roms/*.rom))
+GENC = $(patsubst %.rom,%.c,$(wildcard roms/*.rom)) baudtospeed.c
 SRCS = abc80.c clock.c sdlscrn.c fgcolor.c screenshot.c \
 	z80.c z80irq.c abcmem.c abcio.c debug.c \
 	abcfont.c disk.c rtc.c simprint.c print.c fileop.c z80dis.c \
 	nstime.c hostfile.c console.c cas.c abcfile.c filelist.c \
 	trace.c sysload.c \
+	abcprintd.c serial.c \
 	clib/asprintf.c $(GENC)
 HDRS = clock.h screen.h z80.h z80irq.h patchlevel.h screenshot.h abcio.h \
        abcprintd.h rom.h nstime.h hostfile.h trace.h \
-       compiler.h console.h clib/inttypes.h config/config.h
+       compiler.h console.h config/config.h
 
 OBJS = $(patsubst %.c,%.$(O),$(SRCS))
 
