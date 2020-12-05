@@ -8,7 +8,7 @@
 
 #ifdef _WIN32
 # define NOPREFIX   "/.\\"
-# define _PATH_DEV  "\\\\.\\"
+# define _PATH_DEV  "\\\\.\\"	/* This is correct per MSDN */
 #else
 # define NOPREFIX "/."
 # ifndef _PATH_DEV
@@ -171,8 +171,7 @@ static int mytcflush(int fd, int queue)
 
 # else /* not Linux */
 
-#  include <termios.h>
-#  include "baudtospeed.c"
+#  include "baudtospeed.h"
 
 typedef struct termios my_termios;
 

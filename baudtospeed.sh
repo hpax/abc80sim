@@ -14,6 +14,7 @@ speeds=`(
     sed -ne 's/^[[:space:]]*#[[:space:]]*define[[:space:]][[:space:]]*B\([1-9][0-9]*\)[[:space:]].*$/\1/p'
 ) | sort -n -u`
 
+echo '#include "baudtospeed.h"'
 echo '#define SPEED_T_IS_SANE /* Begin optimistically... */'
 
 for s in $speeds; do
@@ -28,7 +29,7 @@ done
 echo ''
 echo ''
 
-echo 'static speed_t baudtospeed(unsigned long baud)'
+echo 'speed_t baudtospeed(unsigned long baud)'
 echo '{'
 echo '#ifdef SPEED_T_IS_SANE'
 echo '    return baud;'
@@ -46,5 +47,5 @@ done
 echo '        default:'
 echo '            return B0;'
 echo '    }'
-echo '#endif'
+echo '#endif /* SPEED_T_IS_SANE */'
 echo '}'

@@ -101,13 +101,16 @@ AC_CHECK_HEADERS(sys/time.h)
 AC_CHECK_HEADERS(unistd.h)
 AC_CHECK_HEADERS(fcntl.h)
 AC_CHECK_HEADERS(paths.h)
-AC_CHECK_HEADERS(termios.h)
 
 AC_CHECK_HEADERS(io.h)
 AC_CHECK_HEADERS(direct.h)
 AC_CHECK_HEADERS(synchapi.h)
 AC_CHECK_HEADERS(mmsystem.h)
 AC_CHECK_HEADERS(timeapi.h)
+
+dnl termios and speed_t
+PA_ADD_HEADERS(termios.h)
+AC_CHECK_TYPES(speed_t)
 
 dnl Useful functions which we may lack
 AC_CHECK_FUNCS([mempcpy])
