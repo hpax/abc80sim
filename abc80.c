@@ -54,6 +54,7 @@ static no_return help(void)
 {
     printf("Usage: %s [options] [[[memspace][@start],]romfile...]\n"
            "Simulate a microcomputer from the Luxor ABC series.\n"
+	   "Most long options can be prefixed with --no- to negate.\n"
            "\n"
            "Options (defaults in brackets):\n"
            "       --abc80             simulate an ABC80 (default)\n"
@@ -67,6 +68,10 @@ static no_return help(void)
            "       --basic             reverts the --no-basic option\n"
            "  -d,  --no-device         no device driver ROMs\n"
            "       --device            reverts the --no-device option\n"
+	   "       --no-dos            no disk operating system ROM\n"
+	   "       --dos               reverts the --no-dos option\n"
+	   "       --no-pr             no printer extension ROM\n"
+	   "       --pr                reverts the --no-pr option\n"
            "  -t,  --trace event,...   trace various events (see \"--trace help\")\n"
            "  -Ft, --tracefile file    redirect trace output to a file\n"
            "  -v, - -version           print the version string\n"
@@ -385,6 +390,12 @@ int main(int argc, char **argv)
             } else if (!strcmp(optstr, "device")) {
                 opts.memflags &= ~MEMFL_NODEV;
                 opts.memflags |= enable ? 0 : MEMFL_NODEV;
+	    } else if (!strcmp(optstr, "dos")) {
+		opts.memflags &= ~MEMFL_NODOS;
+		opts.memflags |= enable ? 0 : MEMFL_NODOS;
+	    } else if (!strcmp(optstr, "pr")) {
+		opts.memflags &= ~MEMFL_NOPR;
+		opts.memflags |= enable ? 0 : MEMFL_NOPR;
             } else if (!strcmp(optstr, "kb")) {
                 opts.kb = strtoul(LONG_ARG(), NULL, 0);
             } else if (!strcmp(optstr, "help")) {
