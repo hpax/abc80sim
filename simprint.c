@@ -72,8 +72,12 @@ static void printer_out(uint8_t sel, uint16_t port, uint8_t value)
 	abcprint_recv(me, &value, 1);   /* Data received abc -> abcprint */
         break;
 
+    case 2:
+	/* Flush Tx immediately - nop in simulation */
+	break;
+
     case 4:
-	printer_reset(sel);
+	printer_reset(sel);	/* Not supported by FT232H */
         break;
 
     default:
@@ -93,7 +97,15 @@ static uint8_t printer_in(uint8_t sel, uint16_t port)
         break;
 
     case 1:
-        v = abcprint_poll() ? 0x40 : 0;
+	/*
+	 * FT232H-compatible status codes:
+	 *
+	 * 0x08 = host configured
+	 * 0x04 = link suspended
+	 * 0x02 = Tx space available
+	 * 0x01 = Rx data available
+	 */
+        v = 0x0A | abcprint_poll();
         break;
 
     default:

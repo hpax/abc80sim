@@ -1,28 +1,37 @@
-; -*- asm -*-
+;;; -*- asm -*-
 ;
-; Simple option ROM for printer for ABC80; this is not authentic, but
-; was done for the FPGA project.  This assumes the following hardware
-; interface:
+;;; Simple option ROM for printer for ABC80; this is not authentic, but
+;;; uses a hardware interface implementable with an FT232H USB module.
+;;; It is (hopefully) at least similar to an ABC80 printer interface.
 ;
-; - ABC-bus select code 60 decimal;
-;   OUT 0 - (OUT)  output data
-;   OUT 4 - (C3)   reset input FIFO
-;   IN  0 - (INP)  input data
-;   INP 1 - (STAT) bit 5 - Tx busy
-;                  bit 6 - Rx available
-;                  bit 7 - flow control
-;
-; Convert FF -> FF FF and send FF 00 on CLOSE.
-;
+;;; - ABC-bus select code 60 decimal;
+;;;   OUT 0 - (OUT)  output data
+;;;   IN  0 - (INP)  input data
+;;;   IN  1 - (STAT) bit 0 - Rx data available
+;;;                  bit 1 - Tx space available
+;;;                  bit 2 - USB suspended (not ready)
+;;;                  bit 3 - USB configured (host ready)
+;;;   OUT 2 - (C1)   flush Tx buffer immediately
+;;;
+
+;;;
+;;; FF is used as an escape character for the file I/O and console
+;;; interfaces (FF A0..BF for file, FF C0 for console)
+;;;
+;;; FF FF is used to represent an FF character in the printer stream,
+;;; and FF 00 is send on CLOSE (end of job).
+;;;
 
 ;
-; To auto-initialize this, we need to patch the jump table entry
-; in the DOS, and then return to the original entry point in DOS.
-; Because the DOS ROM is basically full, hard-code the offset here.
+;;; To auto-initialize this, we need to patch the jump table entry
+;;; in the DOS, and then return to the original entry point in DOS.
+;;; Because the DOS ROM is basically full, hard-code the offset here.
 ;
 	defc selcode=60			; ABC-bus select code
 	defc SELECT=64831		; Current select code
 	defc DEVLIST=65034		; BASIC device list
+
+	defc ERROR=12h			; BASIC entry point for error A=<err>
 
 _start:
 	; jp table for PR:
@@ -69,7 +78,8 @@ pr_open:
 	call select
 
 	in a,(1)
-	and 01Fh
+	and 0Ch
+	xor 08h
 	jr z,done
 	; fall through to notthere
 
@@ -348,12 +358,13 @@ psb_found:
 	ret
 
 	; Send a single byte
+	; XXX: USB is fast enough that INIR/OTIR should be possible
 send_byte:
 	push af
 wb_loop:
 	in a,(1)
-	and 0A0h			; TX busy or TX flow control
-	jr nz,wb_loop
+	and 2				; TX space available
+	jr z,wb_loop
 	pop af
 	out (0),a
 	ret
@@ -361,7 +372,7 @@ wb_loop:
 	; Send a command header, A = command
 send_cmd:
 	push af
-	out (4),a		; Clear input FIFO
+	call flush_rx
 
 	ld a,255
 	call send_byte
@@ -372,27 +383,39 @@ send_cmd:
 	inc a
 	ld (ram_serial),a
 	call send_byte
-	defb 0xdd	; IXL
-	ld a,l
+	ld a,ixl
 	call send_byte
-	defb 0xdd	; IXH
-	ld a,h
-	jr send_byte
+	ld a,ixh
+	call send_byte
+flush_tx_ret:
+	out (2),a		; Flush output
+	ret
 
-	; Send a buffer HL->data BC=count
-	; On return HL advanced, BC=0, A clobbered
+	;; Send a buffer HL->data BC=count
+	;; On return HL advanced, BC=0, A clobbered
+	;;
+	;; XXX: use OTIR here, USB is fast enough
 send_buf:
 	ld a,b
 	or c
-	ret z
+	jr z,flush_tx_ret
 	ld a,(hl)
 	call send_byte
 	dec bc
 	inc hl
 	jr send_buf
 
-	; Receive a byte.  Return with C flag on timeout.
+	;; Receive a byte.  Return with C flag on timeout.
 recv_byte:
+	;; Optimistically...
+	in a,(1)
+	and 0Dh
+	cp 09h
+	jr nz,rb_with_timeout
+	in a,(0)		; Data immediately available
+	ret			; C=0 already
+
+rb_with_timeout:
 	push bc
 	ld b,0			; 256/50 Hz = 5.12 s
 rb_ctr:
@@ -400,12 +423,20 @@ rb_ctr:
 	ld c,a
 rb_loop:
 	in a,(1)
-	and 64
-	jr nz,rb_data
+	and 0Dh			; Data available + suspend + configured
+	sub 09h			; Data available + !suspend + configured
+	jr nz,rb_no_data
+	in a,(0)
+	pop bc
+	ret
+rb_no_data:
+	inc a			; Otherwise either suspend or !configured
+	jr nz,rb_error
 	ld a,(65008)
 	cp c
 	jr z,rb_loop
 	djnz rb_ctr
+rb_error:
 	pop bc
 	scf
 	ret
@@ -439,6 +470,18 @@ rr_timeout:
 rr_done:
 	pop bc
 	ret
+
+;;;
+;;; Flush any stale input. Terminate immediately if suspended, not configured,
+;;; or not present.
+;;;
+flush_rx:
+	in a,(1)
+	and 0Dh
+	sub 09h
+	ret nz
+	in a,(0)		; Consume byte
+	jr flush_rx
 
 prc_jptable:
 	jp pr_open			; OPEN
@@ -547,8 +590,8 @@ prc_device_rom:
 _padding:
 	defs (0x3C0 - _padding), 0xff
 
-; Abuse part of this "ROM" address space as RAM - to make it a plausive
-; hardware hack, it is uninitialized (64 bytes)
+;;; Abuse part of this "ROM" address space as RAM - to make it a plausive
+;;; hardware hack, it is uninitialized (64 bytes)
 _data:
 prc_device:
 	defs 7			; Needs to be in RAM due to linked list
@@ -562,6 +605,6 @@ ram_serial:
 ram_dummy:
 	defs 1			; Scratch byte
 
-; Pad with FF to the full 1K size
+;;; Pad with FF to the full 1K size
 _pad:
 	defs 1024-_pad, 0
