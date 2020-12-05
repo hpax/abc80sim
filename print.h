@@ -16,22 +16,6 @@ enum input_state {
     is_console                  /* Output to console */
 };
 
-/* File operations state machine */
-enum fileop_state {
-    st_op,                      /* Receiving command */
-    st_open,
-    st_read,
-    st_print,                   /* Before data */
-    st_print2,                  /* After data */
-    st_seek,
-    st_rename,
-    st_delete,
-    st_pread,
-    st_pwrite,                  /* Before data */
-    st_pwrite2,                 /* After data */
-    st_blksize
-};
-
 struct fileop_file {
     struct host_file *hf;
     bool binary;
@@ -42,6 +26,8 @@ typedef union argbuf {
     char c[32];
     uint64_t q;
 } argbuf;
+
+struct fop;
 
 struct abcprint {
     /* Function to send data */
@@ -56,8 +42,8 @@ struct abcprint {
     /* Input state machine */
     enum input_state istate;
 
-    /* File opeerations state machine */
-    enum fileop_state fstate;
+    /* Position in file operations sequence (0 = initial command) */
+    unsigned int fseq;
 
     /* System block size */
     unsigned int blksize;
@@ -69,11 +55,14 @@ struct abcprint {
     /* Pending I/O data */
     unsigned int datalen;	/* Data expected for the main data buffer */
     unsigned int byte_count;	/* Data still required */
+    unsigned char *bufp;	/* Pointer to initial buffer */
     unsigned char *bytep;	/* Pointer to next byte to be received */
-
+    const struct fop *fop;	/* Command being executed */
+    unsigned int seq;		/* Phase in sequence */
 
     /* Data buffers */
     unsigned char cmd[4];	/* Buffer for command */
+    uint64_t arg;		/* argbuf as a qword */
     argbuf argbuf;		/* Buffer for argument(s) */
     unsigned char data[65536+2]; /* Data buffer (maximum possible size) */
 

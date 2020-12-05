@@ -36,10 +36,7 @@ static void trace_data(const void *data, size_t len, const char *pfx)
     size_t i;
     const uint8_t *dp = data;
 
-    if (!tracing(TRACE_PR))
-        return;
-
-    fprintf(tracef, "PR:  %-5s: ", pfx);
+    fprintf(tracef, "PR:  %-7s : ", pfx);
 
     for (i = 0; i < 16; i++) {
         if (i >= len)
@@ -67,11 +64,14 @@ static void trace_data(const void *data, size_t len, const char *pfx)
     putc('\n', tracef);
 }
 
-static void pr_send(struct abcprint *me, const void *buf, size_t len)
+static unsigned int pr_send(struct abcprint *me, const void *buf,
+			    size_t len, const char *what)
 {
     const uint8_t *p = buf;
 
-    trace_data(buf, len, "SEND");
+    if (tracing(TRACE_PR))
+	trace_data(buf, len, what);
+
     while (len) {
 	ssize_t sent = me->sd.func(me->sd.pvt, p, len);
 	if (sent < 0)
@@ -79,9 +79,16 @@ static void pr_send(struct abcprint *me, const void *buf, size_t len)
 	len -= sent;
 	p += sent;
     }
+
+    return 0;			/* For convenience: no more data */
 }
 
-static void send_reply(struct abcprint *me, int status)
+static unsigned int send_data(struct abcprint *me, const void *buf, size_t len)
+{
+    return pr_send(me, buf, len, "return");
+}
+
+static unsigned int send_reply(struct abcprint *me, int status)
 {
     unsigned char reply[4];
 
@@ -90,10 +97,25 @@ static void send_reply(struct abcprint *me, int status)
     reply[2] = me->cmd[1];
     reply[3] = status;
 
-    pr_send(me, reply, 4);
+    return pr_send(me, reply, 4, "reply");
 }
 
-/* Returns the status code, use send_reply(me, do_close(ix)) if reply desired */
+/* Returns error code */
+static int do_blksize(struct abcprint *me, unsigned int arg)
+{
+    if (arg < 1 || arg > 65535)
+	return 128 + 11;
+
+    me->blksize = arg;
+    return 0;
+}
+
+static unsigned int fop_blksize(struct abcprint *me)
+{
+    return send_reply(me, do_blksize(me, me->arg));
+}
+
+/* Returns the error code if applicable */
 static int do_close(struct abcprint *me)
 {
     if (file_open(me->ff)) {
@@ -104,7 +126,13 @@ static int do_close(struct abcprint *me)
     }
 }
 
-static void do_closeall(struct abcprint *me, bool reply)
+static unsigned int fop_close(struct abcprint *me)
+{
+    return send_reply(me, do_close(me));
+}
+
+/* Close all files without sending a reply */
+static int do_close_all(struct abcprint *me)
 {
     size_t ix;
 
@@ -114,11 +142,31 @@ static void do_closeall(struct abcprint *me, bool reply)
 	    close_file(&ff->hf);
     }
 
-    if (reply)
-        send_reply(me, 0);
+    return 0;
 }
 
-static void do_open(struct abcprint *me, char *name)
+static unsigned int do_init(struct abcprint *me, unsigned int blksz)
+{
+    do_blksize(me, blksz);
+    return do_close_all(me);
+}
+
+static unsigned int fop_init(struct abcprint *me)
+{
+    return do_init(me, 253);
+}
+
+static unsigned int fop_initsz(struct abcprint *me)
+{
+    return do_init(me, me->arg);
+}
+
+static unsigned int fop_closeall(struct abcprint *me)
+{
+    return send_reply(me, do_close_all(me));
+}
+
+static unsigned int fop_open(struct abcprint *me)
 {
     int err;
     char path_buf[64];
@@ -127,10 +175,10 @@ static void do_open(struct abcprint *me, char *name)
     struct fileop_file *ff;
     struct host_file *hf;
     uint8_t cmd0 = me->cmd[0];
+    char *name = me->argbuf.c;
 
     if (!fileop_path) {
-        send_reply(me, 128 + 42);   /* Skivan ej klar */
-        return;
+        return send_reply(me, 128 + 42);   /* Skivan ej klar */
     }
 
     do_close(me);
@@ -155,28 +203,32 @@ static void do_open(struct abcprint *me, char *name)
     ff->hf = hf;
     ff->binary = cmd0 & 1;
 
-    switch (errno) {
+    if (hf) {
+	err = 0;
+    } else {
+	switch (errno) {
 #if 0                           /* Enable this? */
-    case EACCES:
-        err = 128 + 39;
-        break;
-    case EROFS:
-        err = 128 + 43;
-        break;
-    case EIO:
-    case ENOTDIR:
-        err = 128 + 48;
-        break;
+	case EACCES:
+	    err = 128 + 39;
+	    break;
+	case EROFS:
+	    err = 128 + 43;
+	    break;
+	case EIO:
+	case ENOTDIR:
+	    err = 128 + 48;
+	    break;
 #endif
-    default:
-	err = 128;		/* Hittar ej filen (default error) */
-        break;
+	default:
+	    err = 128;		/* Hittar ej filen (default error) */
+	    break;
+	}
     }
 
-    send_reply(me, hf ? 0 : err);
+    return send_reply(me, err);
 }
 
-static void do_read_block(struct abcprint *me, uint16_t len)
+static unsigned int do_read_block(struct abcprint *me, unsigned int len)
 {
     struct fileop_file *ff = me->ff;
     struct host_file *hf;
@@ -184,14 +236,12 @@ static void do_read_block(struct abcprint *me, uint16_t len)
     int dlen;
 
     if (!file_open(ff)) {
-        send_reply(me, 128 + 45);
-        return;
+        return send_reply(me, 128 + 45);
     }
     hf = ff->hf;
 
     if (file_mode(ff) == HF_DIRECTORY) {
-        send_reply(me, 128 + 37);   /* Felaktigt recordformat */
-        return;
+        return send_reply(me, 128 + 37);   /* Felaktigt recordformat */
     }
 
     clearerr(hf->f);
@@ -213,15 +263,19 @@ static void do_read_block(struct abcprint *me, uint16_t len)
             /* EOF - definitely not the default return! */
 	    err = 128 + 34;	/* Slut på filen (är det rätt?) */
         }
-        send_reply(me, err);
-        return;
+        return send_reply(me, err);
     }
 
     send_reply(me, 0);
 
     me->data[0] = len;
     me->data[1] = len >> 8;
-    pr_send(me, me->data, len + 2);
+    return send_data(me, me->data, len + 2);
+}
+
+static unsigned int fop_get(struct abcprint *me)
+{
+    return do_read_block(me, me->arg);
 }
 
 /* Common routine for all commands which need seek */
@@ -243,23 +297,23 @@ static int seeker(struct abcprint *me, uint64_t pos)
     return 0;
 }
 
-static void do_seek(struct abcprint *me, uint64_t pos)
+static unsigned int fop_seek(struct abcprint *me)
 {
-    send_reply(me, seeker(me, pos));
+    return send_reply(me, seeker(me, me->arg));
 }
 
-static void do_pread(struct abcprint *me, uint16_t blk)
+static unsigned int fop_pread(struct abcprint *me)
 {
     int err;
 
-    err = seeker(me, me->blksize * (long)blk);
+    err = seeker(me, me->blksize * me->arg);
     if (err)
-        send_reply(me, err);
+        return send_reply(me, err);
     else
-        do_read_block(me, me->blksize);
+        return do_read_block(me, me->blksize);
 }
 
-static void do_input(struct abcprint *me)
+static unsigned int fop_input(struct abcprint *me)
 {
     struct fileop_file *ff = me->ff;
     struct host_file *hf;
@@ -270,10 +324,9 @@ static void do_input(struct abcprint *me)
     struct dirent *de;
     struct stat st;
 
-    if (!file_open(ff)) {
-        send_reply(me, 128 + 45);
-        return;
-    }
+    if (!file_open(ff))
+	return send_reply(me, 128 + 45);
+
     hf = ff->hf;
 
     if (file_mode(ff) != HF_DIRECTORY) {
@@ -342,15 +395,17 @@ static void do_input(struct abcprint *me)
     }
 
     send_reply(me, err);
-    if (!err) {
-        data1[0] = dlen;
-        data1[1] = dlen >> 8;
-        pr_send(me, data1, dlen + 2);
-    }
+    if (err)
+	return 0;
+
+    data1[0] = dlen;
+    data1[1] = dlen >> 8;
+    return send_data(me, data1, dlen + 2);
 }
 
-static void do_print(struct abcprint *me, uint16_t len, bool eolcvt)
+static unsigned int do_write(struct abcprint *me, bool eolcvt)
 {
+    size_t len = me->datalen;
     struct fileop_file *ff = me->ff;
     struct host_file *hf;
     int err;
@@ -376,7 +431,7 @@ static void do_print(struct abcprint *me, uint16_t len, bool eolcvt)
     clearerr(hf->f);
     if (len) {
 	if (eolcvt && !file_binary(ff)) {
-	    int i;
+	    size_t i;
 	    for (i = 0; i < len - 1; i++) {
 		char c = me->data[i];
 		if (c == '\r')
@@ -419,22 +474,45 @@ static void do_print(struct abcprint *me, uint16_t len, bool eolcvt)
     }
 
 fail:
-    send_reply(me, err);
+    return send_reply(me, err);
 }
 
-static void do_pwrite(struct abcprint *me, uint16_t blk)
+static unsigned int arg_len(struct abcprint *me)
+{
+    /* Argument received is data length */
+    return me->arg;
+}
+static unsigned int arg_blkno(struct abcprint *me)
+{
+    /*
+     * Argument received is block number, blksize
+     * data bytes follow
+     */
+    return me->blksize;
+}
+
+static unsigned int fop_print(struct abcprint *me)
+{
+    return do_write(me, true);
+}
+static unsigned int fop_put(struct abcprint *me)
+{
+    return do_write(me, false);
+}
+static unsigned int fop_pwrite(struct abcprint *me)
 {
     int err;
 
-    err = seeker(me, me->blksize * (long)blk);
+    err = seeker(me, me->blksize * me->arg);
     if (err)
-        send_reply(me, err);
+        return send_reply(me, err);
     else
-        do_print(me, me->blksize, false);
+        return do_write(me, false);
 }
 
-static void do_rename(struct abcprint *me, const char *files)
+static unsigned int fop_rename(struct abcprint *me)
 {
+    const char *files = me->argbuf.c;
     char old_name[64], new_name[64];
     int err;
 
@@ -469,11 +547,12 @@ static void do_rename(struct abcprint *me, const char *files)
         }
     }
 
-    send_reply(me, err);
+    return send_reply(me, err);
 }
 
-static void do_delete(struct abcprint *me, const char *file)
+static unsigned int fop_delete(struct abcprint *me)
 {
+    const char *file = me->argbuf.c;
     char path_buf[64];
     int err;
 
@@ -506,7 +585,13 @@ static void do_delete(struct abcprint *me, const char *file)
         }
     }
 
-    send_reply(me, err);
+    return send_reply(me, err);
+}
+
+/* Invalid file operation */
+static unsigned int fop_invalid(struct abcprint *me)
+{
+    return send_reply(me, 128 + 11); /* Förstår ej */
 }
 
 /* Revert the state machine to its initial state (no command in progress) */
@@ -514,9 +599,10 @@ static void fileop_goto_init_state(struct abcprint *me)
 {
     memset(&me->cmd, 0, sizeof me->cmd);
     memset(&me->argbuf, 0, sizeof me->argbuf);
+    me->arg = 0;
+    me->fop = NULL;
     me->bytep = me->cmd;
     me->byte_count = 4;
-    me->fstate = st_op;
 }
 
 /* Initialize or terminate the fileop session */
@@ -542,177 +628,93 @@ static inline uint64_t get_qword(const argbuf *v)
 #endif
 }
 
-struct cmd {
-    unsigned int byte_count;	/* Additional command bytes needed */
-    enum fileop_state fstate;	/* Next parsing state */
+typedef unsigned int (*fop_func)(struct abcprint *);
+
+struct fop {
+    unsigned int byte_count;	/* Argument bytes needed */
     const char *name;		/* Command name for tracing */
+    fop_func runs[2];		/* Command phases */
 };
+
+/* If byte_count < 0, then the value is to be interpreted as a data length */
 
 /* Command info starting at 0xA0... */
 #define FIRST_CMD 0xA0
-static const struct cmd cmdinfo[] = {
-    { 11, st_open,    "OPEN_A" },  /* A0: OPEN ASCII */
-    { 11, st_open,    "OPEN_B" },  /* A1: OPEN BINARY */
-    { 11, st_open,    "PREP_A" },  /* A2: PREPARE ASCII */
-    { 11, st_open,    "PREP_B" },  /* A3: PREPARE BINARY */
-    {  0, st_op,      "INPUT" },   /* A4: INPUT */
-    {  2, st_read,    "GET" },     /* A5: READ BLOCK */
-    {  2, st_print,   "PRINT" },   /* A6: PRINT */
-    {  0, st_op,      "CLOSE"  },  /* A7: CLOSE */
-    {  0, st_op,      "CLOSALL" }, /* A8: CLOSE ALL */
-    {  0, st_op,      "INIT" },	   /* A9: close all and reset state*/
-    { 22, st_rename,  "RENAME" },  /* AA: RENAME */
-    { 11, st_delete,  "DELETE" },  /* AB: DELETE (KILL) */
-    {  2, st_pread,   "PREAD" },   /* AC: PREAD */
-    {  2, st_pwrite,  "PWRITE" },  /* AD: PWRITE */
-    {  2, st_blksize, "BLKSIZE" }, /* AE: SET BLOCK SIZE */
-    {  2, st_blksize, "INITSZ" },  /* AF: INIT BLOCK SIZE */
-    {  0, st_op,      "SEEK0" },   /* B0: SEEK0 (REWIND) */
-    {  1, st_seek,    "SEEK1" },   /* B1: SEEK1 */
-    {  2, st_seek,    "SEEK2" },   /* B2: SEEK2 */
-    {  3, st_seek,    "SEEK3" },   /* B3: SEEK3 */
-    {  4, st_seek,    "SEEK4" },   /* B4: SEEK4 */
-    {  5, st_seek,    "SEEK5" },   /* B5: SEEK5 */
-    {  6, st_seek,    "SEEK6" },   /* B6: SEEK6 */
-    {  7, st_seek,    "SEEK7" },   /* B7: SEEK7 */
-    {  8, st_seek,    "SEEK8" },   /* B8: SEEK8 */
-    {  2, st_print,   "PUT" },	   /* B9: PUT */
-    {  0, st_op,      "invalid" }  /* invalid command opcode */
+static const struct fop fops[] = {
+    { 11, "OPEN_A", { fop_open, NULL } },  /* A0: OPEN ASCII */
+    { 11, "OPEN_B", { fop_open, NULL } },  /* A1: OPEN BINARY */
+    { 11, "PREP_A", { fop_open, NULL } },  /* A2: PREPARE ASCII */
+    { 11, "PREP_B", { fop_open, NULL } },  /* A3: PREPARE BINARY */
+    {  0, "INPUT",  { fop_input, NULL } },   /* A4: INPUT */
+    {  2, "GET",    { fop_get, NULL } },     /* A5: READ BLOCK (GET) */
+    {  2, "PRINT",  { arg_len, fop_print } },   /* A6: PRINT */
+    {  0, "CLOSE",  { fop_close, NULL } },  /* A7: CLOSE */
+    {  0, "CLOSALL", { fop_closeall, NULL } }, /* A8: CLOSE ALL */
+    {  0, "INIT",   { fop_init, NULL } },    /* A9: close all and reset state */
+    { 22, "RENAME", { fop_rename, NULL } },  /* AA: RENAME */
+    { 11, "DELETE", { fop_delete, NULL } },  /* AB: DELETE (KILL) */
+    {  2, "PREAD",  { fop_pread, NULL } },   /* AC: PREAD */
+    {  2, "PWRITE", { arg_blkno, fop_pwrite } },  /* AD: PWRITE */
+    {  2, "BLKSIZE", { fop_blksize, NULL } }, /* AE: SET BLOCK SIZE */
+    {  2, "INITSZ", { fop_initsz, NULL } },  /* AF: INIT BLOCK SIZE */
+    {  0, "SEEK0", { fop_seek, NULL } },   /* B0: SEEK0 (REWIND) */
+    {  1, "SEEK1", { fop_seek, NULL } },   /* B1: SEEK1 */
+    {  2, "SEEK2", { fop_seek, NULL } },   /* B2: SEEK2 */
+    {  3, "SEEK3", { fop_seek, NULL } },   /* B3: SEEK3 */
+    {  4, "SEEK4", { fop_seek, NULL } },   /* B4: SEEK4 */
+    {  5, "SEEK5", { fop_seek, NULL } },   /* B5: SEEK5 */
+    {  6, "SEEK6", { fop_seek, NULL } },   /* B6: SEEK6 */
+    {  7, "SEEK7", { fop_seek, NULL } },   /* B7: SEEK7 */
+    {  8, "SEEK8", { fop_seek, NULL } },   /* B8: SEEK8 */
+    {  2, "PUT", { arg_len, fop_put } },     /* B9: PUT */
+    {  0, "invalid", { fop_invalid, NULL } }  /* invalid command opcode */
 };
 
 bool file_op(struct abcprint *me, unsigned char c)
 {
-    uint64_t arg;
-    unsigned int cmdnr;
-    const struct cmd *cmd;
-
     *me->bytep++ = c;
     if (--me->byte_count)
         return true;            /* More to do... */
 
     /* Otherwise, we have a full deck of *something* */
-    me->ix = (me->cmd[3] << 8) + me->cmd[2];
-    me->ff = getfile(me, me->ix);
-    arg = get_qword(&me->argbuf);
-    me->bytep = me->argbuf.b;
+    me->ix    = (me->cmd[3] << 8) + me->cmd[2];
+    me->ff    = getfile(me, me->ix);
+    me->arg   = get_qword(&me->argbuf);
 
-    switch (me->fstate) {
-    case st_op:
-	cmdnr = me->cmd[0] - FIRST_CMD;
-	if (cmdnr >= ARRAY_SIZE(cmdinfo))
-	    cmdnr = ARRAY_SIZE(cmdinfo) - 1;
-	cmd = &cmdinfo[cmdnr];
+    if (!me->fop) {
+	size_t cmdix = me->cmd[0] - FIRST_CMD;
 
-	me->byte_count = cmd->byte_count;
-	me->fstate     = cmd->fstate;
+	if (cmdix >= ARRAY_SIZE(fops))
+	    cmdix = ARRAY_SIZE(fops) - 1;
+	me->fop = &fops[cmdix];
+	me->byte_count = me->fop->byte_count;
+	me->datalen = 0;
+	me->bytep = me->bufp = me->argbuf.b;
+	me->fseq = 0;
 
         if (tracing(TRACE_PR)) {
-            fprintf(tracef, "PR:  CMD  : %-6s %02x %02x %04x <need %u bytes>\n",
-		    cmd->name, me->cmd[0], me->cmd[1],
-		    me->ix, me->byte_count);
+            fprintf(tracef, "PR:  %-7s : %02X %02x %04x",
+		    me->fop->name, me->cmd[0], me->cmd[1], me->ix);
+	    if (me->byte_count)
+		fprintf(tracef, " <need %u bytes>", me->byte_count);
+	    fputc('\n', tracef);
 	}
-
-	if (me->byte_count)
-	    break;		/* Need more data; deferred command */
-
-        switch (me->cmd[0]) {
-        case 0xA4:             /* INPUT */
-            do_input(me);
-            break;
-
-        case 0xA7:             /* CLOSE */
-            send_reply(me, do_close(me));
-            break;
-
-        case 0xA8:             /* CLOSE ALL */
-            do_closeall(me, true);
-            break;
-
-        case 0xA9:             /* INIT */
-            me->blksize = 253;
-            do_closeall(me, false);
-            break;
-
-        case 0xB0:             /* SEEK0 == REWIND */
-            do_seek(me, 0);
-            break;
-
-        default:
-            /* Unknown command */
-            send_reply(me, 128 + 11);
-            break;
-        }
-	break;
-
-    case st_open:
-        trace_data(me->argbuf.b, 11, "OPEN");
-        do_open(me, me->argbuf.c);
-        break;
-
-    case st_read:
-        trace_data(me->argbuf.b, 2, "READ");
-        do_read_block(me, arg);
-        break;
-
-    case st_print:
-        trace_data(me->argbuf.b, 2, "WRTE");
-        me->bytep = me->data;
-        me->byte_count = arg;
-        me->fstate = st_print2;
-        break;
-
-    case st_print2:
-        trace_data(me->data, me->datalen, "DATA");
-        do_print(me, me->datalen, me->cmd[0] == 0xA6);
-        break;
-
-    case st_pwrite:
-        trace_data(me->argbuf.b, 2, "PWRT");
-        me->bytep = me->data;
-        me->byte_count = 253;
-        me->fstate = st_pwrite2;
-        break;
-
-    case st_pwrite2:
-        trace_data(me->data, me->datalen, "DATA");
-        do_pwrite(me, arg);
-        break;
-
-    case st_pread:
-        trace_data(me->argbuf.b, 2, "PRED");
-        do_pread(me, arg);
-        break;
-
-    case st_seek:
-        trace_data(me->argbuf.b, me->cmd[0] - 0xb0, "SEEK");
-        do_seek(me, arg);
-        break;
-
-    case st_rename:
-        trace_data(me->argbuf.b, 11, "REN1");
-        trace_data(me->argbuf.b + 11, 11, "REN2");
-        do_rename(me, me->argbuf.c);
-        break;
-
-    case st_delete:
-        trace_data(me->argbuf.b, 11, "DEL ");
-        do_delete(me, me->argbuf.c);
-        break;
-
-    case st_blksize:
-        trace_data(me->argbuf.b, 2, "SIZE");
-        me->blksize = arg;
-        if (me->cmd[0] == 0xAF)
-            do_closeall(me, false);
-        break;
+    } else {
+	if (tracing(TRACE_PR))
+	    trace_data(me->bufp, me->bytep - me->bufp, me->fop->name);
     }
 
-    me->datalen = me->byte_count;
+    if (me->byte_count)
+	return true;
 
+    me->byte_count = me->fop->runs[me->fseq](me);
     if (me->byte_count) {
-        return true;
+	me->datalen = me->byte_count;
+	me->bytep = me->bufp = me->data;
+	me->fseq++;
+	return true;
     } else {
 	fileop_goto_init_state(me);
-        return false;
+	return false;
     }
 }
