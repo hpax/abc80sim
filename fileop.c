@@ -542,9 +542,49 @@ static inline uint64_t get_qword(const argbuf *v)
 #endif
 }
 
+struct cmd {
+    unsigned int byte_count;	/* Additional command bytes needed */
+    enum fileop_state fstate;	/* Next parsing state */
+    const char *name;		/* Command name for tracing */
+};
+
+/* Command info starting at 0xA0... */
+#define FIRST_CMD 0xA0
+static const struct cmd cmdinfo[] = {
+    { 11, st_open,    "OPEN_A" },  /* A0: OPEN ASCII */
+    { 11, st_open,    "OPEN_B" },  /* A1: OPEN BINARY */
+    { 11, st_open,    "PREP_A" },  /* A2: PREPARE ASCII */
+    { 11, st_open,    "PREP_B" },  /* A3: PREPARE BINARY */
+    {  0, st_op,      "INPUT" },   /* A4: INPUT */
+    {  2, st_read,    "GET" },     /* A5: READ BLOCK */
+    {  2, st_print,   "PRINT" },   /* A6: PRINT */
+    {  0, st_op,      "CLOSE"  },  /* A7: CLOSE */
+    {  0, st_op,      "CLOSALL" }, /* A8: CLOSE ALL */
+    {  0, st_op,      "INIT" },	   /* A9: close all and reset state*/
+    { 22, st_rename,  "RENAME" },  /* AA: RENAME */
+    { 11, st_delete,  "DELETE" },  /* AB: DELETE (KILL) */
+    {  2, st_pread,   "PREAD" },   /* AC: PREAD */
+    {  2, st_pwrite,  "PWRITE" },  /* AD: PWRITE */
+    {  2, st_blksize, "BLKSIZE" }, /* AE: SET BLOCK SIZE */
+    {  2, st_blksize, "INITSZ" },  /* AF: INIT BLOCK SIZE */
+    {  0, st_op,      "SEEK0" },   /* B0: SEEK0 (REWIND) */
+    {  1, st_seek,    "SEEK1" },   /* B1: SEEK1 */
+    {  2, st_seek,    "SEEK2" },   /* B2: SEEK2 */
+    {  3, st_seek,    "SEEK3" },   /* B3: SEEK3 */
+    {  4, st_seek,    "SEEK4" },   /* B4: SEEK4 */
+    {  5, st_seek,    "SEEK5" },   /* B5: SEEK5 */
+    {  6, st_seek,    "SEEK6" },   /* B6: SEEK6 */
+    {  7, st_seek,    "SEEK7" },   /* B7: SEEK7 */
+    {  8, st_seek,    "SEEK8" },   /* B8: SEEK8 */
+    {  2, st_print,   "PUT" },	   /* B9: PUT */
+    {  0, st_op,      "invalid" }  /* invalid command opcode */
+};
+
 bool file_op(struct abcprint *me, unsigned char c)
 {
     uint64_t arg;
+    unsigned int cmdnr;
+    const struct cmd *cmd;
 
     *me->bytep++ = c;
     if (--me->byte_count)
@@ -558,35 +598,33 @@ bool file_op(struct abcprint *me, unsigned char c)
 
     switch (me->fstate) {
     case st_op:
-        switch (me->cmd[0]) {
-        case 0xA0:             /* OPEN TEXT */
-        case 0xA1:             /* OPEN BINARY */
-        case 0xA2:             /* PREPARE TEXT */
-        case 0xA3:             /* PREPARE BINARY */
-            me->byte_count = 11;
-            me->fstate = st_open;
-            break;
+	cmdnr = me->cmd[0] - FIRST_CMD;
+	if (cmdnr >= ARRAY_SIZE(cmdinfo))
+	    cmdnr = ARRAY_SIZE(cmdinfo) - 1;
+	cmd = &cmdinfo[cmdnr];
 
+	me->byte_count = cmd->byte_count;
+	me->fstate     = cmd->fstate;
+
+        if (tracing(TRACE_PR)) {
+            fprintf(tracef, "PR:  CMD  : %-6s %02x %02x %04x <need %u bytes>\n",
+		    cmd->name, me->cmd[0], me->cmd[1],
+		    me->ix, me->byte_count);
+	}
+
+	if (me->byte_count)
+	    break;		/* Need more data; deferred command */
+
+        switch (me->cmd[0]) {
         case 0xA4:             /* INPUT */
             do_input(me);
-            break;
-
-        case 0xA5:             /* READ BLOCK */
-            me->byte_count = 2;
-            me->fstate = st_read;
-            break;
-
-        case 0xA6:             /* PRINT */
-        case 0xB9:             /* PUT */
-            me->byte_count = 2;
-            me->fstate = st_print;
             break;
 
         case 0xA7:             /* CLOSE */
             send_reply(me, do_close(me));
             break;
 
-        case 0xA8:             /* CLOSEALL */
+        case 0xA8:             /* CLOSE ALL */
             do_closeall(me, true);
             break;
 
@@ -595,46 +633,8 @@ bool file_op(struct abcprint *me, unsigned char c)
             do_closeall(me, false);
             break;
 
-        case 0xAE:             /* SET BLOCK SIZE */
-        case 0xAF:             /* INITSZ */
-            me->byte_count = 2;
-            me->fstate = st_blksize;
-            break;
-
-        case 0xAA:             /* RENAME */
-            me->byte_count = 22;
-            me->fstate = st_rename;
-            break;
-
-        case 0xAB:             /* DELETE */
-            me->byte_count = 11;
-            me->fstate = st_delete;
-            break;
-
-        case 0xAC:             /* PREAD */
-            me->byte_count = 2;
-            me->fstate = st_pread;
-            break;
-
-        case 0xAD:             /* PWRITE */
-            me->byte_count = 2;
-            me->fstate = st_pwrite;
-            break;
-
         case 0xB0:             /* SEEK0 == REWIND */
             do_seek(me, 0);
-            break;
-
-        case 0xB1:             /* SEEK1 */
-        case 0xB2:             /* SEEK2 */
-        case 0xB3:             /* SEEK3 */
-        case 0xB4:             /* SEEK4 */
-        case 0xB5:             /* SEEK5 */
-        case 0xB6:             /* SEEK6 */
-        case 0xB7:             /* SEEK7 */
-        case 0xB8:             /* SEEK8 */
-            me->byte_count = me->cmd[0] - 0xb0;
-            me->fstate = st_seek;
             break;
 
         default:
@@ -642,25 +642,7 @@ bool file_op(struct abcprint *me, unsigned char c)
             send_reply(me, 128 + 11);
             break;
         }
-        if (tracing(TRACE_PR)) {
-            static const char *const cmdnames[0x20] = {
-                "OPEN A", "OPEN B", "PREP A", "PREP B",
-                "INPUT", "GET", "PRINT", "CLOSE",
-                "CALL", "CALLNR", "RENAME", "DELETE",
-                "PREAD", "PWRITE", "BLKSIZ", "INITSZ",
-                "REWIND", "SEEK1", "SEEK2", "SEEK3",
-                "SEEK4", "SEEK5", "SEEK6", "SEEK7",
-                "SEEK8", "PUT", NULL, NULL,
-                NULL, NULL, NULL, NULL
-            };
-            int cnum = me->cmd[0] - 0xa0;
-            const char *cmdname = (cnum >= 0x20) ? NULL : cmdnames[cnum];
-
-            fprintf(tracef, "PR:  CMD  : %-6s %02x %02x %04x <need %u bytes>\n",
-                    cmdname ? cmdname : "???", me->cmd[0], me->cmd[1],
-		    me->ix, me->byte_count);
-        }
-        break;
+	break;
 
     case st_open:
         trace_data(me->argbuf.b, 11, "OPEN");
