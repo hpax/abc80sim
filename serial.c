@@ -135,8 +135,9 @@ static int config_port(int fd, unsigned long baud, enum flowctrl flowctrl)
  * Linux has been able to set arbitrary speeds for ages, but glibc never
  * caught up.  Our own mini-implementation of termios...
  */
-#  include <sys/ioctl.h>
-#  include <asm/termbits.h>	/* struct termios2 */
+#include <sys/ioctl.h>
+#include <asm/termbits.h>	/* struct termios2 */
+#include <linux/serial.h>	/* struct serial_struct */
 
 #ifndef TCGETS2			/* On PowerPC kernel termios == termios2 */
 typedef struct termios my_termios;
@@ -145,6 +146,23 @@ typedef struct termios my_termios;
 #else
 typedef struct termios2 my_termios;
 #endif
+
+/* Do nonstandard initialization: set port to minimal latency */
+static int mytcsetup(int fd)
+{
+    struct serial_struct ss;
+    int rv;
+
+    memset(&ss, 0, sizeof ss);
+
+    rv = ioctl(fd, TIOCGSERIAL, &ss);
+    if (rv)
+	return rv;
+
+    ss.flags |= ASYNC_LOW_LATENCY;
+
+    return ioctl(fd, TIOCSSERIAL, &ss);
+}
 
 static int mytcgetattr(int fd, my_termios *tio)
 {
@@ -174,6 +192,12 @@ static int mytcflush(int fd, int queue)
 #  include "baudtospeed.h"
 
 typedef struct termios my_termios;
+
+static int mytcsetup(int fd)
+{
+    (void)fd;
+    return 0;
+}
 
 # define mytcgetattr(x,y) tcgetattr(x, y)
 # define mytcsetattr(x,y) tcsetattr(x, TCSANOW, y)
@@ -207,6 +231,8 @@ static int config_port(int fd, unsigned long baud, enum flowctrl flowctrl)
 	errno = EINVAL;
 	return -1;
     }
+
+    mytcsetup(fd);		/* Ignore failures here */
 
     if (mytcgetattr(fd, &tio))
 	return -1;
