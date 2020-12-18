@@ -28,10 +28,29 @@
 ;;; Because the DOS ROM is basically full, hard-code the offset here.
 ;
 	defc selcode=60			; ABC-bus select code
+	defc CURX=65011			; Cursor column
+	defc CURY=65012			; Cursor row
+	defc COLUMNS=472		; Columns per text row
+	defc CTRLC=65031		; Ctrl-C flag bit 7
+	defc IYBASE=65046
 	defc SELECT=64831		; Current select code
 	defc DEVLIST=65034		; BASIC device list
+	defc RADBUF=65088		; BASIC line buffer
+	defc RADBUF_LEN=120
+	defc CRAD=65208			; P-code buf during compile
+	defc CRAD_LEN=200
 
 	defc ERROR=12h			; BASIC entry point for error A=<err>
+	defc END=201			; BASIC routine for END
+	defc CMD=204			; BASIC routine command loop
+	defc CON_GET=2			; Console get character
+	defc CON_INPUT=5		; Console INPUT LINE routine
+	defc CON_PRINT=11		; Console PRINT routine
+	defc CON_CRLF=0742h		; CRLF on console
+	defc BLK_INPUT=0015h		; Block I/O INPUT LINE routine
+	defc BLK_PRINT=001Bh		; Block I/O PRINT routine
+	defc IX_CLOSE=087Fh		; BASIC CLOSE routine
+	defc CUR_MAX_X=0338h		; A = current column, E = max column
 
 __begin:
 	; jp table for PR:
@@ -144,8 +163,8 @@ prb_jptable:
 	jp prb_open			; OPEN
 	jp prb_prepare			; PREPARE
 	jp prb_close			; CLOSE
-	jp 0015h			; INPUT
-	jp 001Bh			; PRINT
+	jp BLK_INPUT			; INPUT
+	jp BLK_PRINT			; PRINT
 	jp prb_rdblk			; RDBLK
 	jp prb_wrblk			; WRBLK
 	; Supporting DELETE and RENAME requires fixes to the DOS ROM;
@@ -156,7 +175,12 @@ prb_jptable:
 
 pra_prepare:
 	ld c,0xA2
-	jr prx_open
+	ld a,(de)
+	cp ' '				; Empty filename for PREPARE?
+	jr nz,prx_open
+	bit 0,(iy+14)			; Command mode?
+	jr z,prx_open
+	jp pra_quicklib			; LIST PRA: = print lib
 prb_prepare:
 	call prb_setup_buf
 	ld (ix+14),1
@@ -357,6 +381,71 @@ psb_found:
 	pop hl
 	ret
 
+	;; Show library listing on screen
+pra_quicklib:
+	call pra_open		; Complete the file open
+	ret c
+
+	call CON_CRLF
+	ld (ix+6),22		; 22 lines before wait
+ql_getline:
+	bit 7,(iy+CTRLC-IYBASE)	; ^C?
+	jr nz,ql_done
+
+	ld hl,RADBUF
+	push hl
+	ld bc,RADBUF_LEN
+	call pra_input
+	pop hl
+	jr c,ql_done
+	call CUR_MAX_X
+	ld bc,13
+	add c			; Space needed
+	sub e
+	jr c,ql_nocrlf
+
+	call CON_CRLF
+	dec (ix+6)
+	jr nz,ql_nocrlf
+
+	push ix
+	call CON_GET
+	pop ix
+
+	bit 7,(iy+CTRLC-IYBASE)	; ^C?
+	jr nz,ql_done
+
+	ld (ix+6),1		; <Return> = one line only
+	cp 13
+	jr z,ql_nocrlf
+
+	ld (ix+6),22
+
+ql_nocrlf:
+	push hl
+	ld b,12
+ql_find_comma:
+	ld a,(hl)
+	cp ','
+	jr z,ql_found_comma
+	inc hl
+	djnz ql_find_comma
+ql_found_comma:
+	inc b
+ql_pad_space:
+	ld (hl),' '
+	inc hl
+	djnz ql_pad_space
+ql_cleaned_comma:
+	pop hl
+	; BC = 13 here
+	call CON_PRINT
+	jr ql_getline
+ql_done:
+	call IX_CLOSE
+	jp CMD			; Return to command loop - abort LIST command
+
+
 	; Send a command header, A = command
 send_cmd:
 	push af
@@ -527,6 +616,12 @@ init:
 	call send_cmd
 	jp done
 
+con_open:
+	ld a,(COLUMNS)		; Be extra nice by setting the
+				; line width field in the IX structure.
+	ld (ix+7),a
+	;; Fall through
+
 trivial:			; Trivially successful call
 	xor a			; A <- 0  carry <- 0
 	ret
@@ -540,11 +635,11 @@ eof:				; End of file or file not found
 ;;; Simple CON and NUL devices for ABC800 compatibility
 ;;;
 con_jptable:
-	jp trivial			; OPEN
-	jp trivial			; PREPARE
+	jp con_open			; OPEN
+	jp con_open			; PREPARE
 	jp trivial			; CLOSE
-	jp 0005h			; INPUT
-	jp 000Bh			; PRINT
+	jp CON_INPUT			; INPUT
+	jp CON_PRINT			; PRINT
 	jp notthere			; RDBLK
 	jp notthere			; WRBLK
 	jp notthere			; DELETE
@@ -586,12 +681,10 @@ prc_device_rom:
 	defm "PRC"
 	defw prc_jptable
 
-_padding:
-	defs (0x3C0 - _padding), 0xff
-
-;;; Abuse part of this "ROM" address space as RAM - to make it a plausive
-;;; hardware hack, it is uninitialized (64 bytes)
-_data:
+;;
+;; Mutable memory follows
+;;
+__data:
 prc_device:
 	defs 7			; Needs to be in RAM due to linked list
 

@@ -183,16 +183,14 @@ static unsigned int fop_open(struct abcprint *me)
 
     do_close(me);
 
-    unmangle_filename(path_buf, name);
-
-    if (!path_buf[0]) {
+    if (name[0] == ' ') {
         /* Empty filename (readdir) */
-
+	path_buf[0] = '\0';
         mode = ((cmd0 & 3) == 0) ? HF_DIRECTORY : HF_FAIL;
         openflags = 0;
     } else {
         /* Actual filename */
-
+	unmangle_filename(path_buf, name);
         mode = HF_BINARY;
         mode |= (cmd0 & 2) ? 0 : HF_RETRY;
         openflags = (cmd0 & 2) ? (O_RDWR | O_TRUNC | O_CREAT) : O_RDWR;
