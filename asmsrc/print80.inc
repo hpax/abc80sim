@@ -617,9 +617,11 @@ init:
 	jp done
 
 con_open:
-	ld a,(COLUMNS)		; Be extra nice by setting the
-				; line width field in the IX structure.
-	ld (ix+7),a
+	;; Be nice and initialize the position fields, even though
+	;; we aren't really able to keep them updated...
+	call CUR_MAX_X
+	ld (ix+6),a
+	ld (ix+7),e
 	;; Fall through
 
 trivial:			; Trivially successful call
