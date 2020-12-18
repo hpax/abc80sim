@@ -357,18 +357,6 @@ psb_found:
 	pop hl
 	ret
 
-	; Send a single byte
-	; XXX: USB is fast enough that INIR/OTIR should be possible
-send_byte:
-	push af
-wb_loop:
-	in a,(1)
-	and 2				; TX space available
-	jr z,wb_loop
-	pop af
-	out (0),a
-	ret
-
 	; Send a command header, A = command
 send_cmd:
 	push af
@@ -386,9 +374,18 @@ send_cmd:
 	ld a,ixl
 	call send_byte
 	ld a,ixh
-	call send_byte
-flush_tx_ret:
-	out (2),a		; Flush output
+	; Fall through to send_byte
+
+	; Send a single byte
+	; XXX: USB is fast enough that INIR/OTIR should be possible
+send_byte:
+	push af
+wb_loop:
+	in a,(1)
+	and 2				; TX space available
+	jr z,wb_loop
+	pop af
+	out (0),a
 	ret
 
 	;; Send a buffer HL->data BC=count
@@ -398,7 +395,7 @@ flush_tx_ret:
 send_buf:
 	ld a,b
 	or c
-	jr z,flush_tx_ret
+	ret z
 	ld a,(hl)
 	call send_byte
 	dec bc
@@ -450,19 +447,21 @@ rb_data:
 	; Error, if any, in A. ERR 51 if no reply
 recv_reply:
 	push bc
+	out (2),a		; Flush any pending output
+rr_loop:
 	call recv_byte
 	jr c,rr_timeout
 	inc a
-	jr nz,recv_reply
+	jr nz,rr_loop
 	call recv_byte
 	jr c,rr_timeout
 	ld bc,(ram_cmd)
 	cp c			; Command
-	jr nz,recv_reply
+	jr nz,rr_loop
 	call recv_byte
 	jr c,rr_timeout
 	cp b			; Serial
-	jr nz,recv_reply
+	jr nz,rr_loop
 	call recv_byte
 	jr nc,rr_done
 rr_timeout:
