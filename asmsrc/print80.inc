@@ -383,6 +383,14 @@ psb_found:
 
 	;; Show library listing on screen
 pra_quicklib:
+	;; Clear out possible extension like .BAS
+	push de
+	ld l,e
+	ld h,d
+	inc de
+	ld bc,10
+	ldir
+	pop de
 	call pra_open		; Complete the file open
 	ret c
 
