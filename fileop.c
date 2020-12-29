@@ -176,7 +176,7 @@ static unsigned int fop_closeall(struct abcprint *me)
  * including CR LF but not including NUL. Return 0 if EOF.
  */
 /* Bytes needed in a directory string buffer (safe estimate) */
-#define DIRSTR_BUF (12+3+2*3*sizeof(unsigned long)+2)
+#define DIRSTR_BUF (12+3+2*3*sizeof(unsigned long)+21+2)
 static unsigned int read_dir_entry(struct abcprint *me, char *buf)
 {
     struct dirent *de;
@@ -201,11 +201,19 @@ static unsigned int read_dir_entry(struct abcprint *me, char *buf)
 
     if (dlen) {
 	unsigned long blocks, pad;
+	struct tm tm;
+	memset(&tm, 0, sizeof tm);
+
+	localtime_r(&st.st_mtime, &tm);
+
 	blocks = (st.st_size + me->blksize - 1) / me->blksize;
 	pad = me->blksize * blocks - st.st_size;
+
 	/* pad = unused bytes in the last block */
 	dlen += snprintf(buf + dlen, DIRSTR_BUF - dlen,
-			 ",%lu,%lu\r\n", blocks, pad);
+			 ",%lu,%lu,\"%04d-%02d-%02d %02d.%02d.%02d\"\r\n",
+			 blocks, pad, tm.tm_year + 1900, tm.tm_mon + 1,
+			 tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
     }
 
     return dlen;
