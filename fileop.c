@@ -31,6 +31,7 @@ static inline enum host_file_mode file_mode(const struct fileop_file *ff)
     return ff->hf->mode;
 }
 
+#define MAX_TRACE 16
 static void trace_data(const void *data, size_t len, const char *pfx)
 {
     size_t i;
@@ -38,7 +39,7 @@ static void trace_data(const void *data, size_t len, const char *pfx)
 
     fprintf(tracef, "PR:  %-7s : ", pfx);
 
-    for (i = 0; i < 16; i++) {
+    for (i = 0; i < MAX_TRACE; i++) {
         if (i >= len)
             fprintf(tracef, "  ");
         else
@@ -49,7 +50,7 @@ static void trace_data(const void *data, size_t len, const char *pfx)
 
     fprintf(tracef, "%c  [", (len > 16) ? '+' : ' ');
 
-    for (i = 0; i < 16; i++) {
+    for (i = 0; i < MAX_TRACE; i++) {
         char c;
 
         c = (i >= len) ? ' ' : dp[i];
@@ -59,7 +60,7 @@ static void trace_data(const void *data, size_t len, const char *pfx)
         putc(c, tracef);
     }
     putc(']', tracef);
-    if (len > 16)
+    if (len > MAX_TRACE)
         fprintf(tracef, "+ (%lu bytes)", (unsigned long)len);
     putc('\n', tracef);
 }
@@ -766,6 +767,104 @@ void fileop_reset(struct abcprint *me)
     fileop_goto_init_state(me);
 }
 
+/* List available volumes, including PRA: and PRB: which default to . */
+#define MAX_VOL 32
+
+static unsigned int fop_listvol(struct abcprint *me)
+{
+    struct host_file *hf;
+    unsigned char * const volbuf = me->data + 2;
+    unsigned char *vol;
+    int vols, i;
+
+    memcpy(volbuf, "\1PRA\2PRB", 9);
+    vols = 2;
+
+    hf = open_host_file(HF_DIRECTORY, NULL, fileop_path, 0);
+    if (hf) {
+	struct dirent *de;
+	while ((de = readdir(hf->d))) {
+	    unsigned int nlen;
+	    unsigned int mode;
+	    char volname[16];
+	    char *dot;
+
+	    if (de->d_name[0] == '.')
+		continue;
+
+	    nlen = mangle_for_readdir(volname, de->d_name);
+	    if (!nlen)
+		continue;
+
+	    dot = strchr(volname, '.');
+	    if (!dot) {
+		dot = volname + nlen;
+		memcpy(dot, ".@", 3); /* Default mode */
+		nlen += 2;
+	    }
+
+	    if (nlen <= 2)
+		continue;
+
+	    if (dot < volname+1 || dot > volname+3)
+		continue;	/* Volume name must be 1-3 characters */
+
+	    /* Mode must be one character */
+	    if (dot != volname+nlen-2)
+		continue;
+
+	    mode = volname[nlen-1] - '@';
+
+	    if (mode > 2)
+		continue;
+
+	    /* Volume is a 3-byte space-padded string */
+	    memset(dot, ' ', 3);
+
+	    /*
+	     * Did this volume already exist? If so, use the
+	     * highest numbered mode encountered (0 = default,
+	     * replace with binary unless overridden)
+	     */
+	    vol = volbuf;
+	    for (i = 0; i < vols; i++) {
+		if (!memcmp(vol+1, volname, 3)) {
+		    if (mode > *vol)
+			*vol = mode;
+		    break;
+		}
+		vol += 4;
+	    }
+	    if (i >= vols) {
+		/* New volume */
+		if (vols >= MAX_VOL)
+		    continue;
+
+		*vol = mode;
+		memcpy(vol+1, volname, 3);
+		vol[4] = 0;
+		vols++;
+	    }
+	}
+    }
+
+    /* For any volume which still has the default mode, set mode to binary */
+    vol = volbuf;
+    for (i = 0; i < vols; i++) {
+	if (*vol == 0)
+	    *vol = 2;
+	vol += 4;
+    }
+
+    send_reply(me, 0);		/* This command is always successful */
+
+    me->data[0] = (vols << 2) + 1;
+    me->data[1] = vols >> 6;
+    send_data(me, me->data, (vols << 2)+3);
+
+    return 0;
+}
+
 static inline uint64_t get_qword(const argbuf *v)
 {
 #ifdef WORDS_LITTLEENDIAN
@@ -821,6 +920,7 @@ static const struct fop fops[] = {
     {  7, "SEEK7", { fop_seek, NULL } },   /* B7: SEEK7 */
     {  8, "SEEK8", { fop_seek, NULL } },   /* B8: SEEK8 */
     {  2, "PUT", { arg_len, fop_put } },     /* B9: PUT */
+    {  0, "LISTVOL", { fop_listvol, NULL } }, /* BA: LIST VOLUMES */
     {  0, "invalid", { fop_invalid, NULL } }  /* invalid command opcode */
 };
 

@@ -274,9 +274,15 @@ output_common:
 	call send_buf
 	jp recv_reply
 
+recv_len:
+
 pra_input:
 	call select
 	ld a,0xA4			; INPUT
+	;; This routine can be called to handle a command with a
+	;; reply + len + data response.
+	;; HL -> target_buf, A = command, BC = buffer size
+input_command:
 	call send_cmd
 	call recv_reply
 	and a
@@ -566,7 +572,7 @@ recv_reply:
 rr_loop:
 	call recv_byte
 	jr c,rr_timeout
-	inc a
+	inc a			; FF?
 	jr nz,rr_loop
 	call recv_byte
 	jr c,rr_timeout
@@ -597,6 +603,7 @@ flush_rx:
 	in a,(0)		; Consume byte
 	jr flush_rx
 
+	if 0
 prc_jptable:
 	jp pr_open			; OPEN
 	jp pr_open			; PREPARE
@@ -627,6 +634,7 @@ prc_skip:
 	dec bc
 	inc hl
 	jr prc_print_loop
+	endif
 
 init:
 	ld hl,prc_device_rom-2
@@ -637,9 +645,19 @@ init:
 	ld (prc_device),hl
 	ld hl,device_list
 	ld (DEVLIST),hl
+
 	call select
 	ld a,0xA9		; CLOSE ALL NO REPLY
 	call send_cmd
+
+	ld a,0xBA		; LIST VOLUMES
+	ld hl,RADBUF
+	ld bc,RADBUF_LEN
+	call input_command
+	jr c,no_volumes
+
+	;; Nothing else for right now...
+no_volumes:
 	ld hl,__end + INIT_OFFS	; Where to search next
 	jp done
 
@@ -707,7 +725,7 @@ prb_device:
 	defw prb_jptable
 prc_device_rom:
 	defm "PRC"
-	defw prc_jptable
+	defw nul_jptable
 
 ;;
 ;; Mutable memory follows
