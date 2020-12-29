@@ -693,7 +693,7 @@ bool file_op(struct abcprint *me, unsigned char c)
 	me->fseq = 0;
 
         if (tracing(TRACE_PR)) {
-            fprintf(tracef, "PR:  %-7s : %02X %02x %04x",
+            fprintf(tracef, "PR:  %-7s : FF %02X %02x %04x",
 		    me->fop->name, me->cmd[0], me->cmd[1], me->ix);
 	    if (me->byte_count)
 		fprintf(tracef, " <need %u bytes>", me->byte_count);

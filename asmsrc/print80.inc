@@ -18,8 +18,9 @@
 ;;; FF is used as an escape character for the file I/O and console
 ;;; interfaces (FF A0..BF for file, FF C0 for console)
 ;;;
-;;; FF FF is used to represent an FF character in the printer stream,
-;;; and FF 00 is send on CLOSE (end of job).
+;;; FF FE is used to represent an FF character in the printer stream,
+;;; and FF FD is send on CLOSE (end of job).
+;;; For other escape sequences, see print.c.
 ;;;
 
 ;
@@ -111,10 +112,10 @@ pr_close:
 	call select
 	ld a,0FFh
 	call send_byte
-	; fall through to send_zero_done
+	ld a,0FDh			; FF FD = "done" = EOF
+	;; Fall through to send_byte_done
 
-send_zero_done:
-	xor a
+send_byte_done:
 	call send_byte
 
 done:
@@ -251,7 +252,7 @@ output_common:
 
 pra_input:
 	call select
-	ld a,0xA4		; INPUT
+	ld a,0xA4			; INPUT
 	call send_cmd
 	call recv_reply
 	and a
@@ -600,7 +601,7 @@ prc_print:
 prc_print_loop:
 	ld a,b
 	or c
-	jp z,send_zero_done
+	jp z,send_byte_done		; A=00 here
 	ld a,(hl)
 	and a
 	jr z,prc_skip

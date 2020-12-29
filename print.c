@@ -21,6 +21,7 @@
 #include "abcprintd.h"
 #include "hostfile.h"
 #include "print.h"
+#include "trace.h"
 
 #include <wchar.h>
 #include <locale.h>
@@ -139,17 +140,46 @@ void abcprint_recv(struct abcprint *me, const void *data, size_t len)
             break;
 
         case is_ff:
-            if (c == 0) {
-                /* End of job */
+	    me->istate = is_normal; /* Unless otherwise stated... */
+	    switch (c) {
+	    case 0x00:		/* For limited backwards compatibility */
+	    case 0xfd:
+		/* FF FD: End of job "done" */
+		if (tracing(TRACE_PR))
+		    fprintf(tracef, "PR:  FF %02X  : EOF - sending job to printer\n", c);
                 print_finish(me);
-                me->istate = is_normal;
-            } else if (c >= 0xa0 && c <= 0xbf) {
-                /* Opcode range reserved for file ops */
+		break;
+	    case 0xff:
+		/* FF FF: stay in this state (resync) */
+		me->istate = is_ff;
+		break;
+	    case 0xfa:
+		/* FF FA: "Acknowledge" */
+		if (tracing(TRACE_PR))
+		    fprintf(tracef, "PR:  FF FA  : ENQ - replying with AF\n");
+
+		me->sd.func(me->sd.pvt, "\xaf", 1); /* Respond with AF */
+		break;
+	    case 0xf0:
+		/* FF F0: Do nothing ("null", return to main state) */
+		if (tracing(TRACE_PR))
+		    fprintf(tracef, "PR:  FF F0  : NUL - ignoring\n");
+		break;
+	    case 0xfe:
+		/* FF FE: "Escape" (send FF) */
+		output(me, 0xff);
+		break;
+	    case 0xc0:
+		/* FF C0: Console output */
+		if (tracing(TRACE_PR))
+		    fprintf(tracef, "PR:  FF C0  : CON - console output\n");
+		me->istate = is_console;
+		break;
+	    case 0xa0 ... 0xbf:
+		/* Opcode range reserved for file operations */
                 me->istate = file_op(me, c) ? is_file : is_normal;
-            } else if (c == 0xc0) {
-                /* Output to console */
-                me->istate = is_console;
-            } else {
+		break;
+	    default:
                 output(me, c);
                 me->istate = is_normal;
             }
@@ -160,7 +190,7 @@ void abcprint_recv(struct abcprint *me, const void *data, size_t len)
             break;
 
         case is_console:
-            if (c == 0) {
+            if (c == 0 || c == 0xff) {
                 me->istate = is_normal;
                 if (console_file)
                     fflush(console_file);
