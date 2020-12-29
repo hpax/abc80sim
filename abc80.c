@@ -1,5 +1,7 @@
 #include "compiler.h"
 
+#include <locale.h>
+
 #include "options.h"
 #include "clock.h"
 #include "screen.h"
@@ -331,6 +333,8 @@ int main(int argc, char **argv)
     const char *server_port = NULL;
     unsigned int server_baud = 0;
     int server_fd = -1;
+
+    setlocale(LC_ALL, "");
 
     (void)argc;
     program_name = argv[0];
