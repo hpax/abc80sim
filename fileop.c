@@ -119,7 +119,8 @@ static unsigned int fop_blksize(struct abcprint *me)
 static int do_close(struct fileop_file *ff)
 {
     if (file_open(ff)) {
-        close_file(&ff->hf);
+	close_file(&ff->hf);
+
 	if (ff->abc) {
 	    if (ff->abc->buf)
 		free((void *)ff->abc->buf);
@@ -128,6 +129,7 @@ static int do_close(struct fileop_file *ff)
 	memset(ff, 0, sizeof *ff);
         return 0;
     } else {
+	assert(!ff->abc);
         return 128 + 45;        /* "Fel logiskt filnummer" */
     }
 }
@@ -206,8 +208,6 @@ static unsigned int read_dir_entry(struct abcprint *me, char *buf)
 			 ",%lu,%lu\r\n", blocks, pad);
     }
 
-    printf("dir: %s", buf);
-
     return dlen;
 }
 
@@ -222,8 +222,10 @@ struct line_list {
 };
 static int qsort_compare_ll(const void *l1, const void *l2)
 {
-    const struct line_list *ll1 = l1;
-    const struct line_list *ll2 = l2;
+    const struct line_list * const *ll1p = l1;
+    const struct line_list *ll1 = *ll1p;
+    const struct line_list * const *ll2p = l2;
+    const struct line_list *ll2 = *ll2p;
 
     return strcmp_abc(ll1->line, ll2->line);
 }
@@ -249,7 +251,7 @@ static unsigned int read_dir_data(struct abcprint *me)
 
     while ((dlen = read_dir_entry(me, dirname_buf))) {
 	struct line_list *lp;
-	dlen--;			/* Drop final \n */
+	dlen -= 1;			/* Drop final \n */
 	lp = malloc(sizeof *lp + dlen);
 	if (!lp)
 	    continue;
@@ -276,13 +278,9 @@ static unsigned int read_dir_data(struct abcprint *me)
     abc->data = cp;
     abc->len = abc->blocks * 253;
 
-    printf("rdd: %zu lines, %zu bytes, %zu blocks, %zu final bytes\n",
-	   lines, bytes, abc->blocks, abc->len);
-
     blk_bytes = 252;
     lap = lla;
     while ((lp = *lap++)) {
-	printf("rdd: %s (len %zu)\n", lp->line, lp->len);
 	if (lp->len < blk_bytes) {
 	    cp = mempcpy(cp, lp->line, lp->len);
 	} else {
@@ -377,12 +375,12 @@ static unsigned int do_read_block(struct abcprint *me, unsigned int len)
     int err;
     unsigned int dlen;
 
+    assert(len < 65536);
+
     if (!file_open(ff)) {
         return send_reply(me, 128 + 45);
     }
     hf = ff->hf;
-
-    errno = 0;
 
     if (ff->abc) {
 	dlen = min(((const char *)ff->abc->buf + ff->abc->len)

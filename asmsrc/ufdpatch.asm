@@ -329,21 +329,21 @@ __do_init:
 initstub:
 	call CLRSTOP
 
-	ld hl,0x707c
-loop:
-	push hl
-	ld a,(hl)
-	cp 0C3h
-	call z,jphl
-	pop hl
+	ld hl,0x6f4b		; 4B matches DOS
+init_next:
 	inc h
+init_more:
 	ld a,h
-	cp l
-	jr nz,loop
-	jp DOSINIT
+	cp 0x7c
+	jp nc,DOSINIT
+	ld a,(hl)
+	cp 0xc3			; JP opcode
+	jr nz,init_next
+	call jphl
+	jr init_more
 jphl:
 	jp (hl)
 
 	;; If this pad is < 0 then overflow
 pad:
-	defs (6FB8h-6F9Bh)-(pad - __do_init)
+	defs (6FB8h-6F9Bh)-(pad - __do_init), 0xff

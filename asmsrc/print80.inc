@@ -50,8 +50,23 @@
 	defc CON_CRLF=0742h		; CRLF on console
 	defc BLK_INPUT=0015h		; Block I/O INPUT LINE routine
 	defc BLK_PRINT=001Bh		; Block I/O PRINT routine
-	defc IX_CLOSE=087Fh		; BASIC CLOSE routine
+	defc CLOSEFILE=087Fh		; Close BASIC file from IX
 	defc CUR_MAX_X=0338h		; A = current column, E = max column
+
+	;; File I/O jump table calls (indirects via IX)
+	defc IX_OPEN	= 0x088a + 3*0
+	defc IX_PREPARE	= 0x088a + 3*1
+	defc IX_CLOSE	= 0x088a + 3*2
+	defc IX_INPUT	= 0x088a + 3*3
+	defc IX_PRINT	= 0x088a + 3*4
+	defc IX_BLKRD	= 0x088a + 3*5
+	defc IX_BLKWR	= 0x088a + 3*6
+	defc IX_KILL	= 0x088a + 3*7
+	defc IX_NAME	= 0x088a + 3*7
+
+	;; Init vector offset, matches DOS
+	defc INIT_OFFS  = 0x4b
+
 
 __begin:
 	; jp table for PR:
@@ -93,6 +108,16 @@ select:
 	ld (SELECT),a
 	out (1),a
 	ret
+
+eof:				; End of file or file not found
+	xor a
+	scf
+	ret
+
+	; Init JP vector is at org+0x4B
+	defs ((__begin + INIT_OFFS) - ASMPC)
+_start:
+	jp init
 
 pr_open:
 	call select
@@ -140,11 +165,6 @@ prb_open:
 	ld c,0xA1
 	jr prx_open
 
-	; Init JP vector is at org+0x7C
-	defs ((__begin + 0x7c) - ASMPC)
-_start:
-	jp init
-
 	; jp table for PRA:
 pra_jptable:
 	jp pra_open			; OPEN
@@ -176,16 +196,18 @@ prb_jptable:
 
 pra_prepare:
 	ld c,0xA2
-	ld a,(de)
-	cp ' '				; Empty filename for PREPARE?
-	jr nz,prx_open
-	bit 0,(iy+14)			; Command mode?
-	jr z,prx_open
-	jp pra_quicklib			; LIST PRA: = print lib
+	jr prx_prepare
 prb_prepare:
 	call prb_setup_buf
-	ld (ix+14),1
 	ld c,0xA3
+prx_prepare:
+	;; Check for LIST PRx: in command mode
+	ld a,(de)
+	cp ' '
+	jr nz,prx_open
+	bit 0,(iy+14)
+	jp nz,prx_quicklib
+
 prx_open:
 	push de
 	push bc
@@ -383,16 +405,11 @@ psb_found:
 	ret
 
 	;; Show library listing on screen
-pra_quicklib:
+prx_quicklib:
 	;; Clear out possible extension like .BAS
-	push de
-	ld l,e
-	ld h,d
-	inc de
-	ld bc,10
-	ldir
-	pop de
-	call pra_open		; Complete the file open
+	ld de,blank11
+	res 1,c			; OPEN, not PREPARE
+	call prx_open		; Complete the file open
 	ret c
 
 	call CON_CRLF
@@ -404,16 +421,18 @@ ql_getline:
 	ld hl,RADBUF
 	push hl
 	ld bc,RADBUF_LEN
-	call pra_input
+	call IX_INPUT
 	pop hl
 	jr c,ql_done
 	call CUR_MAX_X
-	ld bc,13
+	ld bc,+(12 << 8) + 13
 	add c			; Space needed
 	sub e
 	jr c,ql_nocrlf
 
-	call CON_CRLF
+	push bc
+	call CON_CRLF		; Clobbers BC!
+	pop bc
 	dec (ix+6)
 	jr nz,ql_nocrlf
 
@@ -421,18 +440,14 @@ ql_getline:
 	call CON_GET
 	pop ix
 
-	bit 7,(iy+CTRLC-IYBASE)	; ^C?
-	jr nz,ql_done
-
 	ld (ix+6),1		; <Return> = one line only
-	cp 13
+	cp c
 	jr z,ql_nocrlf
 
 	ld (ix+6),22
 
 ql_nocrlf:
 	push hl
-	ld b,12
 ql_find_comma:
 	ld a,(hl)
 	cp ','
@@ -451,7 +466,7 @@ ql_cleaned_comma:
 	call CON_PRINT
 	jr ql_getline
 ql_done:
-	call IX_CLOSE
+	call CLOSEFILE
 	jp CMD			; Return to command loop - abort LIST command
 
 
@@ -623,6 +638,7 @@ init:
 	call select
 	ld a,0xA9		; CLOSE ALL NO REPLY
 	call send_cmd
+	ld hl,__end + INIT_OFFS	; Where to search next
 	jp done
 
 con_open:
@@ -635,11 +651,6 @@ con_open:
 
 trivial:			; Trivially successful call
 	xor a			; A <- 0  carry <- 0
-	ret
-
-eof:				; End of file or file not found
-	xor a
-	scf
 	ret
 
 ;;;
@@ -666,6 +677,10 @@ nul_jptable:
 	jp notthere			; WRBLK
 	jp notthere			; DELETE
 	jp notthere			; RENAME
+
+;;; 11 blank characters
+blank11:
+	defm "           "
 
 device_list:
 con_device:
@@ -710,4 +725,5 @@ ram_dummy:
 
 ;;; Pad with FF to the full 1K size
 _pad:
-	defs 1024-_pad, 0
+	defs 1024-_pad, 0xff
+__end:

@@ -24,20 +24,21 @@ void unmangle_filename(char *dst, const char *src)
         L"\340\341\342\343\344\345\346\347\350\351\352\353\354\355\356\357"
         L"\360\361\362\363\364\365\366\367\370\371\372\373\374\375\376\377";
     int i;
+    mbstate_t ps;
 
-    wctomb(NULL, 0);
+    memset(&ps, 0, sizeof ps);
 
     for (i = 0; i < 8; i++) {
         if (*src != ' ')
-            dst += wctomb(dst, my_tolower[(unsigned char)*src]);
+            dst += wcrtomb(dst, my_tolower[(unsigned char)*src], &ps);
         src++;
     }
 
     if (memcmp(src, "   ", 3) && memcmp(src, "Ufd", 3)) {
-        dst += wctomb(dst, L'.');
+        dst += wcrtomb(dst, L'.', &ps);
         for (i = 0; i < 3; i++) {
             if (*src != ' ')
-                dst += wctomb(dst, my_tolower[(unsigned char)*src]);
+                dst += wcrtomb(dst, my_tolower[(unsigned char)*src], &ps);
             src++;
         }
     }
@@ -61,6 +62,7 @@ void mangle_filename(char *dst, const char *src)
     const wchar_t *scp;
     char dc;
     int n;
+    mbstate_t ps;
 
     /* Skip any path prefix */
     s = host_strip_path(src);
@@ -68,10 +70,14 @@ void mangle_filename(char *dst, const char *src)
     memset(dst, ' ', 11);
     dst[11] = '\0';
 
-    mbtowc(NULL, NULL, 0);      /* Reset the shift state */
+    memset(&ps, 0, sizeof ps);	/* Reset the shift state */
 
     d = dst;
-    while (d < dst + 11 && (n = mbtowc(&sc, s, (size_t) ~ 0)) > 0) {
+    while (d < dst + 11) {
+	n = mbrtowc(&sc, s, MB_LEN_MAX, &ps);
+	if (n <= 0)
+	    break;
+
         s += n;
 
         if ((scp = wcschr(srcset, sc))) {
@@ -240,22 +246,28 @@ bool get_abc_block(void *block, struct abcdata *abc)
  */
 int strcmp_abc(const char *s1, const char *s2)
 {
-    unsigned char a = 0, b = 0;
+    int rv = 0;
 
-    while ((a = *s1++) && (b = *s2++)) {
-	int rv = b - a;
+    while (1) {
+	unsigned char a = *s1++;
+	unsigned char b = *s2++;
+	rv = a - b;
+
+	if (!a || !b)
+	    break;
+
 	if (!rv)
 	    continue;
 
 	if ((a | 0x20) == '}') {
 	    if (rv == 1 || rv == 2)
-		return rv-3;
+		rv -= 3;
 	} else if ((b | 0x20) == '}') {
 	    if (rv == -1 || rv == -2)
-		return rv+3;
+		rv += 3;
 	}
-	return rv;
+	break;
     }
 
-    return b - a;
+    return rv;
 }
