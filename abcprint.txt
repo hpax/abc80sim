@@ -1,10 +1,13 @@
 abcprintd protocol
 
-FF 00	-> end of print job
+FF FD	-> end of print job
 
-FF 01	-> FF as part of print job (FF FF in older firmware)
+FF FE	-> FF as part of print job
 
-All other bytes are part of a print job
+All other bytes than FF are part of the print job.
+
+Multiple FF bytes are treated as a single one, so FF FF FF FF ...
+can be used to resynchonize if necessary.
 
 
 File sharing commands:
@@ -21,11 +24,15 @@ FF A0 ss ixix NNNNNNNNEEE		OPEN TEXT
    	ixix = Address of IX-map (used as a handle)
 
 	Open an existing file for reading in text mode
-	If the filename is empty (all spaces), read the directory
+
+	If the filename is empty (all spaces), read the directory.
 
 FF A1 ss ixix NNNNNNNNEEE		OPEN BINARY
 
 	Open an existing file for reading in binary (block) mode
+
+	If the filename is empty (all spaces), read the directory
+	converted to the binary form of an ABC text file.
 
 FF A2 ss ixix NNNNNNNNEEE		PREPARE TEXT
 
