@@ -83,6 +83,10 @@ baudtospeed.c: termios.c baudtospeed.sh
 roms:
 	$(MAKE) -C roms
 
+.PHONY: asm
+asm: asmsrc
+	$(MAKE) all
+
 .PHONY: asmsrc
 asmsrc:
 	$(MAKE) -C asmsrc
