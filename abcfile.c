@@ -89,6 +89,9 @@ void mangle_filename(char *dst, const char *src)
 
 /*
  * Returns length for OK, 0 for failure
+ *
+ * Similar to mangle_filename(), but return "FILE.EXT" instead of
+ * "FILE    EXT", and verifies that the filename is round-trip-safe.
  */
 int mangle_for_readdir(char *dst, const char *src)
 {
@@ -142,8 +145,15 @@ unsigned int init_abcdata(struct abcdata *abc, const void *data, size_t len)
     size_t left = len;
     size_t cc = 0;
 
+    if (!data) {
+	/* abc->buf and abc->len already initialized */
+	data = abc->buf;
+	len = abc->len;
+    } else {
+	abc->buf = NULL; /* Can be set by caller if it needs freeing */
+	abc->len = len;
+    }
     abc->data = data;
-    abc->len = len;
     abc->is_text = false;
 
     cc = 0;
@@ -152,13 +162,14 @@ unsigned int init_abcdata(struct abcdata *abc, const void *data, size_t len)
 
         if (c >= 0x80 || c == 0 || c == 3) {
             /* Binary file */
-            return (len + 252) / 253;   /* Just the data */
+            return abc->blocks = (len + 252) / 253;   /* Just the data */
         }
         cc += (c != '\r');
     }
 
     abc->is_text = true;
-    return (cc + 251) / 252 + 1;        /* Each block will need ETX + EOF block */
+    /* Each block will need ETX + EOF block */
+    return abc->blocks = (cc + 251) / 252 + 1;
 }
 
 /*
@@ -166,7 +177,7 @@ unsigned int init_abcdata(struct abcdata *abc, const void *data, size_t len)
  * a binary file or a conventional text file in memory.
  * Return true if this is the final (EOF) block.
  */
-bool get_abc_block(void *block, struct abcdata * abc)
+bool get_abc_block(void *block, struct abcdata *abc)
 {
     size_t l = abc->len;
     const uint8_t *p = abc->data;
@@ -221,4 +232,30 @@ bool get_abc_block(void *block, struct abcdata * abc)
     abc->data = p;
     abc->len = l;
     return done;
+}
+
+/*
+ * Comparison function for strings in ABC format; this is simply an
+ * ASCII sort except that [ \ ] and { | } are permuted to match å, ä, ö
+ */
+int strcmp_abc(const char *s1, const char *s2)
+{
+    unsigned char a = 0, b = 0;
+
+    while ((a = *s1++) && (b = *s2++)) {
+	int rv = b - a;
+	if (!rv)
+	    continue;
+
+	if ((a | 0x20) == '}') {
+	    if (rv == 1 || rv == 2)
+		return rv-3;
+	} else if ((b | 0x20) == '}') {
+	    if (rv == -1 || rv == -2)
+		return rv+3;
+	}
+	return rv;
+    }
+
+    return b - a;
 }

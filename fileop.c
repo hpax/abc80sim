@@ -116,10 +116,16 @@ static unsigned int fop_blksize(struct abcprint *me)
 }
 
 /* Returns the error code if applicable */
-static int do_close(struct abcprint *me)
+static int do_close(struct fileop_file *ff)
 {
-    if (file_open(me->ff)) {
-        close_file(&me->ff->hf);
+    if (file_open(ff)) {
+        close_file(&ff->hf);
+	if (ff->abc) {
+	    if (ff->abc->buf)
+		free((void *)ff->abc->buf);
+	    free(ff->abc);
+	}
+	memset(ff, 0, sizeof *ff);
         return 0;
     } else {
         return 128 + 45;        /* "Fel logiskt filnummer" */
@@ -128,7 +134,7 @@ static int do_close(struct abcprint *me)
 
 static unsigned int fop_close(struct abcprint *me)
 {
-    return send_reply(me, do_close(me));
+    return send_reply(me, do_close(me->ff));
 }
 
 /* Close all files without sending a reply */
@@ -136,11 +142,8 @@ static int do_close_all(struct abcprint *me)
 {
     size_t ix;
 
-    for (ix = 0; ix <= 65535; ix++) {
-	struct fileop_file *ff = getfile(me, ix);
-	if (file_open(ff))
-	    close_file(&ff->hf);
-    }
+    for (ix = 0; ix <= 65535; ix++)
+	do_close(getfile(me, ix));
 
     return 0;
 }
@@ -166,6 +169,139 @@ static unsigned int fop_closeall(struct abcprint *me)
     return send_reply(me, do_close_all(me));
 }
 
+/*
+ * Read one directory entry string into a buffer, return length,
+ * including CR LF but not including NUL. Return 0 if EOF.
+ */
+/* Bytes needed in a directory string buffer (safe estimate) */
+#define DIRSTR_BUF (12+3+2*3*sizeof(unsigned long)+2)
+static unsigned int read_dir_entry(struct abcprint *me, char *buf)
+{
+    struct dirent *de;
+    struct stat st;
+    unsigned int dlen = 0;
+    struct host_file *hf = me->ff->hf;
+
+    if (!hf || !hf->d)
+	return 0;
+
+    while ((de = readdir(hf->d))) {
+	unsigned int nlen;
+	if (de->d_name[0] != '.' &&
+	    (nlen = mangle_for_readdir(buf, de->d_name))) {
+	    if (!stat_file(fileop_path, de->d_name, &st) &&
+		S_ISREG(st.st_mode)) {
+		dlen = nlen;
+		break;
+	    }
+	}
+    }
+
+    if (dlen) {
+	unsigned long blocks, pad;
+	blocks = (st.st_size + me->blksize - 1) / me->blksize;
+	pad = me->blksize * blocks - st.st_size;
+	/* pad = unused bytes in the last block */
+	dlen += snprintf(buf + dlen, DIRSTR_BUF - dlen,
+			 ",%lu,%lu\r\n", blocks, pad);
+    }
+
+    printf("dir: %s", buf);
+
+    return dlen;
+}
+
+/*
+ * Read directory information into an abcdata buffer which we
+ * can then emit as a block file.
+ */
+struct line_list {
+    struct line_list *next;
+    size_t len;
+    char line[1];
+};
+static int qsort_compare_ll(const void *l1, const void *l2)
+{
+    const struct line_list *ll1 = l1;
+    const struct line_list *ll2 = l2;
+
+    return strcmp_abc(ll1->line, ll2->line);
+}
+
+static unsigned int read_dir_data(struct abcprint *me)
+{
+    char dirname_buf[DIRSTR_BUF];
+    struct fileop_file *ff = me->ff;
+    struct abcdata *abc;
+    size_t lines = 0;
+    size_t bytes = 0;
+    unsigned int dlen;
+    struct line_list *ll = NULL, *lp, **lla, **lap;
+    char *cp;
+    unsigned int blk_bytes;
+
+    if (!ff || !ff->hf || !ff->hf->d)
+	return 128 + 37;	/* Felaktigt recordformat */
+
+    ff->abc = abc = calloc(1, sizeof *abc);
+    if (!abc)
+	return 128 + 3;		/* Minnet fullt */
+
+    while ((dlen = read_dir_entry(me, dirname_buf))) {
+	struct line_list *lp;
+	dlen--;			/* Drop final \n */
+	lp = malloc(sizeof *lp + dlen);
+	if (!lp)
+	    continue;
+	lp->next = ll;
+	ll = lp;
+	lp->len = dlen;
+	memcpy(lp->line, dirname_buf, dlen);
+	lp->line[dlen] = '\0';
+	bytes += dlen;
+	lines++;
+    }
+
+    lla = malloc((lines+1) * sizeof *lla);
+    for (lap = lla, lp = ll; lp; lp = lp->next)
+	*lap++ = lp;
+    *lap = NULL;
+
+    qsort(lla, lines, sizeof *lla, qsort_compare_ll);
+
+    /* Now lla is an in-order list of directory entry strings */
+    abc->blocks = (bytes+251)/252+1; /* Each block needs ETX, plus EOF block */
+    cp = calloc(abc->blocks, 253);
+    abc->buf = cp;
+    abc->data = cp;
+    abc->len = abc->blocks * 253;
+
+    printf("rdd: %zu lines, %zu bytes, %zu blocks, %zu final bytes\n",
+	   lines, bytes, abc->blocks, abc->len);
+
+    blk_bytes = 252;
+    lap = lla;
+    while ((lp = *lap++)) {
+	printf("rdd: %s (len %zu)\n", lp->line, lp->len);
+	if (lp->len < blk_bytes) {
+	    cp = mempcpy(cp, lp->line, lp->len);
+	} else {
+	    cp = mempcpy(cp, lp->line, blk_bytes);
+	    *cp++ = 0x03;	/* ETX at end of block */
+	    cp = mempcpy(cp, lp->line + blk_bytes, lp->len - blk_bytes);
+	    blk_bytes += 252;
+	}
+	blk_bytes -= lp->len;
+	free(lp);
+    }
+    if (blk_bytes < 252)
+	*cp++ = 0x03;
+
+    free(lla);
+
+    return 0;
+}
+
 static unsigned int fop_open(struct abcprint *me)
 {
     int err;
@@ -181,14 +317,14 @@ static unsigned int fop_open(struct abcprint *me)
         return send_reply(me, 128 + 42);   /* Skivan ej klar */
     }
 
-    do_close(me);
+    do_close(me->ff);
 
     unmangle_filename(path_buf, name);
 
     if (!path_buf[0]) {
         /* Empty filename (readdir) */
 
-        mode = ((cmd0 & 3) == 0) ? HF_DIRECTORY : HF_FAIL;
+	mode = HF_DIRECTORY;
         openflags = 0;
     } else {
         /* Actual filename */
@@ -199,12 +335,18 @@ static unsigned int fop_open(struct abcprint *me)
     }
 
     hf = open_host_file(mode, fileop_path, path_buf, openflags);
-    ff = getfile_alloc(me, me->ix);
+    me->ff = ff = getfile_alloc(me, me->ix);
     ff->hf = hf;
     ff->binary = cmd0 & 1;
 
     if (hf) {
 	err = 0;
+
+	if (mode == HF_DIRECTORY && ff->binary) {
+	    err = read_dir_data(me);
+	    if (err)
+		do_close(me->ff);
+	}
     } else {
 	switch (errno) {
 #if 0                           /* Enable this? */
@@ -233,37 +375,52 @@ static unsigned int do_read_block(struct abcprint *me, unsigned int len)
     struct fileop_file *ff = me->ff;
     struct host_file *hf;
     int err;
-    int dlen;
+    unsigned int dlen;
 
     if (!file_open(ff)) {
         return send_reply(me, 128 + 45);
     }
     hf = ff->hf;
 
-    if (file_mode(ff) == HF_DIRECTORY) {
-        return send_reply(me, 128 + 37);   /* Felaktigt recordformat */
+    errno = 0;
+
+    if (ff->abc) {
+	dlen = min(((const char *)ff->abc->buf + ff->abc->len)
+		   - (const char *)ff->abc->data, len);
+	errno = 0;
+	if (dlen > 0) {
+	    memcpy(me->data + 2, ff->abc->data, dlen);
+	    ff->abc->data = (const char *)ff->abc->data + dlen;
+	}
+    } else {
+	if (file_mode(ff) == HF_DIRECTORY)
+	    return send_reply(me, 128 + 37);   /* Felaktigt recordformat */
+
+	clearerr(hf->f);
+	dlen = fread(me->data + 2, 1, len, hf->f);
+	if (!ferror(hf->f))
+	    errno = 0;
     }
 
-    clearerr(hf->f);
-    dlen = fread(me->data + 2, 1, len, hf->f);
     if (dlen == 0) {
-        if (ferror(hf->f)) {
-            switch (errno) {
-            case EBADF:
-                err = 128 + 44; /* Logisk fil ej öppen */
-                break;
-            case EIO:
-                err = 128 + 35; /* Checksummafel vid läsning */
-                break;
-            default:
-                err = 128 + 48; /* Fel i biblioteket */
-                break;
-            }
-        } else {
+	switch (errno) {
+	case 0:
             /* EOF - definitely not the default return! */
 	    err = 128 + 34;	/* Slut på filen (är det rätt?) */
-        }
+	    break;
+	case EBADF:
+	    err = 128 + 44; /* Logisk fil ej öppen */
+	    break;
+	case EIO:
+	    err = 128 + 35; /* Checksummafel vid läsning */
+	    break;
+	default:
+	    err = 128 + 48; /* Fel i biblioteket */
+	    break;
+	}
         return send_reply(me, err);
+    } else if (dlen < len) {
+	memset(me->data + 2 + dlen, 0, len - dlen);
     }
 
     send_reply(me, 0);
@@ -286,6 +443,15 @@ static int seeker(struct abcprint *me, uint64_t pos)
 
     if (!file_open(ff))
         return 128 + 45;         /* Fel logiskt filnummer */
+
+    if (ff->abc) {
+	if (ff->abc->is_text)
+	    return 128 + 37;	/* Felaktigt recordformat */
+	if (pos > ff->abc->blocks * 253)
+	    return 128 + 38;	/* Recordnummer utanför filen */
+	ff->abc->data = (const char *)ff->abc->buf + pos;
+	return 0;
+    }
 
     hf = ff->hf;
     if (file_mode(ff) == HF_DIRECTORY)
@@ -321,8 +487,6 @@ static unsigned int fop_input(struct abcprint *me)
     char data1[255 + 2];        /* Max number of bytes to return + 2 */
     char *p, *q, c;
     int dlen;
-    struct dirent *de;
-    struct stat st;
 
     if (!file_open(ff))
 	return send_reply(me, 128 + 45);
@@ -372,24 +536,8 @@ static unsigned int fop_input(struct abcprint *me)
             err = 0;
         }
     } else if (hf->d) {
-        while ((de = readdir(hf->d))) {
-            if (de->d_name[0] != '.' &&
-                (dlen = mangle_for_readdir(data1 + 2, de->d_name))) {
-                if (!stat_file(fileop_path, de->d_name, &st) &&
-                    S_ISREG(st.st_mode))
-                    break;
-            }
-        }
-        if (de) {
-            unsigned long blocks, pad;
-            blocks = (st.st_size + me->blksize - 1) / me->blksize;
-            pad = me->blksize * blocks - st.st_size;
-            /* pad = unused bytes in the last block */
-            dlen += sprintf(data1 + 2 + dlen, ",%lu,%lu\r\n", blocks, pad);
-            err = 0;
-        } else {
-            err = 128;		/* End of file (default error) */
-        }
+	dlen = read_dir_entry(me, data1 + 2);
+	err = dlen ? 0 : 128;	/* 128 = end of file */
     } else {
         err = 128 + 44;
     }

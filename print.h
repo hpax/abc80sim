@@ -7,6 +7,7 @@
 
 #include "abcprintd.h"
 #include "hostfile.h"
+#include "abcfile.h"
 
 /* Ordinary input state machine */
 enum input_state {
@@ -18,6 +19,7 @@ enum input_state {
 
 struct fileop_file {
     struct host_file *hf;
+    struct abcdata *abc;
     bool binary;
 };
 
