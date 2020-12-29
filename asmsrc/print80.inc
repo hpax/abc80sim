@@ -234,8 +234,10 @@ prx_open:
 	ld l,(ix+8)
 	ld h,(ix+9)
 	ld (hl),0xe0			; Mark DOSBUF in use, drive no 0xE0
+
+	; If OPEN, read the first block; this appears to be required
 	bit 1,c				; OPEN?
-	call z,prb_rdblk		; If so, read the first block?
+	call z,prb_rdblk		; Read block
 	ex de,hl
 	jr done_err2
 
