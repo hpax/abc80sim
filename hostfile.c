@@ -85,19 +85,29 @@ static inline bool filename_is_absolute(const char *name)
     return false;
 }
 
-int stat_file(const char *dir, const char *filename, struct stat *st)
+char *concat_path(const char *dir, const char *file)
 {
     size_t dl;
     char *path;
-    int rv, err;
 
     if (!dir)
         dir = "";
+    if (!file)
+	file = ".";
 
     dl = strlen(dir);
     asprintf(&path, "%s%s%s", dir,
-             (dl && !is_path_separator(dir[dl - 1])) ? "/" : "",
-             filename ? filename : ".");
+             (dl && !is_path_separator(dir[dl - 1])) ? "/" : "", file);
+
+    return path;
+}
+
+int stat_file(const char *dir, const char *filename, struct stat *st)
+{
+    char *path;
+    int rv, err;
+
+    path = concat_path(dir, filename);
     if (!path)
         return -1;
 

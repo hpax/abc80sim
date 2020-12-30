@@ -8,6 +8,122 @@ const char *fileop_path = "abcdir";
 
 #define BUF_SIZE 512
 
+/*
+ * Find a volume structure by name. For right now a simple linear
+ * search; might want to improve this in the future, but it is unlikely
+ * to matter since the list is fairly short and the ABC will do a
+ * linear search on its end.
+ */
+static struct volume *get_volume(struct abcprint *me, const char *name)
+{
+    int i;
+
+    for (i = 0; i < me->vols; i++) {
+	if (!memcmp(me->volumes[i].name, name, 3))
+	    return &me->volumes[i];
+    }
+
+    return NULL;
+}
+
+/* Scan for volumes */
+static void init_volumes(struct abcprint *me)
+{
+    struct host_file *hf;
+    struct volume *vol;
+    int i;
+
+    for (i = 0; i < me->vols; i++) {
+	if (me->volumes[i].path)
+	    free((void *)me->volumes[i].path);
+    }
+    memset(me->volumes, 0, sizeof me->volumes);
+
+    if (!fileop_path || !*fileop_path)
+	return;
+
+    /* Default volumes */
+    memcpy(me->volumes[0].name, "PRA", 3);
+    me->volumes[0].mode = 1;	/* Text */
+    me->volumes[0].prio = 1;	/* Default assignment */
+    me->volumes[0].path = strdup(fileop_path);
+
+    memcpy(me->volumes[1].name, "PRB", 3);
+    me->volumes[1].mode = 2;	/* Binary */
+    me->volumes[1].prio = 1;	/* Default assignment */
+    me->volumes[1].path = strdup(fileop_path);
+
+    me->vols = 2;
+
+    hf = open_host_file(HF_DIRECTORY, NULL, fileop_path, 0);
+    if (hf) {
+	struct dirent *de;
+	while ((de = readdir(hf->d))) {
+	    unsigned int nlen;
+	    unsigned int mode;
+	    char volname[16];
+	    char *dot;
+	    int prio;
+
+	    if (de->d_name[0] == '.')
+		continue;
+
+	    nlen = mangle_for_readdir(volname, de->d_name);
+	    if (!nlen)
+		continue;
+
+	    dot = strchr(volname, '.');
+	    if (!dot) {
+		dot = volname + nlen;
+		memcpy(dot, ".@", 3); /* Default mode */
+		nlen += 2;
+	    }
+
+	    if (nlen <= 2)
+		continue;
+
+	    if (dot < volname+1 || dot > volname+3)
+		continue;	/* Volume name must be 1-3 characters */
+
+	    /* Mode must be one character */
+	    if (dot != volname+nlen-2)
+		continue;
+
+	    mode = volname[nlen-1] - '@';
+	    if (mode > 2)
+		continue;
+
+	    prio = mode + 2;
+	    if (mode == 0)
+		mode = 2;	/* Default to binary, at least for now */
+
+	    /* Volume is a 3-byte space-padded string */
+	    memset(dot, ' ', 3);
+
+	    /*
+	     * Did this volume already exist? Let a low priority override
+	     * a higher priority, and if the priority is the same, the
+	     * mode.
+	     */
+	    vol = get_volume(me, volname);
+	    if (!vol) {
+		if (me->vols >= MAX_VOLS)
+		    continue;	/* Already full */
+
+		vol = &me->volumes[me->vols++];
+	    }
+
+	    if (prio > vol->prio) {
+		memcpy(vol->name, volname, 3);
+		if (vol->path)
+		    free((void *)vol->path);
+		vol->path = concat_path(fileop_path, de->d_name);
+		vol->mode = mode;
+	    }
+	}
+    }
+}
+
 static inline struct fileop_file *getfile(struct abcprint *me, uint16_t ix)
 {
     return &me->filemap[ix];
@@ -154,7 +270,9 @@ static int do_close_all(struct abcprint *me)
 static unsigned int do_init(struct abcprint *me, unsigned int blksz)
 {
     do_blksize(me, blksz);
-    return do_close_all(me);
+    do_close_all(me);
+    init_volumes(me);
+    return 0;
 }
 
 static unsigned int fop_init(struct abcprint *me)
@@ -192,13 +310,13 @@ static unsigned int read_dir_entry(struct abcprint *me, char *buf)
 	unsigned int nlen;
 	if (de->d_name[0] != '.' &&
 	    (nlen = mangle_for_readdir(buf, de->d_name))) {
-	    if (!stat_file(fileop_path, de->d_name, &st) &&
+	    if (!stat_file(hf->filename, de->d_name, &st) &&
 		S_ISREG(st.st_mode)) {
 		dlen = nlen;
 		break;
 	    }
 	}
-    }
+   }
 
     if (dlen) {
 	unsigned long blocks, pad;
@@ -318,9 +436,10 @@ static unsigned int fop_open(struct abcprint *me)
     struct fileop_file *ff;
     struct host_file *hf;
     uint8_t cmd0 = me->cmd[0];
-    char *name = me->argbuf.c;
+    const struct volume *vol = get_volume(me, me->argbuf.c);
+    char *name = me->argbuf.c + 3;
 
-    if (!fileop_path) {
+    if (!vol || !vol->path) {
         return send_reply(me, 128 + 42);   /* Skivan ej klar */
     }
 
@@ -341,7 +460,7 @@ static unsigned int fop_open(struct abcprint *me)
         openflags = (cmd0 & 2) ? (O_RDWR | O_TRUNC | O_CREAT) : O_RDWR;
     }
 
-    hf = open_host_file(mode, fileop_path, path_buf, openflags);
+    hf = open_host_file(mode, vol->path, path_buf, openflags);
     me->ff = ff = getfile_alloc(me, me->ix);
     ff->hf = hf;
     ff->binary = cmd0 & 1;
@@ -665,16 +784,28 @@ static unsigned int fop_pwrite(struct abcprint *me)
         return do_write(me, false);
 }
 
+static char *make_path(const struct volume *vol, const char *mangled)
+{
+    char unmangle_buf[16];
+
+    unmangle_filename(unmangle_buf, mangled);
+    return concat_path(vol->path, unmangle_buf);
+}
+
 static unsigned int fop_rename(struct abcprint *me)
 {
     const char *files = me->argbuf.c;
-    char old_name[64], new_name[64];
+     char *old_path, *new_path;
     int err;
+    const struct volume *vol = get_volume(me, files);
 
-    unmangle_filename(old_name, files);
-    unmangle_filename(new_name, files + 11);
+    if (!vol || !vol->path)
+	return send_reply(me, 128 + 42);
 
-    if (!rename(old_name, new_name)) {
+    old_path = make_path(vol, files+3);
+    new_path = make_path(vol, files+14);
+
+    if (!rename(old_path, new_path)) {
         err = 0;
     } else {
         switch (errno) {
@@ -702,18 +833,25 @@ static unsigned int fop_rename(struct abcprint *me)
         }
     }
 
+    free(old_path);
+    free(new_path);
+
     return send_reply(me, err);
 }
 
 static unsigned int fop_delete(struct abcprint *me)
 {
     const char *file = me->argbuf.c;
-    char path_buf[64];
+    char *path;
     int err;
+    const struct volume *vol = get_volume(me, file);
 
-    unmangle_filename(path_buf, file);
+    if (!vol || !vol->path)
+	return send_reply(me, 128 + 42);
 
-    if (!remove(path_buf)) {
+    path = make_path(vol, file+3);
+
+    if (!remove(path)) {
         err = 0;
     } else {
         switch (errno) {
@@ -740,6 +878,8 @@ static unsigned int fop_delete(struct abcprint *me)
         }
     }
 
+    free(path);
+
     return send_reply(me, err);
 }
 
@@ -763,106 +903,31 @@ static void fileop_goto_init_state(struct abcprint *me)
 /* Initialize or terminate the fileop session */
 void fileop_reset(struct abcprint *me)
 {
-    me->blksize = 253;
+    do_init(me, 253);
     fileop_goto_init_state(me);
 }
 
 /* List available volumes, including PRA: and PRB: which default to . */
-#define MAX_VOL 32
 
 static unsigned int fop_listvol(struct abcprint *me)
 {
-    struct host_file *hf;
-    unsigned char * const volbuf = me->data + 2;
-    unsigned char *vol;
-    int vols, i;
+    unsigned char *dp = me->data;
+    unsigned char *vp = dp + 2;
+    size_t bytes;
+    int i;
 
-    memcpy(volbuf, "\1PRA\2PRB", 9);
-    vols = 2;
-
-    hf = open_host_file(HF_DIRECTORY, NULL, fileop_path, 0);
-    if (hf) {
-	struct dirent *de;
-	while ((de = readdir(hf->d))) {
-	    unsigned int nlen;
-	    unsigned int mode;
-	    char volname[16];
-	    char *dot;
-
-	    if (de->d_name[0] == '.')
-		continue;
-
-	    nlen = mangle_for_readdir(volname, de->d_name);
-	    if (!nlen)
-		continue;
-
-	    dot = strchr(volname, '.');
-	    if (!dot) {
-		dot = volname + nlen;
-		memcpy(dot, ".@", 3); /* Default mode */
-		nlen += 2;
-	    }
-
-	    if (nlen <= 2)
-		continue;
-
-	    if (dot < volname+1 || dot > volname+3)
-		continue;	/* Volume name must be 1-3 characters */
-
-	    /* Mode must be one character */
-	    if (dot != volname+nlen-2)
-		continue;
-
-	    mode = volname[nlen-1] - '@';
-
-	    if (mode > 2)
-		continue;
-
-	    /* Volume is a 3-byte space-padded string */
-	    memset(dot, ' ', 3);
-
-	    /*
-	     * Did this volume already exist? If so, use the
-	     * highest numbered mode encountered (0 = default,
-	     * replace with binary unless overridden)
-	     */
-	    vol = volbuf;
-	    for (i = 0; i < vols; i++) {
-		if (!memcmp(vol+1, volname, 3)) {
-		    if (mode > *vol)
-			*vol = mode;
-		    break;
-		}
-		vol += 4;
-	    }
-	    if (i >= vols) {
-		/* New volume */
-		if (vols >= MAX_VOL)
-		    continue;
-
-		*vol = mode;
-		memcpy(vol+1, volname, 3);
-		vol[4] = 0;
-		vols++;
-	    }
-	}
+    for (i = 0; i < me->vols; i++) {
+	*vp++ = me->volumes[i].mode;
+	vp = mempcpy(vp, me->volumes[i].name, 3);
     }
 
-    /* For any volume which still has the default mode, set mode to binary */
-    vol = volbuf;
-    for (i = 0; i < vols; i++) {
-	if (*vol == 0)
-	    *vol = 2;
-	vol += 4;
-    }
+    *vp++ = '\0';
+    bytes = vp - dp - 2;
+    dp[0] = bytes;
+    dp[1] = bytes >> 8;
 
     send_reply(me, 0);		/* This command is always successful */
-
-    me->data[0] = (vols << 2) + 1;
-    me->data[1] = vols >> 6;
-    send_data(me, me->data, (vols << 2)+3);
-
-    return 0;
+    return send_data(me, dp, bytes + 2);
 }
 
 static inline uint64_t get_qword(const argbuf *v)
@@ -894,18 +959,18 @@ struct fop {
 /* Command info starting at 0xA0... */
 #define FIRST_CMD 0xA0
 static const struct fop fops[] = {
-    { 11, "OPEN_A", { fop_open, NULL } },  /* A0: OPEN ASCII */
-    { 11, "OPEN_B", { fop_open, NULL } },  /* A1: OPEN BINARY */
-    { 11, "PREP_A", { fop_open, NULL } },  /* A2: PREPARE ASCII */
-    { 11, "PREP_B", { fop_open, NULL } },  /* A3: PREPARE BINARY */
+    { 14, "OPEN_A", { fop_open, NULL } },  /* A0: OPEN ASCII */
+    { 14, "OPEN_B", { fop_open, NULL } },  /* A1: OPEN BINARY */
+    { 14, "PREP_A", { fop_open, NULL } },  /* A2: PREPARE ASCII */
+    { 14, "PREP_B", { fop_open, NULL } },  /* A3: PREPARE BINARY */
     {  0, "INPUT",  { fop_input, NULL } },   /* A4: INPUT */
     {  2, "GET",    { fop_get, NULL } },     /* A5: READ BLOCK (GET) */
     {  2, "PRINT",  { arg_len, fop_print } },   /* A6: PRINT */
     {  0, "CLOSE",  { fop_close, NULL } },  /* A7: CLOSE */
     {  0, "CLOSALL", { fop_closeall, NULL } }, /* A8: CLOSE ALL */
     {  0, "INIT",   { fop_init, NULL } },    /* A9: close all and reset state */
-    { 22, "RENAME", { fop_rename, NULL } },  /* AA: RENAME */
-    { 11, "DELETE", { fop_delete, NULL } },  /* AB: DELETE (KILL) */
+    { 25, "RENAME", { fop_rename, NULL } },  /* AA: RENAME */
+    { 14, "DELETE", { fop_delete, NULL } },  /* AB: DELETE (KILL) */
     {  2, "PREAD",  { fop_pread, NULL } },   /* AC: PREAD */
     {  2, "PWRITE", { arg_blkno, fop_pwrite } },  /* AD: PWRITE */
     {  2, "BLKSIZE", { fop_blksize, NULL } }, /* AE: SET BLOCK SIZE */

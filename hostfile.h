@@ -105,6 +105,9 @@ extern void hostfile_init(void);
 /* Point to a filename, without any path */
 extern const char *host_strip_path(const char *path);
 
+/* Combine a directory and filename */
+extern char *concat_path(const char *dir, const char *file);
+
 /* Simple linked list of filenames */
 struct file_node;
 struct file_list {

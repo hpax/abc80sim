@@ -19,45 +19,45 @@ with FF <opcode> <seq> <err>, where <err> is 0 for OK and otherwise
 
 All multibyte arguments are sent in littleendian order.
 
-FF A0 ss ixix NNNNNNNNEEE		OPEN TEXT
+FF A0 ss ixix VOL NNNNNNNNEEE		OPEN TEXT
 
-   	ixix = Address of IX-map (used as a handle)
+	ixix = Address of IX-map (used as a handle)
 
 	Open an existing file for reading in text mode
 
 	If the filename is empty (all spaces), read the directory.
 
-FF A1 ss ixix NNNNNNNNEEE		OPEN BINARY
+FF A1 ss ixix VOL NNNNNNNNEEE		OPEN BINARY
 
 	Open an existing file for reading in binary (block) mode
 
 	If the filename is empty (all spaces), read the directory
 	converted to the binary form of an ABC text file.
 
-FF A2 ss ixix NNNNNNNNEEE		PREPARE TEXT
+FF A2 ss ixix VOL NNNNNNNNEEE		PREPARE TEXT
 
-   	Create a new file for writing in text mode
+	Create a new file for writing in text mode.
 
-FF A3 ss ixix NNNNNNNNEEE		PREPARE BINARY
+FF A3 ss ixix VOL NNNNNNNNEEE		PREPARE BINARY
 
-   	Create a new file for writing in binary (block) mode
+	Create a new file for writing in binary (block) mode.
 
 FF A4 ss ixix				INPUT
 
-   	Read a text line; response followed by len (2 bytes) + data
+	Read a text line; response followed by len (2 bytes) + data.
 
 FF A5 ss ixix len2			GET
 
-	Read binary of specified len; response: len + data. No end of
-	line conversion even if opened as a text file
+	Read binary of specified len; response: len (2 bytes) + data.
+	No end of line conversion even if opened as a text file.
 
 FF A6 ss ixix len2 data...		PRINT
 
-   	Write a text line or data block
+	Write a text line or data block.
 
 FF A7 ss ixix				CLOSE
 
-   	Close a file handle
+	Close a file handle.
 
 FF A8 ss xxxx				CLOSE ALL
 
@@ -68,11 +68,11 @@ FF A9 ss xxxx				INIT
 	All files are closed and forgotten.  Block size is set to 253.
 	xxxx ignored.  No response token is sent.
 
-FF AA ss xxxx NNNNNNNNEEE NNNNNNNNEEE	RENAME
+FF AA ss xxxx VOL NNNNNNNNEEE NNNNNNNNEEE	RENAME
 
 	Rename the first filename to the second filename.
 
-FF AB ss xxxx NNNNNNNNEEE		DELETE
+FF AB ss xxxx VOL NNNNNNNNEEE		DELETE
 
 	Delete the named file
 
@@ -109,6 +109,21 @@ FF B9 ss ixix len2 data...		PUT
 	Write a data block of specified length.
 	No end of line conversion even if opened as a text file.
 
+FF BA ss xxxx				LISTVOL
+
+	List known volumes. Reply is followed by a 2 bytes length (in bytes)
+	followed by a list of the format
+
+	{<mode> VOL}* 0
+
+	... where <mode> is:
+
+	00 - end of list
+	01 - text mode volume
+	02 - binary mode volume
+	03 - dual mode volume
+
+	... and VOL is a 3-letter volume name.
 
 Debug console
 -------------
@@ -118,4 +133,3 @@ FF C0 .... 00
 	Text between FF C0 and terminating 00 are written out on
 	stdout for abcprintd if the -c option was given.  Intended to
 	be used for debugging messages.
-

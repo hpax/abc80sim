@@ -215,16 +215,21 @@ prx_prepare:
 
 prx_open:
 	push de
-	push bc
-	ex de,hl			; HL <- filename
 	ld (ix+6),0
 	ld (ix+7),132
 	call select
-	pop bc
 	ld a,c
 	push bc
 	call send_cmd
-	ld bc,11
+	ld l,(ix+3)			; Get volume name
+	ld h,(ix+4)
+	dec hl
+	dec hl
+	dec hl
+	ld bc,3
+	call send_buf
+	ex de,hl			; HL <- filename
+	ld c,11
 	call send_buf
 	pop bc
 	ld a,c

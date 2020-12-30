@@ -30,6 +30,14 @@ typedef union argbuf {
 } argbuf;
 
 struct fop;
+#define MAX_VOLS 32
+
+struct volume {
+    char name[4];		/* Volume name (3 char) */
+    unsigned char prio;		/* Mapping priority during enumeration */
+    unsigned char mode;		/* 01 = text, 02 = binary */
+    const char *path;		/* Root path */
+};
 
 struct abcprint {
     /* Function to send data */
@@ -67,6 +75,10 @@ struct abcprint {
     uint64_t arg;		/* argbuf as a qword */
     argbuf argbuf;		/* Buffer for argument(s) */
     unsigned char data[65536+2]; /* Data buffer (maximum possible size) */
+
+    /* Disk volumes */
+    int vols;
+    struct volume volumes[MAX_VOLS];
 
     /* Filemap; massive waste of space -- clean up? */
     struct fileop_file filemap[65536];
