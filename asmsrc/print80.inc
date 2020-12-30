@@ -67,6 +67,11 @@
 	;; Init vector offset, matches DOS
 	defc INIT_OFFS  = 0x4b
 
+	;; Maximum number of remote volumes
+	defc MAX_VOLS = 32
+
+	;; Console device, probably doesn't fit anymore
+	defc console_dev = 0
 
 __begin:
 	; jp table for PR:
@@ -115,7 +120,7 @@ eof:				; End of file or file not found
 	ret
 
 	; Init JP vector is at org+0x4B
-	defs ((__begin + INIT_OFFS) - ASMPC)
+	defs ((__begin + INIT_OFFS) - ASMPC), 0xff
 _start:
 	jp init
 
@@ -426,9 +431,9 @@ ql_getline:
 	bit 7,(iy+CTRLC-IYBASE)	; ^C?
 	jr nz,ql_done
 
-	ld hl,RADBUF
+	ld hl,CRAD
 	push hl
-	ld bc,RADBUF_LEN
+	ld bc,CRAD_LEN
 	call IX_INPUT
 	pop hl
 	jr c,ql_done
@@ -603,7 +608,7 @@ flush_rx:
 	in a,(0)		; Consume byte
 	jr flush_rx
 
-	if 0
+	if console_dev
 prc_jptable:
 	jp pr_open			; OPEN
 	jp pr_open			; PREPARE
@@ -634,27 +639,66 @@ prc_skip:
 	dec bc
 	inc hl
 	jr prc_print_loop
-	endif
+
+	endif			; console_dev
 
 init:
-	ld hl,prc_device_rom-2
-	ld de,prc_device
-	ld bc,7
-	ldir
-	ld hl,(DEVLIST)		; Device list
-	ld (prc_device),hl
-	ld hl,device_list
-	ld (DEVLIST),hl
-
 	call select
 	ld a,0xA9		; CLOSE ALL NO REPLY
 	call send_cmd
 
 	ld a,0xBA		; LIST VOLUMES
-	ld hl,RADBUF
-	ld bc,RADBUF_LEN
+	ld hl,CRAD
+	push hl
+	ld bc,4*MAX_VOLS+1	; B=0
 	call input_command
+	pop hl
 	jr c,no_volumes
+
+	;; Create device list entries
+	;; HL -> CRAD here, A = 0
+	ld (CRAD+4*MAX_VOLS),a ; Make sure list is terminated even on overflow
+	ld de,voldevs
+
+mk_vols:
+	ld a,(hl)
+	and a
+	jr z,link_volumes		; Done
+	inc hl
+	push hl
+	ld hl,7
+	add hl,de
+	ex de,hl
+	ld (hl),e
+	inc hl
+	ld (hl),d
+	inc hl
+	ex de,hl
+	pop hl
+	ld bc,3			; Copy volume name
+	ldir
+	;; This requires pra_jptable and prb_jptable have the same upper bytes
+	dec a			; Z = 1 if A = 1 = text/PRA
+	ld a,prb_jptable & 0xff
+	jr nz,is_prb
+	ld a,pra_jptable & 0xff
+is_prb:
+	ld (de),a
+	inc de
+	ld a,prb_jptable >> 8
+	ld (de),a
+	inc de
+	jr mk_vols
+
+link_volumes:
+	ld hl,-7
+	add hl,de
+	ld de,(DEVLIST)
+	ld (hl),e
+	inc hl
+	ld (hl),d
+	ld hl,device_list
+	ld (DEVLIST),hl
 
 	;; Nothing else for right now...
 no_volumes:
@@ -703,6 +747,13 @@ blank11:
 	defm "           "
 
 device_list:
+	if console_dev
+prc_device:
+	defw con_device
+	defm "PRC"
+	defw prc_jptable
+	endif
+
 con_device:
 	defw nul_device
 	defm "CON"
@@ -712,27 +763,25 @@ nul_device:
 	defm "NUL"
 	defw nul_jptable
 pr_device:
-	defw pra_device
+	defw voldevs
 	defm "PR "
 	defw pr_jptable
-pra_device:
-	defw prb_device
-	defm "PRA"
-	defw pra_jptable
-prb_device:
-	defw prc_device
-	defm "PRB"
-	defw prb_jptable
-prc_device_rom:
-	defm "PRC"
-	defw nul_jptable
+
+	;; Check for overflow and pad to 1024 bytes
+	defs 1024 - ASMPC
 
 ;;
-;; Mutable memory follows
+;; In RAM; this is assuming the IEC area is used as a RAM instead.
+;; 0x73c0-0x7400 is used by UFD-DOS.
 ;;
-__data:
-prc_device:
-	defs 7			; Needs to be in RAM due to linked list
+	defc ram_start = 0x72c0
+	defc ram_end   = 0x73c0
+
+	section bss
+	org ram_start
+__bss:
+voldevs:
+	defs 7*MAX_VOLS		; Up to 32 volume device entries
 
 ram_select:
 	defs 1			; Previous select code
@@ -743,7 +792,6 @@ ram_serial:
 ram_dummy:
 	defs 1			; Scratch byte
 
-;;; Pad with FF to the full 1K size
-_pad:
-	defs 1024-_pad, 0xff
+;;; Check for overflow
+	defs (ram_end - ram_start) - ASMPC
 __end:
