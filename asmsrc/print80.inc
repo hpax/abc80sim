@@ -29,6 +29,7 @@
 ;;; Because the DOS ROM is basically full, hard-code the offset here.
 ;
 	defc selcode=60			; ABC-bus select code
+	defc CLOCK=65008		; LSB of clock
 	defc CURX=65011			; Cursor column
 	defc CURY=65012			; Cursor row
 	defc COLUMNS=472		; Columns per text row
@@ -50,6 +51,7 @@
 	defc CON_CRLF=0742h		; CRLF on console
 	defc BLK_INPUT=0015h		; Block I/O INPUT LINE routine
 	defc BLK_PRINT=001Bh		; Block I/O PRINT routine
+	defc BLK_FLUSH=0023h		; Block I/O flush data routine
 	defc CLOSEFILE=087Fh		; Close BASIC file from IX
 	defc CUR_MAX_X=0338h		; A = current column, E = max column
 
@@ -72,6 +74,9 @@
 
 	;; Console device, probably doesn't fit anymore
 	defc console_dev = 0
+
+	;; Device timeout
+	defc timeout = 100		; 100/50 Hz = 2 s
 
 __begin:
 	; jp table for PR:
@@ -106,12 +111,21 @@ pr_print_not_ff:
 	inc hl
 	jr pr_print_loop
 
+	;; Select the current device, and save the stack pointer
+	;; to allow for an error unwind. This should be called from the
+	;; topmost stack so that a RET on error returns to BASIC;
+	;; if called in a nested context that context will be returned
+	;; to on error. After an error the carry flag is set and only
+	;; A is defined.
 select:
+	ld (errsp),sp
+	push af
 	ld a,(SELECT)			; Old select code
 	ld (ram_select),a		; Save old select code
 	ld a,selcode			; Select code
-	ld (SELECT),a
+	ld (SELECT),a			; Is this correct?
 	out (1),a
+	pop af
 	ret
 
 eof:				; End of file or file not found
@@ -122,7 +136,7 @@ eof:				; End of file or file not found
 	; Init JP vector is at org+0x4B
 	defs ((__begin + INIT_OFFS) - ASMPC), 0xff
 _start:
-	jp init
+	jp start
 
 pr_open:
 	call select
@@ -147,19 +161,21 @@ pr_close:
 
 send_byte_done:
 	call send_byte
-
-done:
+done_ok:
 	xor a
-done_err:
+done:
 	push af
 	ld a,(ram_select)
 	ld (SELECT),a
 	out (1),a
 	pop af
+	ld sp,(errsp)			; Restore stack
+	inc sp				; Drop return address from select
+	inc sp
 	add a				; Carry = negative number?
 	ret z				; A=0 success or default error
-	inc a				; Set the carry flag
-	rra				; Restore original value + set carry
+	rra				; Restore original value
+	scf
 	ret
 
 pra_open:
@@ -214,10 +230,10 @@ prx_prepare:
 	jp nz,prx_quicklib
 
 prx_open:
-	push de
 	ld (ix+6),0
-	ld (ix+7),132
+	ld (ix+7),252			; As good as anything...
 	call select
+	push de
 	ld a,c
 	push bc
 	call send_cmd
@@ -238,22 +254,22 @@ prx_open:
 	and a
 	pop bc
 	pop de
-	jr nz,done_err2
+	jr nz,done2
 	bit 0,c				; PRB:?
-	jr z,done_err2
+	jr z,done2
 	ld l,(ix+8)
 	ld h,(ix+9)
 	ld (hl),0xe0			; Mark DOSBUF in use, drive no 0xE0
 
 	; If OPEN, read the first block; this appears to be required
 	bit 1,c				; OPEN?
-	call z,prb_rdblk		; Read block
+	call z,prb_rdblk_nosel		; Read block
 	ex de,hl
-	jr done_err2
+	jr done2
 
 prb_close:
 	bit 7,(ix+14)
-	call nz,0023h			; Flush data and write EOF
+	call nz,BLK_FLUSH		; Flush buffered data
 	ld (ix+14),0
 	ld h,0xFD
 	ld a,0x41
@@ -266,15 +282,15 @@ pra_close:
 	call send_cmd
 	ld a,0xA7
 	call recv_reply
-	jr done_err2
+	jr done2
 
 pra_print:
+	call select
 	call output_common
-done_err2:
-	jp done_err
+done2:
+	jp done			; done?
 
 output_common:
-	call select
 	ld a,0xA6
 	call send_cmd
 	ld a,c
@@ -284,31 +300,29 @@ output_common:
 	call send_buf
 	jp recv_reply
 
-recv_len:
-
 pra_input:
 	call select
 	ld a,0xA4			; INPUT
+
 	;; This routine can be called to handle a command with a
 	;; reply + len + data response.
 	;; HL -> target_buf, A = command, BC = buffer size
+	; XXX: USB is fast enough that INIR/OTIR should be possible
 input_command:
 	call send_cmd
 	call recv_reply
 	and a
-	jr nz,done_err2
+	jr nz,done2
 	call recv_byte
-	jr c,prai_timeout
 	ld e,a
 	call recv_byte
-	jr c,prai_timeout
 	ld d,a
 	; Now HL -> target buf; DE -> expected byte count;
 	; BC -> buffer size
 prai_loop:
 	ld a,d
 	or e
-	jp z,done
+	ret z
 	dec de
 	ld a,b
 	or c
@@ -318,21 +332,16 @@ prai_loop:
 prai_space:
 	dec bc
 	call recv_byte
-	jr c,prai_timeout
 	ld (hl),a
 	inc hl
 	jr prai_loop
-prbr_timeout_pop:
-	pop hl
-prbr_timeout:
-prai_timeout:
-	ld a,128+42
-	jr done_err3
 prbr_protoerr:
 	ld a,128+37
-	jr done_err3
+	jr done3
+
 prb_rdblk:
 	call select
+prb_rdblk_nosel:
 	ld a,0xA5
 	call send_cmd
 	ld b,253
@@ -342,13 +351,11 @@ prb_rdblk:
 	call send_byte
 	call recv_reply
 	and a
-	jr nz,done_err3
+	jr nz,done3
 	call recv_byte
-	jr c,prbr_timeout
 	cp b
 	jr nz,prbr_protoerr
 	call recv_byte
-	jr c,prbr_timeout
 	and a
 	jr nz,prbr_protoerr
 	ld l,(ix+8)
@@ -356,34 +363,32 @@ prb_rdblk:
 	push hl
 prbr_recv:
 	call recv_byte
-	jr c,prbr_timeout_pop
 	ld (hl),a
 	inc hl
 	djnz prbr_recv
 	pop hl			; HL -> buf address
-	jp done
+	jp done_ok
 
 	; Write a binary output block.  Similar to
 	; pra_print, but with a few different buffer
 	; management bits.
 prb_wrblk:
+	call select
 	ld l,(ix+8)
 	ld h,(ix+9)
 	ld bc,253
 	push hl			; HL -> buf address
 	call output_common
 	pop hl			; HL -> buf address
-	and a
-	jr nz,done_err3
 	ld (ix+10),l
 	ld (ix+11),h
 	ld (ix+13),252
 	ld (ix+14),a
 	ex de,hl		; DE -> buf address
-done_err3:
-	jp done_err
+done3:
+	jp done
 
-	; Set up a BUF for PRB:
+	; Set up a BUF for PRB: (open/prepare)
 prb_setup_buf:
 	push hl
 	ld hl,0xFD51		; DOSDEV1
@@ -428,9 +433,9 @@ prx_quicklib:
 	ld de,blank11
 	res 1,c			; OPEN, not PREPARE
 	call prx_open		; Complete the file open
-	ret c
+	ret c			; File not found
 
-	call CON_CRLF
+	call crlf
 	ld (ix+6),22		; 22 lines before wait
 ql_getline:
 	bit 7,(iy+CTRLC-IYBASE)	; ^C?
@@ -448,9 +453,7 @@ ql_getline:
 	sub e
 	jr c,ql_nocrlf
 
-	push bc
-	call CON_CRLF		; Clobbers BC!
-	pop bc
+	call crlf
 	dec (ix+6)
 	jr nz,ql_nocrlf
 
@@ -468,8 +471,8 @@ ql_nocrlf:
 	push hl
 ql_find_comma:
 	ld a,(hl)
-	cp ','
-	jr z,ql_found_comma
+	cp '.'			; Lowest valid filename character
+	jr c,ql_found_comma	; Comma, CR, or other non-filename character
 	inc hl
 	djnz ql_find_comma
 ql_found_comma:
@@ -487,6 +490,11 @@ ql_done:
 	call CLOSEFILE
 	jp CMD			; Return to command loop - abort LIST command
 
+crlf:
+	push bc
+	call CON_CRLF
+	pop bc
+	ret
 
 	; Send a command header, A = command
 send_cmd:
@@ -508,13 +516,11 @@ send_cmd:
 	; Fall through to send_byte
 
 	; Send a single byte
-	; XXX: USB is fast enough that INIR/OTIR should be possible
 send_byte:
 	push af
-wb_loop:
 	in a,(1)
 	and 2				; TX space available
-	jr z,wb_loop
+	call z,wait_for_tx
 	pop af
 	out (0),a
 	ret
@@ -522,7 +528,7 @@ wb_loop:
 	;; Send a buffer HL->data BC=count
 	;; On return HL advanced, BC=0, A clobbered
 	;;
-	;; XXX: use OTIR here, USB is fast enough
+	; XXX: USB is fast enough that INIR/OTIR should be possible
 send_buf:
 	ld a,b
 	or c
@@ -539,40 +545,48 @@ recv_byte:
 	in a,(1)
 	and 0Dh
 	cp 09h
-	jr nz,rb_with_timeout
+	call nz,wait_for_rx
 	in a,(0)		; Data immediately available
 	ret			; C=0 already
 
-rb_with_timeout:
+	;; This routine waits until the status bit given in A is zero;
+	;; if the the high bits of the status are anything other than
+	;; xxxx10xx (configured, not suspended) then immediately issue
+	;; device not ready.
+wait_for_tx:
+	push hl
+	ld hl,0x0E0A
+	jr wait_for
+
+wait_for_rx:
+	push hl
+	ld hl,0x0D09		; Mask, expected value
+
+wait_for:
 	push bc
-	ld b,100		; 100/50 Hz = 2 s
-rb_ctr:
-	ld a,(65008)
+	ld b,timeout
+wf_ctr:
+	ld a,(CLOCK)
 	ld c,a
-rb_loop:
+wf_loop:
 	in a,(1)
-	and 0Dh			; Data available + suspend + configured
-	sub 09h			; Data available + !suspend + configured
-	jr nz,rb_no_data
-	in a,(0)
+	and l
+	cp h
+	jr nz,wf_nope
 	pop bc
+	pop hl
 	ret
-rb_no_data:
-	inc a			; Otherwise either suspend or !configured
-	jr nz,rb_error
-	ld a,(65008)
+wf_nope:
+	and ~3			; Invalid status bits?
+	cp h
+	jr nz,wf_error		; Not connected
+	ld a,(CLOCK)
 	cp c
-	jr z,rb_loop
-	djnz rb_ctr
-rb_error:
-	pop bc
-	scf
-	ret
-rb_data:
-	in a,(0)
-	; C flag is 0 already
-	pop bc
-	ret
+	jr z,wf_loop
+	djnz wf_ctr
+wf_error:
+	ld a,128+42		; Device not ready
+	jr done4
 
 	; Receive a reply header.
 	; Error, if any, in A. ERR 51 if no reply
@@ -581,29 +595,25 @@ recv_reply:
 	out (2),a		; Flush any pending output
 rr_loop:
 	call recv_byte
-	jr c,rr_timeout
 	inc a			; FF?
 	jr nz,rr_loop
 	call recv_byte
-	jr c,rr_timeout
 	ld bc,(ram_cmd)
 	cp c			; Command
 	jr nz,rr_loop
 	call recv_byte
-	jr c,rr_timeout
 	cp b			; Serial
 	jr nz,rr_loop
-	call recv_byte
-	jr nc,rr_done
-rr_timeout:
-	ld a,51+128
-rr_done:
+	call recv_byte		; Error code (if any)
 	pop bc
-	ret
+	and a
+	ret z
+done4:
+	jp done
 
 ;;;
-;;; Flush any stale input. Terminate immediately if suspended, not configured,
-;;; or not present.
+;;; Discard any (stale) input, if any. Terminate immediately if suspended,
+;;; not configured, or not present. Clobbers A.
 ;;;
 flush_rx:
 	in a,(1)
@@ -647,6 +657,11 @@ prc_skip:
 
 	endif			; console_dev
 
+start:
+	call init		; Unwind to here on error
+	ld hl,__end + INIT_OFFS	; Where to search next
+	ret
+
 init:
 	call select
 	ld a,0xA9		; CLOSE ALL NO REPLY
@@ -658,7 +673,6 @@ init:
 	ld bc,4*MAX_VOLS+1	; B=0
 	call input_command
 	pop hl
-	jr c,no_volumes
 
 	;; Create device list entries
 	;; HL -> CRAD here, A = 0
@@ -696,6 +710,7 @@ is_prb:
 	jr mk_vols
 
 link_volumes:
+	;;  A = 0 here
 	ld hl,-7
 	add hl,de
 	ld de,(DEVLIST)
@@ -705,9 +720,6 @@ link_volumes:
 	ld hl,device_list
 	ld (DEVLIST),hl
 
-	;; Nothing else for right now...
-no_volumes:
-	ld hl,__end + INIT_OFFS	; Where to search next
 	jp done
 
 con_open:
@@ -774,6 +786,7 @@ pr_device:
 
 	;; Check for overflow and pad to 1024 bytes
 	defs 1024 - ASMPC
+__end:
 
 ;;
 ;; In RAM; this is assuming the IEC area is used as a RAM instead.
@@ -787,7 +800,8 @@ pr_device:
 __bss:
 voldevs:
 	defs 7*MAX_VOLS		; Up to 32 volume device entries
-
+errsp:
+	defs 2			; SP rollback on error return
 ram_select:
 	defs 1			; Previous select code
 ram_cmd:
@@ -799,4 +813,4 @@ ram_dummy:
 
 ;;; Check for overflow
 	defs (ram_end - ram_start) - ASMPC
-__end:
+__end_bss:
