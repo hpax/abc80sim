@@ -28,7 +28,7 @@
 ;;; in the DOS, and then return to the original entry point in DOS.
 ;;; Because the DOS ROM is basically full, hard-code the offset here.
 ;
-	defc selcode=60			; ABC-bus select code
+	defc selcode=60			; ABC-bus select code (parallel port)
 	defc CLOCK=65008		; LSB of clock
 	defc CURX=65011			; Cursor column
 	defc CURY=65012			; Cursor row
@@ -42,6 +42,7 @@
 	defc CRAD=65208			; P-code buf during compile
 	defc CRAD_LEN=200
 
+	;;  BASIC routines common to both old and new BASIC
 	defc ERROR=12h			; BASIC entry point for error A=<err>
 	defc END=201			; BASIC routine for END
 	defc CMD=204			; BASIC routine command loop
@@ -54,6 +55,8 @@
 	defc BLK_FLUSH=0023h		; Block I/O flush data routine
 	defc CLOSEFILE=087Fh		; Close BASIC file from IX
 	defc CUR_MAX_X=0338h		; A = current column, E = max column
+	defc CHECKCTRLC=033Eh		; Checks (Z=0) and clears Ctrl-C flag;
+					; clobbers A
 
 	;; File I/O jump table calls (indirects via IX)
 	defc IX_OPEN	= 0x088a + 3*0
@@ -66,7 +69,7 @@
 	defc IX_KILL	= 0x088a + 3*7
 	defc IX_NAME	= 0x088a + 3*7
 
-	;; Init vector offset, matches DOS
+	;; Init vector offset, matches DOS (0x604b)
 	defc INIT_OFFS  = 0x4b
 
 	;; Maximum number of remote volumes
@@ -430,7 +433,7 @@ psb_found:
 	;; Show library listing on screen
 prx_quicklib:
 	;; Clear out possible extension like .BAS
-	ld de,blank11
+	ld de,blank11		; XXX: doing this server side would save 14b
 	res 1,c			; OPEN, not PREPARE
 	call prx_open		; Complete the file open
 	ret c			; File not found
@@ -438,7 +441,7 @@ prx_quicklib:
 	call crlf
 	ld (ix+6),22		; 22 lines before wait
 ql_getline:
-	bit 7,(iy+CTRLC-IYBASE)	; ^C?
+	call CHECKCTRLC
 	jr nz,ql_done
 
 	ld hl,CRAD
