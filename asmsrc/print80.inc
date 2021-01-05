@@ -46,6 +46,8 @@
 	defc ERROR=12h			; BASIC entry point for error A=<err>
 	defc END=201			; BASIC routine for END
 	defc CMD=204			; BASIC routine command loop
+	defc RUNCMD=244			; Run command in RADBUF
+					; Must have command mode flag set!
 	defc CON_GET=2			; Console get character
 	defc CON_INPUT=5		; Console INPUT LINE routine
 	defc CON_PRINT=11		; Console PRINT routine
