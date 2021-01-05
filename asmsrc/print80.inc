@@ -59,6 +59,7 @@
 	defc CUR_MAX_X=0338h		; A = current column, E = max column
 	defc CHECKCTRLC=033Eh		; Checks (Z=0) and clears Ctrl-C flag;
 					; clobbers A
+	defc SCRATCH=0A70h		; Delete program, clear runstate
 
 	;; File I/O jump table calls (indirects via IX)
 	defc IX_OPEN	= 0x088a + 3*0
