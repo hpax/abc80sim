@@ -87,7 +87,7 @@ static inline bool filename_is_absolute(const char *name)
 
 char *concat_path(const char *dir, const char *file)
 {
-    size_t dl;
+    size_t dl, fl;
     char *path;
 
     if (!dir)
@@ -96,8 +96,19 @@ char *concat_path(const char *dir, const char *file)
 	file = ".";
 
     dl = strlen(dir);
-    asprintf(&path, "%s%s%s", dir,
-             (dl && !is_path_separator(dir[dl - 1])) ? "/" : "", file);
+    fl = strlen(file);
+
+    path = malloc(dl + fl + 1);
+    if (path) {
+	char *p = path;
+
+	if (dl > 0 && !filename_is_absolute(file)) {
+	    p = mempcpy(p, dir, dl);
+	    if (!is_path_separator(p[-1]))
+		*p++ = '/';
+	}
+	memcpy(p, file, fl+1);
+    }
 
     return path;
 }
@@ -126,44 +137,27 @@ int stat_file(const char *dir, const char *filename, struct stat *st)
 struct host_file *open_host_file(enum host_file_mode mode, const char *dir,
                                  const char *filename, int openflags)
 {
-    size_t dl, fl;
-    char *p;
     struct host_file *hf;
-
-    if (!dir)
-        dir = "";
-
-    if (!filename) {
-        filename = ".";
-        if (mode_type(mode) != HF_DIRECTORY)
-            mode = HF_FAIL;
-    }
 
     if (mode & HF_FAIL) {
         errno = ENOENT;
         return NULL;
     }
 
-    dl = strlen(dir);
-    fl = strlen(filename);
-
-    hf = calloc(sizeof *hf + dl + fl + 1, 1);
+    hf = calloc(sizeof *hf, 1);
     if (!hf)
         return NULL;
+
+    hf->filename = concat_path(dir, filename);
+    if (!hf->filename) {
+	free(hf);
+	return NULL;
+    }
 
     hf->fd = -1;
     hf->mode = mode;
     hf->openflags = openflags | mode_openflags(mode);
-    hf->nuke = ! !(openflags & O_EXCL);
-
-    p = hf->filename;
-    if (dl > 0 && !filename_is_absolute(filename)) {
-        p = mempcpy(p, dir, dl);
-        if (!is_path_separator(p[-1]))
-            *p++ = '/';
-    }
-    p = mempcpy(p, filename, fl + 1);
-    hf->namelen = p - hf->filename;
+    hf->nuke = !!(openflags & O_EXCL);
 
     if (mode_type(mode) == HF_DIRECTORY) {
         hf->d = opendir(hf->filename);
@@ -218,11 +212,63 @@ struct host_file *dump_file(enum host_file_mode mode, const char *dir,
     return hf;
 }
 
+/*
+ * Special filenames that should be avoided
+ * XXX: add the weird Windows special cases here?
+ */
+bool special_filename(const char *filename)
+{
+    if (!filename || !filename[0])
+	return true;
+
+    if (filename[0] == '.') {
+	if (!filename[1])
+	    return true;
+	if (filename[1] == '.' && !filename[2])
+	    return true;
+    }
+
+    return false;
+}
+
+/*
+ * Rewind a file or directory
+ */
+void rewind_file(struct host_file *hf)
+{
+    if (hf->d)
+	rewinddir(hf->d);
+    if (hf->f)
+	rewind(hf->f);
+}
+
+/*
+ * Read a directory, ignoring special filenames
+ */
+struct dirent *read_dir(struct host_file *hf)
+{
+    struct dirent *de;
+
+    if (!hf->d) {
+	errno = EBADF;
+	return NULL;
+    }
+
+    do {
+	de = readdir(hf->d);
+	if (!de)
+	    return NULL;
+    } while (special_filename(de->d_name));
+
+    return de;
+}
+
 #ifdef HAVE_MKSTEMP
 
 struct host_file *temp_file(enum host_file_mode mode, const char *prefix)
 {
     struct host_file *hf = NULL;
+    char *name = NULL;
     size_t pfxlen;
 
     mode |= HF_PRIVATE;
@@ -231,26 +277,33 @@ struct host_file *temp_file(enum host_file_mode mode, const char *prefix)
         prefix = "";
 
     pfxlen = strlen(prefix);
+    name = malloc(pfxlen + 7);
+    if (!name)
+	goto fail;
+    memcpy(name, prefix, pfxlen);
+    memcpy(name + pfxlen, "XXXXXX", 7);
 
     hf = calloc(sizeof *hf + pfxlen + 6, 1);
     if (!hf)
-        return NULL;
+	goto fail;
 
     hf->mode = mode;
     hf->openflags = O_RDWR | O_CREAT | O_EXCL | O_NOFOLLOW | O_SHORT_LIVED;
     hf->nuke = true;
-    hf->namelen = pfxlen + 6;
-    memcpy(hf->filename, prefix, pfxlen);
-    memcpy(hf->filename + pfxlen, "XXXXXX", 7);
-
-    hf->fd = mkstemp(hf->filename);
-    if (hf->fd < 0) {
-        free(hf);
-        return NULL;
-    }
+    hf->fd = mkstemp(name);
+    if (hf->fd < 0)
+	goto fail;
+    hf->filename = name;
     _setmode(hf->fd, mode_openflags(mode));
 
     return finish_host_file(hf);
+
+fail:
+    if (name)
+	free(name);
+    if (hf)
+	free(hf);
+    return NULL;
 }
 
 #else
@@ -261,7 +314,7 @@ struct host_file *temp_file(enum host_file_mode mode, const char *prefix)
 #define TMP_MAX 65536
 #endif
 
-struct host_file *temp_file(enum host_file_mode mode)
+struct host_file *temp_file(enum host_file_mode mode, const char *prefix)
 {
     char *filename = NULL;
     int err;
@@ -273,7 +326,7 @@ struct host_file *temp_file(enum host_file_mode mode)
     mode |= HF_PRIVATE;
 
     do {
-        filename = tempnam(NULL, TEMPFILE_PREFIX);
+        filename = tempnam(NULL, prefix);
         if (!filename)
             return NULL;
 
@@ -373,6 +426,9 @@ static inline size_t page_size(void)
 #endif
 }
 
+/*
+ * How to adjust the size of a open file
+ */
 #ifdef HAVE_FTRUNCATE
 #define set_file_size(fd,size) ftruncate(fd,size)
 #elif defined(HAVE__CHSIZE_S)
@@ -580,9 +636,11 @@ int close_file(struct host_file **filep)
             file->next->prevp = file->prevp;
     }
 
-    if (file->d) {
-        if (closedir(file->d))
-            err = err ? err : errno;
+    if (mode_type(file->mode) == HF_DIRECTORY) {
+	if (file->d) {
+	    if (closedir(file->d))
+		err = err ? err : errno;
+	}
     } else {
         flush_file(file);
         do_unmap_file(file);
@@ -593,18 +651,17 @@ int close_file(struct host_file **filep)
             else
                 file->fd = -1;  /* fclose() closes the file descriptor too */
         }
-
         if (file->fd >= 0) {
             if (close(file->fd))
                 err = err ? err : errno;
-        }
-
-        if (file->nuke && file->fd >= 0 && file->filename[0]) {
-            if (remove(file->filename))
-                err = err ? err : errno;
-        }
+	}
+	if (file->nuke && file->filename[0]) {
+	    if (remove(file->filename))
+		err = err ? err : errno;
+	}
     }
 
+    free((void *)file->filename);
     free(file);
     *filep = NULL;
     errno = old_errno;
@@ -621,6 +678,73 @@ static void hostfile_cleanup(void)
     }
 }
 
+/*
+ * Rename function with POSIX overwrite semantics
+ */
+#ifdef __WIN32__
+static int my_rename(const char *old, const char *new)
+{
+    if (MoveFileEx(old, new, MOVEFILE_REPLACE_EXISTING))
+	return 0;
+
+    errno = EACCES;		/* XXX: Check GetLastError and expand this */
+    return -1;
+}
+#else
+static inline int my_rename(const char *old, const char *new)
+{
+    return rename(old, new);
+}
+#endif
+
+/*
+ * Rename a file within a directory. "newname" should not include a path.
+ *
+ * This function returns errno on failure, the errno variable is preserved.
+ * This intentionally only allows renaming files, not directories.
+ */
+int rename_file(struct host_file *hf, const char *newname)
+{
+    int err;
+    int orig_errno = errno;
+    const char *p;
+    size_t dl, fl;
+    char *q;
+
+    if (!hf)
+	return EBADF;
+    if (!hf->filename)
+	return ENOENT;
+    if (hf->d)
+	return EISDIR;
+    if (!hf->f && hf->fd < 0)
+	return EBADF;
+
+    p = host_strip_path(hf->filename);
+    dl = p - hf->filename;
+    fl = strlen(newname);
+
+    q = malloc(dl + fl + 1);
+    if (!q)
+      goto fail;
+
+    memcpy(q, hf->filename, dl);
+    memcpy(q+dl, newname, fl+1);
+
+    if (rename(hf->filename, q))
+	goto fail;
+
+    free((void *)hf->filename);
+    hf->filename = q;
+
+    return 0;
+
+fail:
+    err = errno;
+    errno = orig_errno;
+    return err;
+}
+
 void hostfile_init(void)
 {
     atexit(hostfile_cleanup);
@@ -628,7 +752,9 @@ void hostfile_init(void)
 }
 
 /*
- * Strip the path from a (host) filename
+ * Strip the path from a (host) filename, or find the end of the path.
+ * Returns a pointer to the first character of the filename part
+ * in the original path buffer.
  */
 const char *host_strip_path(const char *path)
 {

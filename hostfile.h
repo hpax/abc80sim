@@ -24,8 +24,9 @@ struct host_file {
     FILE *f;
     DIR *d;
     struct host_file **prevp, *next;
-    off_t filesize;
+    const char *filename;
     size_t namelen;
+    off_t filesize;
     int fd;
     int openflags;
     bool nuke;			/* Delete file on close */
@@ -36,13 +37,18 @@ struct host_file {
 #ifdef __WIN32__
     HANDLE maphandle;           /* Special Windows drain bramage */
 #endif
-    char filename[1];
 };
 
 /* This file should now be kept, not deleted on close */
 static inline void keep_file(struct host_file *file)
 {
     file->nuke = false;
+}
+
+/* Mark file for delete on close */
+static inline void nuke_file(struct host_file *file)
+{
+    file->nuke = true;
 }
 
 static inline bool is_path_separator(char c)
@@ -99,6 +105,15 @@ extern int close_file(struct host_file **temp);
 /* Stat a combined path in the filesystem */
 extern int stat_file(const char *dir, const char *filename, struct stat *st);
 
+/* Check for special filenames, to be avoided. Do not include a path. */
+extern bool special_filename(const char *filename);
+
+/* Rewind a file or directory */
+extern void rewind_file(struct host_file *file);
+
+/* Read a directory */
+extern struct dirent *read_dir(struct host_file *file);
+
 /* Initialize the hostfile subsystem */
 extern void hostfile_init(void);
 
@@ -107,6 +122,12 @@ extern const char *host_strip_path(const char *path);
 
 /* Combine a directory and filename */
 extern char *concat_path(const char *dir, const char *file);
+
+/*
+ * Rename an open file within a directory, with overwrite semantics
+ * (if possible)
+ */
+extern int rename_file(struct host_file *hf, const char *newname);
 
 /* Simple linked list of filenames */
 struct file_node;

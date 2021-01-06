@@ -68,13 +68,13 @@ FF A9 ss xxxx				INIT
 	All files are closed and forgotten.  Block size is set to 253.
 	xxxx ignored.  No response token is sent.
 
-FF AA ss xxxx VOL NNNNNNNNEEE NNNNNNNNEEE	RENAME
+FF AA ss ixix NNNNNNNNEEE		RENAME
 
-	Rename the first filename to the second filename.
+	Rename a file. The file remains open.
 
-FF AB ss xxxx VOL NNNNNNNNEEE		DELETE
+FF AB ss ixix				DELETE
 
-	Delete the named file
+	Close and delete a file.
 
 FF AC ss ixix blk2			PREAD
 

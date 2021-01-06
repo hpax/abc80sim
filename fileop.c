@@ -58,15 +58,12 @@ static void init_volumes(struct abcprint *me)
     hf = open_host_file(HF_DIRECTORY, NULL, fileop_path, 0);
     if (hf) {
 	struct dirent *de;
-	while ((de = readdir(hf->d))) {
+	while ((de = read_dir(hf))) {
 	    unsigned int nlen;
 	    unsigned int mode;
 	    char volname[16];
 	    char *dot;
 	    int prio;
-
-	    if (de->d_name[0] == '.')
-		continue;
 
 	    nlen = mangle_for_readdir(volname, de->d_name);
 	    if (!nlen)
@@ -144,7 +141,7 @@ static inline bool file_binary(const struct fileop_file *ff)
 
 static inline enum host_file_mode file_mode(const struct fileop_file *ff)
 {
-    return ff->hf->mode;
+    return ff->hf->mode & HF_TYPE_MASK;
 }
 
 #define MAX_TRACE 16
@@ -693,7 +690,6 @@ static unsigned int do_write(struct abcprint *me, bool eolcvt)
         err = 128 + 45;
 	goto fail;
     }
-    hf = ff->hf;
 
     if (file_mode(ff) == HF_DIRECTORY) {
         err = 128 + 39;         /* Directories are readonly */
@@ -784,28 +780,25 @@ static unsigned int fop_pwrite(struct abcprint *me)
         return do_write(me, false);
 }
 
-static char *make_path(const struct volume *vol, const char *mangled)
-{
-    char unmangle_buf[16];
-
-    unmangle_filename(unmangle_buf, mangled);
-    return concat_path(vol->path, unmangle_buf);
-}
-
 static unsigned int fop_rename(struct abcprint *me)
 {
-    const char *files = me->argbuf.c;
-     char *old_path, *new_path;
     int err;
-    const struct volume *vol = get_volume(me, files);
+    struct fileop_file *ff = me->ff;
+    char newname[16];
 
-    if (!vol || !vol->path)
-	return send_reply(me, 128 + 42);
+    if (!file_open(ff)) {
+        err = 128 + 45;
+	goto fail;
+    }
 
-    old_path = make_path(vol, files+3);
-    new_path = make_path(vol, files+14);
+    if (file_mode(ff) == HF_DIRECTORY) {
+        err = 128 + 39;         /* Directories are readonly */
+	goto fail;
+    }
 
-    if (!rename(old_path, new_path)) {
+    unmangle_filename(newname, me->argbuf.c);
+
+    if (!rename_file(ff->hf, newname)) {
         err = 0;
     } else {
         switch (errno) {
@@ -833,53 +826,30 @@ static unsigned int fop_rename(struct abcprint *me)
         }
     }
 
-    free(old_path);
-    free(new_path);
-
+fail:
     return send_reply(me, err);
 }
 
+/* Deletes and closes a file */
 static unsigned int fop_delete(struct abcprint *me)
 {
-    const char *file = me->argbuf.c;
-    char *path;
     int err;
-    const struct volume *vol = get_volume(me, file);
+    struct fileop_file *ff = me->ff;
 
-    if (!vol || !vol->path)
-	return send_reply(me, 128 + 42);
-
-    path = make_path(vol, file+3);
-
-    if (!remove(path)) {
-        err = 0;
-    } else {
-        switch (errno) {
-        case EROFS:
-            err = 128 + 43;     /* Skivan skrivskyddad */
-            break;
-        case ENOENT:
-            err = 128 + 21;     /* Hittar ej filen */
-            break;
-        case ENOSPC:
-            err = 128 + 41;     /* Skivan full */
-            break;
-        case EISDIR:
-        case EPERM:
-        case EACCES:
-            err = 128 + 40;     /* Filen raderingsskyddad */
-            break;
-        case EIO:
-            err = 128 + 36;     /* Checksummafel vid skrivning */
-            break;
-        default:
-            err = 128 + 48;     /* Fel i biblioteket */
-            break;
-        }
+    if (!file_open(ff)) {
+        err = 128 + 45;
+	goto fail;
     }
 
-    free(path);
+    if (file_mode(ff) == HF_DIRECTORY) {
+        err = 128 + 39;         /* Directories are readonly */
+	goto fail;
+    }
 
+    nuke_file(ff->hf);		/* Mark file for delete on close */
+    err = do_close(ff);
+
+fail:
     return send_reply(me, err);
 }
 
@@ -969,8 +939,8 @@ static const struct fop fops[] = {
     {  0, "CLOSE",  { fop_close, NULL } },  /* A7: CLOSE */
     {  0, "CLOSALL", { fop_closeall, NULL } }, /* A8: CLOSE ALL */
     {  0, "INIT",   { fop_init, NULL } },    /* A9: close all and reset state */
-    { 25, "RENAME", { fop_rename, NULL } },  /* AA: RENAME */
-    { 14, "DELETE", { fop_delete, NULL } },  /* AB: DELETE (KILL) */
+    { 11, "RENAME", { fop_rename, NULL } },  /* AA: RENAME */
+    {  0, "DELETE", { fop_delete, NULL } },  /* AB: DELETE (KILL) */
     {  2, "PREAD",  { fop_pread, NULL } },   /* AC: PREAD */
     {  2, "PWRITE", { arg_blkno, fop_pwrite } },  /* AD: PWRITE */
     {  2, "BLKSIZE", { fop_blksize, NULL } }, /* AE: SET BLOCK SIZE */
