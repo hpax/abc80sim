@@ -1,6 +1,8 @@
 ;;; UFD-DOS patch for ABC80
 ;;; Ported from ufdpatch.ny by hpa
 ;;;
+	include "abc80.inc"
+
 	org 6000h		; Start of DOS, needed for patch offset
 
 ;;; ------ UFDPATCH.NY ------
@@ -302,14 +304,53 @@ ufddrive:	defb 0		; Selectkod för UFD-driven
 
 ;;; ----- END UFDPATCH.NY -----
 
+;;; ----- FOLLOWING PATCHES ARE BY HPA ------
+
+;;; --------------------------------------------------------------------------
+;;; Indirect NAME and KILL/UNSAVE via the device jump table
+;;; (as it should be.) This is trivial because BASIC gives us
+;;; a trampoline for exactly this purpose.
+;;;
+	section open_for_kill_name
+	org 6812h
+	;; Delete the check that this a DOS file
+_ofkn:
+unwind_ret:
+	pop hl
+	pop de
+	ld sp,hl
+	ret
+
+	;; Need a few bytes for this...
+initstub:
+	call CHECKCTRLC		; Clear Ctrl-C flag
+	ld h,70h		; End of DOS
+	jp init_more
+
+_ofkn_pad:
+	defs (6829h-6812h)-(_ofkn_pad - _ofkn), 0xff
+
+	section jp_kill
+	org 67bch
+_jp_kill:
+	call IX_KILL
+
+	section jp_name
+	org 67edh
+_jp_name:
+	call nc,IX_NAME
+	push af
+	call IX_CLOSE
+	pop af
+_jp_done:
+	jr nc,_jp_name + (6812h - 67edh)  ; jr nc,unwind_ret
 
 ;;; --------------------------------------------------------------------------
 ;;; Patch to ufddos80.asm to initialize other device ROMs
 ;;;
-;;; THIS LOOKS FOR A JP (0xC3) INSTRUCTION AT ANY 0x7x7C ADDRESS.
-;;; If we need to run ROMs with unfortunate placement of C3 bytes
-;;; then this will need to be revised, which means finding more code
-;;; space...
+;;; This looks for a JP instruction at any 0x7x4B address (same offset
+;;; as DOS itself.) If one is found, call it; that routine must then
+;;; advance HL past itself so this code knows where to look next.
 ;;;
 
 	section init_jmp
@@ -323,27 +364,23 @@ __do_init:
 	;; The DOS real internal startup routine (pre-patch JP)
 	defc DOSINIT=6543h
 
-	;; Routine in BASIC to clear the Ctrl-C flag
-	defc CLRSTOP=033Eh
+	;; JP (HL) instruction
+	defc JPHL=63A4h
 
-initstub:
-	call CLRSTOP
-
-	ld hl,0x6f4b		; 4B matches DOS
+	;; Called from initstub above
 init_next:
 	inc h
 init_more:
+	ld l,0x4b		; INIT offset 4B matches DOS
 	ld a,h
 	cp 0x7c
 	jp nc,DOSINIT
 	ld a,(hl)
 	cp 0xc3			; JP opcode
 	jr nz,init_next
-	call jphl
+	call JPHL
 	jr init_more
-jphl:
-	jp (hl)
 
 	;; If this pad is < 0 then overflow
 pad:
-	defs (6FB8h-6F9Bh)-(pad - __do_init), 0xff
+	defs (6FAFh-6F9Bh)-(pad - __do_init), 0xff

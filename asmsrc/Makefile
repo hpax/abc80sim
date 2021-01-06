@@ -8,7 +8,7 @@ BAS    = prinit.bas
 
 all: $(ROMS) $(BAS)
 
-%.map: %.asm
+%.map: %.asm $(HDRS)
 	$(Z80ASM) -b -l -m -s -g $<
 
 %.bin: %.map
@@ -18,6 +18,7 @@ all: $(ROMS) $(BAS)
 ../roms/%.rom: %.bin
 	cp -f $< $@
 
+ufdpatch.map: ufdpatch.asm abc80.inc
 ufddos80.bin: ufddos80.in ufdpatch.map patchrom.pl
 	$(PERL) patchrom.pl ufddos80.in ufdpatch.map ufddos80.bin
 
@@ -27,7 +28,7 @@ clean:
 spotless: clean
 	rm -f $(ROMS) $(BAS)
 
-print80_30.bin: print80_30.asm print80.inc
-print80_29.bin: print80_29.asm print80.inc
+print80_30.map: print80_30.asm print80.inc abc80.inc
+print80_29.map: print80_29.asm print80.inc abc80.inc
 prinit.bas:     print80_29.bin
 	bin2abc --bas -s 0x7400 -e 0x747c --new -o $@ $<
