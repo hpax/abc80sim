@@ -28,7 +28,7 @@ struct host_file {
     size_t namelen;
     int fd;
     int openflags;
-    bool nuke;
+    bool nuke;			/* Delete file on close */
     enum host_file_mode mode;
     uint8_t *map;               /* Memory-mapped contents */
     size_t mlen;                /* Length of memory map */
