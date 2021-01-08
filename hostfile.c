@@ -118,6 +118,8 @@ int stat_file(const char *dir, const char *filename, struct stat *st)
     char *path;
     int rv, err;
 
+    memset(st, 0, sizeof *st);
+
     path = concat_path(dir, filename);
     if (!path)
         return -1;
@@ -263,6 +265,91 @@ struct dirent *read_dir(struct host_file *hf)
     return de;
 }
 
+/*
+ * Plain filename (no path)?
+ */
+static bool plain_filename(const char *filename)
+{
+    char c;
+
+    while ((c = *filename++)) {
+	if (is_path_separator(c))
+	    return false;
+    }
+
+    return true;
+}
+
+/*
+ * Where to stick truly temporary files
+ */
+static const char *temp_path;
+
+#ifdef __WIN32__
+
+static void tmpdir_cleanup(void)
+{
+    free(temp_path);
+}
+
+static const char *os_get_temp_path(void)
+{
+    char *tpath;
+    size_t temp_len;
+
+    temp_len = GetTempPath(0, NULL);
+    if (!temp_len)
+	return;			/* Leave at NULL */
+
+    temp_len++;			/* Space for final NULL */
+    tpath = calloc(1, temp_len);
+    if (!tpath)
+	return NULL;
+
+    if (GetTempPath(temp_len, tpath)) {
+	atexit(tmpdir_cleanup);
+	return tpath;
+    } else {
+	free(tpath);
+	return NULL;
+    }
+}
+
+#else
+
+#ifndef _PATH_TMP
+# ifdef __unix__
+#  define _PATH_TMP "/tmp/"
+# else
+#  define _PATH_TMP NULL
+# endif
+#endif
+
+static const char *os_get_temp_path(void)
+{
+    const char *tpath = NULL;
+
+    if ((tpath = getenv("TMP")))
+	return tpath;
+    if ((tpath = getenv("TEMP")))
+	return tpath;
+
+    return _PATH_TMP;
+}
+
+#endif
+
+static void get_temp_path(void)
+{
+    struct stat st;
+    const char *tpath = os_get_temp_path();
+
+    if (stat_file(tpath, NULL, &st) || !S_ISDIR(st.st_mode))
+	tpath = NULL;
+
+    temp_path = tpath;
+}
+
 #ifdef HAVE_MKSTEMP
 
 struct host_file *temp_file(enum host_file_mode mode, const char *prefix)
@@ -282,6 +369,12 @@ struct host_file *temp_file(enum host_file_mode mode, const char *prefix)
 	goto fail;
     memcpy(name, prefix, pfxlen);
     memcpy(name + pfxlen, "XXXXXX", 7);
+
+    if (plain_filename(name)) {
+	char *path = concat_path(temp_path, name);
+	free(name);
+	name = path;
+    }
 
     hf = calloc(sizeof *hf + pfxlen + 6, 1);
     if (!hf)
@@ -320,17 +413,23 @@ struct host_file *temp_file(enum host_file_mode mode, const char *prefix)
     int err;
     int attempts = TMP_MAX;
     size_t namelen;
+    const char *dir;
     const int openflags =
         O_RDWR | O_CREAT | O_EXCL | O_NOFOLLOW | O_SHORT_LIVED;
 
     mode |= HF_PRIVATE;
+
+    if (plain_filename(name))
+	dir = temp_path;
+    else
+	dir = NULL;
 
     do {
         filename = tempnam(NULL, prefix);
         if (!filename)
             return NULL;
 
-        hf = open_host_file(mode, NULL, filename, openflags);
+        hf = open_host_file(mode, dir, filename, openflags);
         err = errno;
         free(filename);
     } while (!hf && err == EEXIST && --attempts);
@@ -749,6 +848,7 @@ void hostfile_init(void)
 {
     atexit(hostfile_cleanup);
     page_mask = page_size() - 1;
+    get_temp_path();
 }
 
 /*
