@@ -51,6 +51,47 @@ pr_jptable:
 	jp notthere			; DELETE
 	jp notthere			; RENAME
 
+prb_jptable:
+	jp prb_open			; OPEN
+	jp prb_prepare			; PREPARE
+	jp prb_close			; CLOSE
+	jp prb_input			; INPUT - might be generally useful
+	jp BLK_PRINT			; PRINT
+	jp prb_rdblk			; RDBLK
+	jp prb_wrblk			; WRBLK
+	; Supporting DELETE and RENAME requires fixes to the DOS ROM;
+	; the DOS ROM contains the BASIC interpreter for these and
+	; it assumes it only applies to disk files.
+	jp prx_delete			; DELETE
+	jp prx_rename			; RENAME
+
+	;; Fixed entry points, reserved for future use
+fixfunc:
+	jp notthere			; Reserved
+	jp notthere			; Reserved
+	jp notthere			; Reserved
+	jp notthere			; Reserved
+	jp notthere			; Reserved
+	jp notthere			; Reserved
+	jp notthere			; Reserved
+	;; Init entry point, same offset as in DOS
+	jp start
+
+	; jp table for PRA:
+pra_jptable:
+	jp pra_open			; OPEN
+	jp pra_prepare			; PREPARE
+	jp pra_close			; CLOSE
+	jp pra_input			; INPUT
+	jp pra_print			; PRINT
+	jp notthere			; RDBLK
+	jp notthere			; WRBLK
+	; Supporting DELETE and RENAME requires fixes to the DOS ROM;
+	; the DOS ROM contains the BASIC interpreter for these and
+	; it assumes it only applies to disk files.
+	jp prx_delete			; DELETE
+	jp prx_rename			; RENAME
+
 pr_print:
 	call select
 	ld d,0FFh
@@ -92,11 +133,6 @@ eof:				; End of file or file not found
 	xor a
 	scf
 	ret
-
-	; Init JP vector is at org+0x4B
-	defs ((__begin + INIT_OFFS) - ASMPC), 0xff
-_start:
-	jp start
 
 pr_open:
 	call select
@@ -146,35 +182,6 @@ prb_open:
 	ld c,0xA1
 	jr prx_open
 
-	; jp table for PRA:
-pra_jptable:
-	jp pra_open			; OPEN
-	jp pra_prepare			; PREPARE
-	jp pra_close			; CLOSE
-	jp pra_input			; INPUT
-	jp pra_print			; PRINT
-	jp notthere			; RDBLK
-	jp notthere			; WRBLK
-	; Supporting DELETE and RENAME requires fixes to the DOS ROM;
-	; the DOS ROM contains the BASIC interpreter for these and
-	; it assumes it only applies to disk files.
-	jp prx_delete			; DELETE
-	jp prx_rename			; RENAME
-
-prb_jptable:
-	jp prb_open			; OPEN
-	jp prb_prepare			; PREPARE
-	jp prb_close			; CLOSE
-	jp BLK_INPUT			; INPUT
-	jp BLK_PRINT			; PRINT
-	jp prb_rdblk			; RDBLK
-	jp prb_wrblk			; WRBLK
-	; Supporting DELETE and RENAME requires fixes to the DOS ROM;
-	; the DOS ROM contains the BASIC interpreter for these and
-	; it assumes it only applies to disk files.
-	jp prx_delete			; DELETE
-	jp prx_rename			; RENAME
-
 pra_prepare:
 	ld c,0xA2
 	jr prx_prepare
@@ -191,7 +198,7 @@ prx_prepare:
 
 prx_open:
 	ld (ix+6),0
-	ld (ix+7),252			; As good as anything...
+	ld (ix+7),132			; Line length, seems to be standard?
 	call select
 	push de
 	ld a,c
@@ -311,7 +318,7 @@ prai_space:
 	jr prai_loop
 prbr_protoerr:
 	ld a,128+37
-	jr done3
+	jr done2
 
 prb_rdblk:
 	call select
@@ -325,7 +332,7 @@ prb_rdblk_nosel:
 	call send_byte
 	call recv_reply
 	and a
-	jr nz,done3
+	jr nz,done2
 	call recv_byte
 	cp b
 	jr nz,prbr_protoerr
@@ -343,6 +350,112 @@ prbr_recv:
 	pop hl			; HL -> buf address
 	jp done_ok
 
+	;; This is a slightly modified version of the BLK_INPUT routine
+	;; in the BASIC ROM. It has the following modifications:
+	;;   1. Accept <LF> or <CR><LF> line endings as well as just <CR>
+	;;   2. Handle a block without an <ETX> terminator
+	;;   3. Handle a file without <NUL> terminator
+	;; These changes allow a text file in modern Unix/DOS format
+	;; to be parsed, as long as it does not have embedded <TAB>
+	;; characters. It would be possible to heuristically handle
+	;; <TAB> by looking for <LF> or <ETX>; the first block ought to have
+	;; at least one <LF> if "modern", or <ETX> if ABC.
+	;;
+	;; This is intended to be a general routine, usable for other
+	;; devices than these.
+prb_input:
+	ex de,hl		; DE -> destination pointer
+	ld (ix+13),1		; Inhibit output
+	ld l,(ix+10)		; HL -> pointer into the buffer
+	ld h,(ix+11)
+pbi_nextchar:
+	xor a
+	cp c
+	jr z,pbi_overlong	; Output buffer overflow?
+	call pbi_peekchar
+	cp 9			; TAB = compressed spaces
+	jr z,pbi_tab
+	cp 10			; LF = convert to CR
+	jr z,pbi_lf
+	and a
+	jr z,pbi_eof		; NUL = end of file
+	jp m,pbi_badchar	; >= 128 -> error
+pbi_emit:
+	ldi			; (DE) <- (HL), DE++, HL++, BC--
+	cp 13			; CR = end of line
+	jr nz,pbi_nextchar
+	;; For a CR character, look to see if the next one if LF,
+	;; if so eat the LF rather than having it converted to CR next time.
+	;; Only do this exactly once, so <CR><LF><LF> = 2 lines.
+	call pbi_peekchar
+	cp 10
+	jr nz,pbi_done
+	inc hl			; Skip exactly one LF character
+pbi_done:
+	xor a
+pbi_return:
+	ld (ix+10),l
+	ld (ix+11),h
+	ret
+pbi_eof:
+pbi_err:
+	scf
+	jr pbi_return
+pbi_overlong:
+	ld a,128 + 20	        ; Line too long
+	jr pbi_err
+pbi_badchar:
+	ld a,128 + 58	        ; Bad character
+	jr pbi_err
+pbi_lf:				; Convert to CR and EOL, but don't eat LF
+	ld (hl),13
+	ldi
+	jr pbi_done
+pbi_tab:
+	inc l			; Next byte
+	jr z,pbi_nextchar	; <TAB> at end of block -> ignore
+	ld b,(hl)
+	inc l
+	ld a,c
+	sub b
+	jr c,pbi_overlong
+	ld c,a
+	ld a,' '
+pbi_tab_expand:
+	ld (de),a
+	inc de
+	djnz pbi_tab_expand
+	jr pbi_nextchar
+
+	;; Get the next character, but don't advance HL beyond
+	;; it. However, handle ETX and buffer overrun here.
+pbi_peekchar:
+	xor a
+	cp l			; 256-byte wrap: assume end of block
+	jr z,pbi_newblock
+	ld a,(hl)
+	cp 3
+	ret nz
+pbi_newblock:
+	ld l,(ix+8)
+	ld h,(ix+9)
+	ld (hl),0		; In case BLKIN fails silently...
+	push bc
+	push de
+	call IX_BLKRD
+	pop de
+	pop bc
+	;; HL points to start of buffer here
+	jr nc,pbi_peekchar
+	; On error, return EOF and also set the first byte in the buffer
+	; to EOF in case input gets called again. Don't trust
+	; that HL really is the start of buffer for this case.
+	ld l,(ix+8)
+	ld h,(ix+9)
+	xor a
+	ld (hl),a
+	ret
+
 	; Write a binary output block.  Similar to
 	; pra_print, but with a few different buffer
 	; management bits.
@@ -354,15 +467,27 @@ prb_wrblk:
 	push hl			; HL -> buf address
 	call output_common
 	pop hl			; HL -> buf address
-	ld (ix+10),l
-	ld (ix+11),h
-	ld (ix+13),252
-	ld (ix+14),a
+	call prb_empty_buf
 	ex de,hl		; DE -> buf address
 done3:
 	jp done
 
 	; Set up a BUF for PRB: (open/prepare)
+	if 1			; Use UFD-DOS internal routines
+
+prb_setup_buf:
+	push bc
+	push hl
+	call 65F4h		; Allocate buffer
+	call 662Bh		; Initialize buffer pointers
+	pop hl
+	pop bc
+	ret
+
+	defc prb_empty_buf=663Fh
+
+	else			; Do not use
+
 prb_setup_buf:
 	push hl
 	ld hl,0xFD51		; DOSDEV1
@@ -389,20 +514,38 @@ psb_found:
 	rrca
 	ld h,a
 	ld l,3			; Mimic the behavior of DOS (block header)
-	ld (ix+14),0
 	ld de,(0xFD12)		; Address to DOSBUF1
 	add hl,de
 	ld (ix+8),l
 	ld (ix+9),h
-	ld (ix+10),l
-	ld (ix+11),h
-	ld (ix+13),252
+	call prb_empty_buf
 	pop de
 	pop hl
 	ret
 
+	;; Mark buffer empty (at start, or after write)
+prb_empty_buf:
+	;; HL should point to the buffer here
+	ld (ix+10),l
+	ld (ix+11),h
+	ld (ix+13),252		; Bytes left (for text, so excluding ETX)
+	ld (ix+14),0
+	ld (hl),l		; Set first byte in buffer to ETX (L=3)
+	ret
+
+	endif
+
 	;; Show library listing on screen
 prx_quicklib:
+	if 1
+
+	;; Not implemented - lack of space
+	xor a
+	scf
+	ret
+
+	else
+
 	;; Clear out possible extension like .BAS
 	ld de,blank11		; XXX: doing this server side would save 14b
 	res 1,c			; OPEN, not PREPARE
@@ -469,6 +612,8 @@ crlf:
 	call CON_CRLF
 	pop bc
 	ret
+
+	endif
 
 	; Send a command header, A = command
 send_cmd:
