@@ -219,27 +219,21 @@ prx_open:
 	ex de,hl			; HL <- filename
 	ld c,11
 	call send_buf
-	call recv_reply
 	pop de				; Restore DE <- filename
 	if pra_dev
 	pop bc
 	endif
-	and a
+	call recv_reply
 
 	;; Mark buffer busy if successful, any value other than 0xff works,
 	;; so since successful means A=0 use that value
 	if pra_dev
 
-	jr nz,done2
 	bit 0,c				; PRA -> no buffer
 	jr z,done2
-	call prb_mark_buf
-
-	else
-
-	call z,prb_mark_buf
 
 	endif
+	call prb_mark_buf
 	jr done2
 
 prx_rename:
@@ -307,8 +301,6 @@ pra_input:
 input_command:
 	call send_cmd
 	call recv_reply
-	and a
-	jr nz,done2
 	call recv_byte
 	ld e,a
 	call recv_byte
@@ -346,8 +338,6 @@ prb_rdblk_nosel:
 	xor a
 	call send_byte
 	call recv_reply
-	and a
-	jr nz,done2
 	call recv_byte
 	cp b
 	jr nz,prbr_protoerr
@@ -730,8 +720,9 @@ wf_error:
 	ld a,128+42		; Device not ready
 	jr done4
 
-	; Receive a reply header.
-	; Error, if any, in A. ERR 51 if no reply
+	;; Receive a reply header.
+	;; If the reply is an error, terminate command and return
+	;; the error code to BASIC (or other caller) by calling done.
 recv_reply:
 	push bc
 	out (2),a		; Flush any pending output
