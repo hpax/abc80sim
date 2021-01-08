@@ -203,9 +203,11 @@ prx_open:
 	ld (ix+6),0
 	ld (ix+7),132			; Line length, seems to be standard?
 	call select
+	if pra_dev
+	push bc
+	endif
 	push de
 	ld a,c
-	push bc
 	call send_cmd
 	ld l,(ix+3)			; Get volume name
 	ld h,(ix+4)
@@ -217,23 +219,27 @@ prx_open:
 	ex de,hl			; HL <- filename
 	ld c,11
 	call send_buf
-	pop bc
-	ld a,c
-	push bc
 	call recv_reply
-	and a
+	pop de				; Restore DE <- filename
+	if pra_dev
 	pop bc
-	pop de
-	jr nz,done2
-	bit 0,c				; PRB:?
-	jr z,done2
-	call prb_getbufaddr
-	ld (hl),0xe0			; Mark DOSBUF in use, drive no 0xE0
+	endif
+	and a
 
-	; If OPEN, read the first block; this appears to be required
-	bit 1,c				; OPEN?
-	call z,prb_rdblk_nosel		; Read block
-	ex de,hl
+	;; Mark buffer busy if successful, any value other than 0xff works,
+	;; so since successful means A=0 use that value
+	if pra_dev
+
+	jr nz,done2
+	bit 0,c				; PRA -> no buffer
+	jr z,done2
+	call prb_mark_buf
+
+	else
+
+	call z,prb_mark_buf
+
+	endif
 	jr done2
 
 prx_rename:
@@ -248,12 +254,11 @@ prx_rename:
 prb_close:
 	bit 7,(ix+14)
 	call nz,BLK_FLUSH		; Flush buffered data
-	ld (ix+14),0
-	ld h,0xFD
-	ld a,0x41
-	add (ix+12)
-	ld l,a
-	ld (hl),0xFF			; Mark buffer free
+	ld a,0xff			; Free
+	call prb_mark_buf
+	;; Returns with B=0
+	ld (ix+5),b
+	ld (ix+14),b
 pra_close:
 	ld a,0xA7
 prx_simple_command:			; Just command and response, no data
@@ -478,6 +483,19 @@ prb_wrblk:
 done3:
 	jp done
 
+
+	;; Mark the buffer for the current device busy or free
+	;; by writing the value in A into the drive number
+	;; byte of the corresponding DOS file description
+	;; Clobbers BC, HL; returns with B=0
+prb_mark_buf:
+	ld b,0
+	ld c,(ix+12)
+	ld hl,0xFD41
+	add hl,bc
+	ld (hl),a
+	ret
+
 	; Set up a BUF for PRB: (open/prepare)
 	if 1			; Use UFD-DOS internal routines
 
@@ -496,7 +514,7 @@ prb_setup_buf:
 
 prb_setup_buf:
 	push hl
-	ld hl,0xFD51		; DOSDEV1
+	ld hl,0xFD51		; DOSDEV1 + 1
 psb_loop:
 	ld a,(hl)
 	inc a
