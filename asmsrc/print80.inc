@@ -50,8 +50,8 @@
 __begin:
 	; jp table for PR:
 pr_jptable:
-	jp pr_open			; OPEN
-	jp pr_open			; PREPARE
+	jp trivial			; OPEN
+	jp trivial			; PREPARE
 	jp pr_close			; CLOSE
 	jp notforme			; INPUT
 	jp pr_print			; PRINT
@@ -151,7 +151,6 @@ pr_close:
 
 send_byte_done:
 	call send_byte
-pr_open:
 done_ok:
 	xor a
 done:
@@ -874,9 +873,14 @@ con_open:
 	ld (ix+6),a
 	ld (ix+7),e
 	;; Fall through
+
+	endif
 trivial:			; Trivially successful call
 	xor a			; A <- 0  carry <- 0
 	ret
+
+	if connul
+
 alwayseof:			; End of file or file not found
 	xor a
 	scf
