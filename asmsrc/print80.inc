@@ -426,7 +426,7 @@ pbi_lf:				; Convert to CR and EOL, but don't eat LF
 	ldi
 	jr pbi_done
 pbi_tab:
-	inc l			; Next byte
+	inc l			; Next byte; note that 3 = ETX is valid
 	jr z,pbi_nextchar	; <TAB> at end of block -> ignore
 	ld b,(hl)
 	inc l
