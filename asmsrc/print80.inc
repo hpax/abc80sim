@@ -257,9 +257,13 @@ prb_close:
 	ld a,0xff			; Free
 	call prb_mark_buf
 	;; Returns with B=0
-	ld (ix+5),b
 	ld (ix+14),b
+	if pra_dev
 pra_close:
+	ld (ix+5),0
+	else
+	ld (ix+5),b
+	endif
 	ld a,0xA7
 prx_simple_command:			; Just command and response, no data
 	call select
