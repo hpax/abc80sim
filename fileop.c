@@ -26,6 +26,17 @@ static struct volume *get_volume(struct abcprint *me, const char *name)
     return NULL;
 }
 
+static void add_volume(struct abcprint *me, const char *name,
+		       int mode, int prio, const char *path)
+{
+    struct volume *vol = &me->volumes[me->vols++];
+
+    memcpy(vol->name, name, 3);
+    vol->mode = mode;
+    vol->prio = prio;
+    vol->path = strdup(path);
+}
+
 /* Scan for volumes */
 static void init_volumes(struct abcprint *me)
 {
@@ -42,18 +53,15 @@ static void init_volumes(struct abcprint *me)
     if (!fileop_path || !*fileop_path)
 	return;
 
+    me->vols = 0;
+
     /* Default volumes */
-    memcpy(me->volumes[0].name, "PRA", 3);
-    me->volumes[0].mode = 1;	/* Text */
-    me->volumes[0].prio = 1;	/* Default assignment */
-    me->volumes[0].path = strdup(fileop_path);
-
-    memcpy(me->volumes[1].name, "PRB", 3);
-    me->volumes[1].mode = 2;	/* Binary */
-    me->volumes[1].prio = 1;	/* Default assignment */
-    me->volumes[1].path = strdup(fileop_path);
-
-    me->vols = 2;
+    add_volume(me, "NET", 2, 1, fileop_path);
+#if 1
+    /* Legacy volumes */
+    add_volume(me, "PRA", 1, 1, fileop_path);
+    add_volume(me, "PRB", 2, 1, fileop_path);
+#endif
 
     hf = open_host_file(HF_DIRECTORY, NULL, fileop_path, 0);
     if (hf) {
@@ -881,8 +889,7 @@ void fileop_reset(struct abcprint *me)
     fileop_goto_init_state(me);
 }
 
-/* List available volumes, including PRA: and PRB: which default to . */
-
+/* List available volumes; this includes the default volumes */
 static unsigned int fop_listvol(struct abcprint *me)
 {
     unsigned char *dp = me->data;
