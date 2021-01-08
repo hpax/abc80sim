@@ -44,7 +44,7 @@ static void print_finish(struct abcprint *me)
 
     fflush(hf->f);
 
-    namelen = hf->namelen;
+    namelen = strlen(hf->filename);
     cmdlen = 0;
     for (p = lpr_command; *p; p++) {
         cmdlen += (*p == '*') ? namelen : 1;

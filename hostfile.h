@@ -25,7 +25,6 @@ struct host_file {
     DIR *d;
     struct host_file **prevp, *next;
     const char *filename;
-    size_t namelen;
     off_t filesize;
     int fd;
     int openflags;
