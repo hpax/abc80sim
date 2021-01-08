@@ -451,19 +451,19 @@ pbi_peekchar:
 	cp 3
 	ret nz
 pbi_newblock:
-	call prb_getbufaddr
-	ld (hl),0		; In case BLKIN fails silently...
-	push hl
+	call pbi_eofbuf		; Just in case IX_BLKRD fails silently...
 	push bc
 	push de
 	call IX_BLKRD
 	pop de
 	pop bc
-	pop hl
-	;; HL points to start of buffer here
+	;; HL points to start of buffer here (we hope)
 	jr nc,pbi_peekchar
-	; On error, return EOF and also set the first byte in the buffer
-	; to EOF in case input gets called again.
+	;; On error, return EOF and also set the first byte in the buffer
+	;; to EOF in case input gets called again.
+	;; Fall through...
+pbi_eofbuf:
+	call prb_getbufaddr
 	xor a
 	ld (hl),a
 	ret
