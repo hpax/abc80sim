@@ -144,38 +144,42 @@ static inline enum host_file_mode file_mode(const struct fileop_file *ff)
     return ff->hf->mode & HF_TYPE_MASK;
 }
 
-#define MAX_TRACE 16
-static void trace_data(const void *data, size_t len, const char *pfx)
+#define TRACE_LINE 16
+static void trace_data(const void *data, int len, const char *pfx)
 {
-    size_t i;
+    int i;
     const uint8_t *dp = data;
 
-    fprintf(tracef, "PR:  %-7s : ", pfx);
+    while (len > 0) {
+	fprintf(tracef, "PR:  %-7s : ", pfx);
 
-    for (i = 0; i < MAX_TRACE; i++) {
-        if (i >= len)
-            fprintf(tracef, "  ");
-        else
-            fprintf(tracef, "%02x", dp[i]);
+	for (i = 0; i < TRACE_LINE; i++) {
+	    if (i >= len)
+		fprintf(tracef, "  ");
+	    else
+		fprintf(tracef, "%02x", dp[i]);
 
-        putc(i == 8 ? '-' : ' ', tracef);
+	    putc(i == 8 ? '-' : ' ', tracef);
+	}
+
+	fprintf(tracef, "   [");
+
+	for (i = 0; i < TRACE_LINE; i++) {
+	    char c;
+
+	    if (i >= len)
+		break;
+
+	    c = dp[i];
+	    if (c < 32 || c > 126)
+		c = '.';
+
+	    putc(c, tracef);
+	}
+	fprintf(tracef, "]\n");
+	len -= TRACE_LINE;
+	dp += TRACE_LINE;
     }
-
-    fprintf(tracef, "%c  [", (len > 16) ? '+' : ' ');
-
-    for (i = 0; i < MAX_TRACE; i++) {
-        char c;
-
-        c = (i >= len) ? ' ' : dp[i];
-        if (c < 32 || c > 126)
-            c = '.';
-
-        putc(c, tracef);
-    }
-    putc(']', tracef);
-    if (len > MAX_TRACE)
-        fprintf(tracef, "+ (%lu bytes)", (unsigned long)len);
-    putc('\n', tracef);
 }
 
 static unsigned int pr_send(struct abcprint *me, const void *buf,
