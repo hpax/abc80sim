@@ -65,7 +65,7 @@ prb_jptable:
 	jp prb_prepare			; PREPARE
 	jp prb_close			; CLOSE
 	jp prb_input			; INPUT - might be generally useful
-	jp BLK_PRINT			; PRINT
+	jp pra_print			; PRINT
 	jp prb_rdblk			; RDBLK
 	jp prb_wrblk			; WRBLK
 	; Supporting DELETE and RENAME requires fixes to the DOS ROM;
@@ -277,14 +277,10 @@ prx_delete:
 	ld a,0xAB
 	jr prx_simple_command
 
-	if pra_dev
-
 pra_print:
 	call select
 	call output_common
 	jr done2
-
-	endif
 
 output_common:
 	ld a,0xA6
