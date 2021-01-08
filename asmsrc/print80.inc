@@ -35,7 +35,14 @@
 	;; Console device, probably doesn't fit anymore
 	defc console_dev = 0
 
-	;; Quicklib routine, probably doesn't fit anymore
+	;; Support strict text file access
+	defc pra_dev = 0
+
+	;; Quicklib routine
+	defc quicklib = 1
+
+	;; ABC800-style CON: and NUL: devices
+	defc connul = 1
 
 	;; Device timeout
 	defc timeout = 100		; 100/50 Hz = 2 s
@@ -46,12 +53,12 @@ pr_jptable:
 	jp pr_open			; OPEN
 	jp pr_open			; PREPARE
 	jp pr_close			; CLOSE
-	jp notthere			; INPUT
+	jp notforme			; INPUT
 	jp pr_print			; PRINT
-	jp notthere			; RDBLK
-	jp notthere			; WRBLK
-	jp notthere			; DELETE
-	jp notthere			; RENAME
+	jp notforme			; RDBLK
+	jp notforme			; WRBLK
+	jp notforme			; DELETE
+	jp notforme			; RENAME
 
 prb_jptable:
 	jp prb_open			; OPEN
@@ -69,15 +76,17 @@ prb_jptable:
 
 	;; Fixed entry points, reserved for future use
 fixfunc:
-	jp notthere			; Reserved
-	jp notthere			; Reserved
-	jp notthere			; Reserved
-	jp notthere			; Reserved
-	jp notthere			; Reserved
-	jp notthere			; Reserved
-	jp notthere			; Reserved
+	jp notforme			; Reserved
+	jp notforme			; Reserved
+	jp notforme			; Reserved
+	jp notforme			; Reserved
+	jp notforme			; Reserved
+	jp notforme			; Reserved
+	jp notforme			; Reserved
 	;; Init entry point, same offset as in DOS
 	jp start
+
+	if pra_dev
 
 	; jp table for PRA:
 pra_jptable:
@@ -86,13 +95,15 @@ pra_jptable:
 	jp pra_close			; CLOSE
 	jp pra_input			; INPUT
 	jp pra_print			; PRINT
-	jp notthere			; RDBLK
-	jp notthere			; WRBLK
+	jp notforme			; RDBLK
+	jp notforme			; WRBLK
 	; Supporting DELETE and RENAME requires fixes to the DOS ROM;
 	; the DOS ROM contains the BASIC interpreter for these and
 	; it assumes it only applies to disk files.
 	jp prx_delete			; DELETE
 	jp prx_rename			; RENAME
+
+	endif
 
 pr_print:
 	call select
@@ -105,8 +116,8 @@ pr_print_loop:
 	ld a,(hl)
 	cp d
 	jr nz,pr_print_not_ff
-	call send_byte
-	ld a,(hl)
+	call send_byte			; FF
+	dec a				; FE
 pr_print_not_ff:
 	call send_byte
 
@@ -131,25 +142,6 @@ select:
 	pop af
 	ret
 
-eof:				; End of file or file not found
-	xor a
-	scf
-	ret
-
-pr_open:
-	call select
-
-	in a,(1)
-	and 0Ch
-	xor 08h
-	jr z,done
-	; fall through to notthere
-
-notthere:
-	ld a,128+52
-	scf
-	ret
-
 pr_close:
 	call select
 	ld a,0FFh
@@ -159,6 +151,7 @@ pr_close:
 
 send_byte_done:
 	call send_byte
+pr_open:
 done_ok:
 	xor a
 done:
@@ -176,17 +169,21 @@ done:
 	scf
 	ret
 
+	if pra_dev
+
 pra_open:
 	ld c,0xA0
 	jr prx_open
+pra_prepare:
+	ld c,0xA2
+	jr prx_prepare
+
+	endif
+
 prb_open:
 	call prb_setup_buf
 	ld c,0xA1
 	jr prx_open
-
-pra_prepare:
-	ld c,0xA2
-	jr prx_prepare
 prb_prepare:
 	call prb_setup_buf
 	ld c,0xA3
@@ -271,10 +268,14 @@ prx_delete:
 	ld a,0xAB
 	jr prx_simple_command
 
+	if pra_dev
+
 pra_print:
 	call select
 	call output_common
 	jr done2
+
+	endif
 
 output_common:
 	ld a,0xA6
@@ -286,9 +287,13 @@ output_common:
 	call send_buf
 	jp recv_reply
 
+	if pra_dev
+
 pra_input:
 	call select
 	ld a,0xA4			; INPUT
+
+	endif
 
 	;; This routine can be called to handle a command with a
 	;; reply + len + data response.
@@ -747,12 +752,12 @@ prc_jptable:
 	jp pr_open			; OPEN
 	jp pr_open			; PREPARE
 	jp trivial			; CLOSE
-	jp notthere			; INPUT
+	jp notforme			; INPUT
 	jp prc_print			; PRINT
-	jp notthere			; RDBLK
-	jp notthere			; WRBLK
-	jp notthere			; DELETE
-	jp notthere			; RENAME
+	jp notforme			; RDBLK
+	jp notforme			; WRBLK
+	jp notforme			; DELETE
+	jp notforme			; RENAME
 
 prc_print:
 	call select
@@ -815,12 +820,16 @@ mk_vols:
 	pop hl
 	ld bc,3			; Copy volume name
 	ldir
+
+	if pra_dev
 	;; This requires pra_jptable and prb_jptable have the same upper bytes
 	dec a			; Z = 1 if A = 1 = text/PRA
-	ld a,prb_jptable & 0xff
-	jr nz,is_prb
 	ld a,pra_jptable & 0xff
-is_prb:
+	jr z,have_voltype
+	endif
+
+	ld a,prb_jptable & 0xff
+have_voltype:
 	ld (de),a
 	inc de
 	ld a,prb_jptable >> 8
@@ -842,6 +851,13 @@ link_volumes:
 	ld hl,__end
 	jp done
 
+notforme:
+	ld a,128+52		; Ej till denna enhet
+	scf
+	ret
+
+	if connul
+
 con_open:
 	;; Be nice and initialize the position fields, even though
 	;; we aren't really able to keep them updated...
@@ -849,9 +865,12 @@ con_open:
 	ld (ix+6),a
 	ld (ix+7),e
 	;; Fall through
-
 trivial:			; Trivially successful call
 	xor a			; A <- 0  carry <- 0
+	ret
+alwayseof:			; End of file or file not found
+	xor a
+	scf
 	ret
 
 ;;;
@@ -863,21 +882,23 @@ con_jptable:
 	jp trivial			; CLOSE
 	jp CON_INPUT			; INPUT
 	jp CON_PRINT			; PRINT
-	jp notthere			; RDBLK
-	jp notthere			; WRBLK
-	jp notthere			; DELETE
-	jp notthere			; RENAME
+	jp notforme			; RDBLK
+	jp notforme			; WRBLK
+	jp notforme			; DELETE
+	jp notforme			; RENAME
 
 nul_jptable:
 	jp trivial			; OPEN
 	jp trivial			; PREPARE
 	jp trivial			; CLOSE
-	jp eof				; INPUT
+	jp alwayseof			; INPUT
 	jp trivial			; PRINT
-	jp notthere			; RDBLK
-	jp notthere			; WRBLK
-	jp notthere			; DELETE
-	jp notthere			; RENAME
+	jp notforme			; RDBLK
+	jp notforme			; WRBLK
+	jp notforme			; DELETE
+	jp notforme			; RENAME
+
+	endif
 
 ;;; 11 blank characters = empty filename
 	if quicklib
@@ -888,11 +909,12 @@ blank11:
 device_list:
 	if console_dev
 prc_device:
-	defw con_device
+	defw prc_device+7
 	defm "PRC"
 	defw prc_jptable
 	endif
 
+	if connul
 con_device:
 	defw nul_device
 	defm "CON"
@@ -901,6 +923,8 @@ nul_device:
 	defw pr_device
 	defm "NUL"
 	defw nul_jptable
+	endif
+
 pr_device:
 	defw voldevs
 	defm "PR "
