@@ -35,6 +35,8 @@
 	;; Console device, probably doesn't fit anymore
 	defc console_dev = 0
 
+	;; Quicklib routine, probably doesn't fit anymore
+
 	;; Device timeout
 	defc timeout = 100		; 100/50 Hz = 2 s
 
@@ -190,11 +192,15 @@ prb_prepare:
 	ld c,0xA3
 prx_prepare:
 	;; Check for LIST PRx: in command mode
+	if quicklib
+
 	ld a,(de)
 	cp ' '
 	jr nz,prx_open
 	bit 0,(iy+14)
 	jp nz,prx_quicklib
+
+	endif
 
 prx_open:
 	ld (ix+6),0
@@ -224,8 +230,7 @@ prx_open:
 	jr nz,done2
 	bit 0,c				; PRB:?
 	jr z,done2
-	ld l,(ix+8)
-	ld h,(ix+9)
+	call prb_getbufaddr
 	ld (hl),0xe0			; Mark DOSBUF in use, drive no 0xE0
 
 	; If OPEN, read the first block; this appears to be required
@@ -339,8 +344,7 @@ prb_rdblk_nosel:
 	call recv_byte
 	and a
 	jr nz,prbr_protoerr
-	ld l,(ix+8)
-	ld h,(ix+9)
+	call prb_getbufaddr
 	push hl
 prbr_recv:
 	call recv_byte
@@ -437,21 +441,19 @@ pbi_peekchar:
 	cp 3
 	ret nz
 pbi_newblock:
-	ld l,(ix+8)
-	ld h,(ix+9)
+	call prb_getbufaddr
 	ld (hl),0		; In case BLKIN fails silently...
+	push hl
 	push bc
 	push de
 	call IX_BLKRD
 	pop de
 	pop bc
+	pop hl
 	;; HL points to start of buffer here
 	jr nc,pbi_peekchar
 	; On error, return EOF and also set the first byte in the buffer
-	; to EOF in case input gets called again. Don't trust
-	; that HL really is the start of buffer for this case.
-	ld l,(ix+8)
-	ld h,(ix+9)
+	; to EOF in case input gets called again.
 	xor a
 	ld (hl),a
 	ret
@@ -461,8 +463,7 @@ pbi_newblock:
 	; management bits.
 prb_wrblk:
 	call select
-	ld l,(ix+8)
-	ld h,(ix+9)
+	call prb_getbufaddr
 	ld bc,253
 	push hl			; HL -> buf address
 	call output_common
@@ -535,17 +536,16 @@ prb_empty_buf:
 
 	endif
 
-	;; Show library listing on screen
-prx_quicklib:
-	if 1
-
-	;; Not implemented - lack of space
-	xor a
-	scf
+;;; Load the address of the start of the current buffer into HL
+prb_getbufaddr:
+	ld l,(ix+8)
+	ld h,(ix+9)
 	ret
 
-	else
+	;; Show library listing on screen
+	if quicklib
 
+prx_quicklib:
 	;; Clear out possible extension like .BAS
 	ld de,blank11		; XXX: doing this server side would save 14b
 	res 1,c			; OPEN, not PREPARE
@@ -879,9 +879,11 @@ nul_jptable:
 	jp notthere			; DELETE
 	jp notthere			; RENAME
 
-;;; 11 blank characters
+;;; 11 blank characters = empty filename
+	if quicklib
 blank11:
 	defm "           "
+	endif
 
 device_list:
 	if console_dev
