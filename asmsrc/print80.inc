@@ -42,7 +42,7 @@
 	defc quicklib = 1
 
 	;; ABC800-style CON: and NUL: devices
-	defc connul = 1
+	defc connul = 0
 
 	;; Device timeout
 	defc timeout = 100		; 100/50 Hz = 2 s
@@ -65,7 +65,7 @@ prb_jptable:
 	jp prb_prepare			; PREPARE
 	jp prb_close			; CLOSE
 	jp prb_input			; INPUT - might be generally useful
-	jp pra_print			; PRINT
+	jp prb_print			; PRINT
 	jp prb_rdblk			; RDBLK
 	jp prb_wrblk			; WRBLK
 	; Supporting DELETE and RENAME requires fixes to the DOS ROM;
@@ -245,8 +245,17 @@ prx_rename:
 	jr prx_reply_done
 
 prb_close:
-	bit 7,(ix+14)
-	call nz,BLK_FLUSH		; Flush buffered data
+	call select
+	xor a
+	cp (ix+14)
+	jr z,pbc_noflush
+	call prb_getbufaddr
+	ld b,a
+	ld a,(ix+10)			; End data
+	sub l				; Skip non-data at start of buffer
+	ld c,a
+	call output_common
+pbc_noflush:
 	ld a,0xff			; Free
 	call prb_mark_buf
 	;; Returns with B=0
@@ -259,7 +268,6 @@ pra_close:
 	endif
 	ld a,0xA7
 prx_simple_command:			; Just command and response, no data
-	call select
 	call send_cmd
 prx_reply_done:				; Reply, then done
 	call recv_reply
@@ -268,12 +276,17 @@ done2:
 
 prx_delete:
 	ld a,0xAB
+	call select
 	jr prx_simple_command
+
+	if pra_dev
 
 pra_print:
 	call select
 	call output_common
 	jr done2
+
+	endif
 
 output_common:
 	ld a,0xA6
@@ -472,6 +485,55 @@ prb_wrblk:
 done3:
 	jp done
 
+	;; Blocking PRINT without converting to ABC-DOS text format.
+	;; This simply stuffs a buffer full of the PRINT contents;
+	;; it also assumes the buffer is full when there is a 256-byte
+	;; address wraparound as (ix+13) is not expected to reflect the
+	;; buffer length without space for ETX... and is set to 1 on
+	;; read (what?!)
+prb_print:
+	ld a,c
+	or b
+	ret z				; Nothing to do...
+	ld e,(ix+10)
+	ld d,(ix+11)
+pbp_output:
+	xor a
+	sub e
+	jr z,pbp_nextbuf		; No space left in buffer
+	push bc
+	inc b
+	;; A now has the number of free bytes in the buffer
+	;; If BC > A need to use the rest of the buffer
+	djnz pbp_limitlen
+	cp c
+	jr c,pbp_limitlen
+	ld a,c
+pbp_limitlen:
+	ld c,a
+	xor a				; Assume all good, clear carry
+	ld b,a
+	ex (sp),hl
+	sbc hl,bc			; Decrement bytes left to write
+	ex (sp),hl
+	ldir
+	ld (ix+10),e
+	ld (ix+11),d
+	ld (ix+14),1			; Buffer dirty
+	pop bc
+	ret z				; Z still set from SBC HL,BC
+pbp_nextbuf:
+	push hl
+	push bc
+	call IX_BLKWR
+	pop bc
+	pop hl
+	jr nc,pbp_output
+	ret			; Error
+
+pbp_allbuf:
+	sub e
+	jr pbp_limitlen
 
 	;; Mark the buffer for the current device busy or free
 	;; by writing the value in A into the drive number
