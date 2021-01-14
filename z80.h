@@ -79,7 +79,8 @@ struct z80_state_struct {
     bool iff1, iff2, ei_shadow, signal_eoi;
     bool nmi_in_progress;       /* to prevent multiple simultaneous NMIs */
     bool running;		/* CPU is running */
-    enum z80_cond brkpt;	/* breakpoints triggered */
+    bool was_call_ret;		/* Previous instruction was a CALL, RST, RET */
+    enum z80_cond brkpt;	/* Breakpoints triggered */
 
     atomic_uint uncond;		/* Unconditional events: NMI, reset */
     uint64_t tc;                /* T-state (clock cycle) counter */

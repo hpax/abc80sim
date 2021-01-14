@@ -2546,7 +2546,7 @@ enum z80_cond z80_run(enum z80_cond condrq)
 		return cond;
         }
 
-        if (tracing(TRACE_CPU)) {
+        if (tracing(TRACE_CPU | TRACE_CALL)) {
             add_cputrace("[%12" PRIu64 "] PC=%04X ",TSTATE, REG_PC);
 	    DAsm(REG_PC, traceline+tracelinelen, NULL);
 	    tracelinelen = strlen(traceline);
@@ -3644,12 +3644,17 @@ enum z80_cond z80_run(enum z80_cond condrq)
 	/* Executed an instruction, also add watchpoints */
 	cond |= z80_state.brkpt | Z80_STEP;
 
-        if (tracing(TRACE_CPU)) {
-            diffstate();
-	    fwrite(traceline, 1, tracelinelen, tracef);
+        if (tracing(TRACE_CPU | TRACE_CALL)) {
+	    if (tracing(TRACE_CPU)) {
+		diffstate();
+		fwrite(traceline, 1, tracelinelen, tracef);
+		tracemem();
+	    } else if (call_ret || z80_state.was_call_ret) {
+		fwrite(traceline, 1, tracelinelen, tracef);
+		fputc('\n', tracef);
+	    }
 	    tracelinelen = 0;
-            tracemem();
-	    fputc('\n', tracef);
+	    z80_state.was_call_ret = call_ret;
 	    if (call_ret)
 		traceregs();
         }
@@ -3715,9 +3720,9 @@ static void diffstate(void)
 
 static void traceregs(void)
 {
-    fprintf(tracef, "[%12"PRIu64"] - BC=%04X DE=%04X HL=%04X IX=%04X IY=%04X SP=%04X A=%02X\n"
-	    "               - F=%s I=%02X R=%02X BC\'=%04X DE\'=%04X HL\'=%04X AF\'=%04X\n",
-	    TSTATE, REG_BC, REG_DE, REG_HL, REG_IX, REG_IY, REG_SP, REG_A,
-	    flagdis(REG_F), REG_I, z80_get_r(),
+    fprintf(tracef, "               - BC=%04X DE=%04X HL=%04X IX=%04X IY=%04X SP=%04X\n"
+	    "               - A=%02X F=%s I=%02X R=%02X BC\'=%04X DE\'=%04X HL\'=%04X AF\'=%04X\n",
+	    REG_BC, REG_DE, REG_HL, REG_IX, REG_IY, REG_SP,
+	    REG_A, flagdis(REG_F), REG_I, z80_get_r(),
 	    REG_BCx, REG_DEx, REG_HLx, REG_AFx);
 }

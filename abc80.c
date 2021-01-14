@@ -152,6 +152,7 @@ static void parse_trace(char *arg)
     } trace_args[] = {
 	{"all", TRACE_ALL, "all traceable events"},
 	{"cpu", TRACE_CPU, "cpu execution and memory accesses"},
+	{"call", TRACE_CALL, "register state after CALL, RET and RST"},
 	{"io", TRACE_IO, "port I/O"},
 	{"disk", TRACE_DISK, "disk commands"},
 	{"cas", TRACE_CAS, "cassette I/O"},

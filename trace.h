@@ -8,13 +8,14 @@ extern FILE *tracef;
 enum tracing {
     TRACE_NONE = 0x00,
     TRACE_CPU = 0x01,
-    TRACE_IO = 0x02,
-    TRACE_DISK = 0x04,
-    TRACE_CAS = 0x08,
-    TRACE_PR = 0x10,
-    TRACE_FLASH = 0x20,
-    TRACE_MAP = 0x40,
-    TRACE_ALL = 0x1f
+    TRACE_CALL = 0x02,
+    TRACE_IO = 0x04,
+    TRACE_DISK = 0x08,
+    TRACE_CAS = 0x10,
+    TRACE_PR = 0x20,
+    TRACE_FLASH = 0x40,
+    TRACE_MAP = 0x80,
+    TRACE_ALL = 0xff
 };
 
 extern enum tracing traceflags;
