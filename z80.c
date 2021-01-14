@@ -3649,6 +3649,7 @@ enum z80_cond z80_run(enum z80_cond condrq)
 		diffstate();
 		fwrite(traceline, 1, tracelinelen, tracef);
 		tracemem();
+		fputc('\n', tracef);
 	    } else if (call_ret || z80_state.was_call_ret) {
 		fwrite(traceline, 1, tracelinelen, tracef);
 		fputc('\n', tracef);
