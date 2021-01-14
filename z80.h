@@ -241,7 +241,6 @@ static inline void z80_nmi(void)
 }
 
 /* Disassembler */
-extern int disassemble(int);
 extern int DAsm(uint16_t pc, char *T, int *target);
 
 /* Main loop */

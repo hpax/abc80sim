@@ -299,17 +299,6 @@ static const char *const *const mtable[8] = {
     NULL
 };
 
-int disassemble(int pc)
-{
-    char buffer[80];
-    int n;
-
-    n = DAsm(pc, buffer, NULL);
-    fputs(buffer, tracef);
-
-    return n;
-}
-
 int DAsm(uint16_t pc, char *T, int *target)
 {
     const char *S, *P;

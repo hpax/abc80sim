@@ -35,7 +35,27 @@
  */
 struct z80_state_struct z80_state;
 
+static char traceline[1024];
+static size_t tracelinelen;
+
+static void add_cputrace(const char *fmt, ...)
+{
+    va_list ap;
+    size_t left = sizeof traceline - 1 - tracelinelen;
+    size_t len;
+
+    va_start(ap, fmt);
+    len = vsnprintf(traceline+tracelinelen, left, fmt, ap);
+    va_end(ap);
+
+    if (len >= left)
+	tracelinelen = sizeof traceline - 2;
+    else
+	tracelinelen += len;
+}
+
 static void diffstate(void);
+static void traceregs(void);
 
 /*
  * T-states (clock cycles) for various instructions.
@@ -2491,6 +2511,7 @@ enum z80_cond z80_run(enum z80_cond condrq)
     uint16_t address;           /* generic temps */
     regpair *ix;
     enum z80_cond cond;
+    bool call_ret;
 
     cond = z80_state.running ? Z80_RUNNING : 0;
     z80_state.brkpt = 0;	/* No breakpoints hit */
@@ -2526,11 +2547,14 @@ enum z80_cond z80_run(enum z80_cond condrq)
         }
 
         if (tracing(TRACE_CPU)) {
-            fprintf(tracef, "[%12" PRIu64 "] PC=%04X ", TSTATE, REG_PC);
-            disassemble(REG_PC);
+            add_cputrace("[%12" PRIu64 "] PC=%04X ",TSTATE, REG_PC);
+	    DAsm(REG_PC, traceline+tracelinelen, NULL);
+	    tracelinelen = strlen(traceline);
+	    traceline[tracelinelen++] = ' ';
         }
 
         ix = &z80_state.reg.r.hl;     /* Not an index instruction */
+	call_ret = false;	      /* Not a CALL, RET, or RST */
 
         instruction = mem_fetch_m1(REG_PC);
 
@@ -2672,6 +2696,7 @@ enum z80_cond z80_run(enum z80_cond condrq)
             REG_SP -= 2;
             mem_write_word(REG_SP, REG_PC + 2);
             REG_PC = address;
+	    call_ret = true;
             break;
 
         case 0xC4:             /* call nz, address */
@@ -2681,6 +2706,7 @@ enum z80_cond z80_run(enum z80_cond condrq)
                 mem_write_word(REG_SP, REG_PC + 2);
                 REG_PC = address;
                 TSTATE += 7;
+		call_ret = true;
                 break;
             } else {
                 REG_PC += 2;
@@ -2693,6 +2719,7 @@ enum z80_cond z80_run(enum z80_cond condrq)
                 mem_write_word(REG_SP, REG_PC + 2);
                 REG_PC = address;
                 TSTATE += 7;
+		call_ret = true;
                 break;
             } else {
                 REG_PC += 2;
@@ -2705,6 +2732,7 @@ enum z80_cond z80_run(enum z80_cond condrq)
                 mem_write_word(REG_SP, REG_PC + 2);
                 REG_PC = address;
                 TSTATE += 7;
+		call_ret = true;
                 break;
             } else {
                 REG_PC += 2;
@@ -2717,6 +2745,7 @@ enum z80_cond z80_run(enum z80_cond condrq)
                 mem_write_word(REG_SP, REG_PC + 2);
                 REG_PC = address;
                 TSTATE += 7;
+		call_ret = true;
                 break;
             } else {
                 REG_PC += 2;
@@ -2729,6 +2758,7 @@ enum z80_cond z80_run(enum z80_cond condrq)
                 mem_write_word(REG_SP, REG_PC + 2);
                 REG_PC = address;
                 TSTATE += 7;
+		call_ret = true;
                 break;
             } else {
                 REG_PC += 2;
@@ -2741,6 +2771,7 @@ enum z80_cond z80_run(enum z80_cond condrq)
                 mem_write_word(REG_SP, REG_PC + 2);
                 REG_PC = address;
                 TSTATE += 7;
+		call_ret = true;
                 break;
             } else {
                 REG_PC += 2;
@@ -2753,6 +2784,7 @@ enum z80_cond z80_run(enum z80_cond condrq)
                 mem_write_word(REG_SP, REG_PC + 2);
                 REG_PC = address;
                 TSTATE += 7;
+		call_ret = true;
                 break;
             } else {
                 REG_PC += 2;
@@ -2765,6 +2797,7 @@ enum z80_cond z80_run(enum z80_cond condrq)
                 mem_write_word(REG_SP, REG_PC + 2);
                 REG_PC = address;
                 TSTATE += 7;
+		call_ret = true;
                 break;
             } else {
                 REG_PC += 2;
@@ -3420,6 +3453,7 @@ enum z80_cond z80_run(enum z80_cond condrq)
         case 0xC9:             /* ret */
             REG_PC = mem_read_word(REG_SP);
             REG_SP += 2;
+	    call_ret = true;
             break;
 
         case 0xC0:             /* ret nz */
@@ -3427,6 +3461,7 @@ enum z80_cond z80_run(enum z80_cond condrq)
                 REG_PC = mem_read_word(REG_SP);
                 REG_SP += 2;
                 TSTATE += 6;
+		call_ret = true;
             }
             break;
         case 0xC8:             /* ret z */
@@ -3434,6 +3469,7 @@ enum z80_cond z80_run(enum z80_cond condrq)
                 REG_PC = mem_read_word(REG_SP);
                 REG_SP += 2;
                 TSTATE += 6;
+		call_ret = true;
             }
             break;
         case 0xD0:             /* ret nc */
@@ -3441,6 +3477,7 @@ enum z80_cond z80_run(enum z80_cond condrq)
                 REG_PC = mem_read_word(REG_SP);
                 REG_SP += 2;
                 TSTATE += 6;
+		call_ret = true;
             }
             break;
         case 0xD8:             /* ret c */
@@ -3448,6 +3485,7 @@ enum z80_cond z80_run(enum z80_cond condrq)
                 REG_PC = mem_read_word(REG_SP);
                 REG_SP += 2;
                 TSTATE += 6;
+		call_ret = true;
             }
             break;
         case 0xE0:             /* ret po */
@@ -3455,6 +3493,7 @@ enum z80_cond z80_run(enum z80_cond condrq)
                 REG_PC = mem_read_word(REG_SP);
                 REG_SP += 2;
                 TSTATE += 6;
+		call_ret = true;
             }
             break;
         case 0xE8:             /* ret pe */
@@ -3462,6 +3501,7 @@ enum z80_cond z80_run(enum z80_cond condrq)
                 REG_PC = mem_read_word(REG_SP);
                 REG_SP += 2;
                 TSTATE += 6;
+		call_ret = true;
             }
             break;
         case 0xF0:             /* ret p */
@@ -3469,6 +3509,7 @@ enum z80_cond z80_run(enum z80_cond condrq)
                 REG_PC = mem_read_word(REG_SP);
                 REG_SP += 2;
                 TSTATE += 6;
+		call_ret = true;
             }
             break;
         case 0xF8:             /* ret m */
@@ -3476,6 +3517,7 @@ enum z80_cond z80_run(enum z80_cond condrq)
                 REG_PC = mem_read_word(REG_SP);
                 REG_SP += 2;
                 TSTATE += 6;
+		call_ret = true;
             }
             break;
 
@@ -3506,6 +3548,7 @@ enum z80_cond z80_run(enum z80_cond condrq)
             REG_SP -= 2;
             mem_write_word(REG_SP, REG_PC);
 	    REG_PC = instruction & 0x38;
+	    call_ret = true;
 	    break;
 
         case 0x37:             /* scf */
@@ -3603,41 +3646,78 @@ enum z80_cond z80_run(enum z80_cond condrq)
 
         if (tracing(TRACE_CPU)) {
             diffstate();
+	    fwrite(traceline, 1, tracelinelen, tracef);
+	    tracelinelen = 0;
             tracemem();
-            fputc('\n', tracef);
+	    fputc('\n', tracef);
+	    if (call_ret)
+		traceregs();
         }
     } while (!(cond & condrq));
 
     return cond;
 }
 
+static const char *flagdis(uint8_t f)
+{
+    static const char flags[] = "SZ5H3PNC";
+    static char buf[16], *bp;
+    int i;
+    unsigned int fx = f;
+
+    bp = buf;
+
+    for (i = 0; i < 8; i++) {
+	if (fx & 0x80)
+	    *bp++ = flags[i];
+	fx <<= 1;
+    }
+    bp += snprintf(bp, 4, ",%02X", f);
+
+    return buf;
+}
+
 #define WREG(U,L)						\
     if (z80_state.reg.r.L.w != old_state.reg.r.L.w) {		\
-	fprintf(tracef, " %s=%04X", #U, z80_state.reg.r.L.w);	\
+	add_cputrace(" %s=%04X", U, z80_state.reg.r.L.w);	\
 	old_state.reg.r.L.w = z80_state.reg.r.L.w;		\
     }
 #define BREG(U,L)						\
     if (z80_state.reg.r.L != old_state.reg.r.L) {		\
-	fprintf(tracef, " %s=%02X", #U, z80_state.reg.r.L);	\
+	add_cputrace(" %s=%02X", U, z80_state.reg.r.L);		\
 	old_state.reg.r.L = z80_state.reg.r.L;			\
+    }
+#define FREG(U,L)							\
+    if (z80_state.reg.r.L != old_state.reg.r.L) {			\
+	add_cputrace(" %s=%s", U, flagdis(z80_state.reg.r.L));	\
+	old_state.reg.r.L = z80_state.reg.r.L;				\
     }
 
 static void diffstate(void)
 {
     static struct z80_state_struct old_state;
 
-    BREG(A, af.b.h);
-    WREG(BC, bc);
-    WREG(DE, de);
-    WREG(HL, hl);
-    WREG(IX, ix);
-    WREG(IY, iy);
-    WREG(SP, sp);
+    BREG("A", af.b.h);
+    WREG("BC", bc);
+    WREG("DE", de);
+    WREG("HL", hl);
+    WREG("IX", ix);
+    WREG("IY", iy);
+    WREG("SP", sp);
     /* WREG(PC,pc); */
-    BREG(F, af.b.l);
-    WREG(AFx, afx);
-    WREG(BCx, bcx);
-    WREG(DEx, dex);
-    WREG(HLx, hlx);
-    BREG(I, ir.b.h);
+    FREG("F", af.b.l);
+    WREG("AF\'", afx);
+    WREG("BC\'", bcx);
+    WREG("DE\'", dex);
+    WREG("HL\'", hlx);
+    BREG("I", ir.b.h);
+}
+
+static void traceregs(void)
+{
+    fprintf(tracef, "[%12"PRIu64"] - BC=%04X DE=%04X HL=%04X IX=%04X IY=%04X SP=%04X A=%02X\n"
+	    "               - F=%s I=%02X R=%02X BC\'=%04X DE\'=%04X HL\'=%04X AF\'=%04X\n",
+	    TSTATE, REG_BC, REG_DE, REG_HL, REG_IX, REG_IY, REG_SP, REG_A,
+	    flagdis(REG_F), REG_I, z80_get_r(),
+	    REG_BCx, REG_DEx, REG_HLx, REG_AFx);
 }

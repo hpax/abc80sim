@@ -493,7 +493,7 @@ static void disk_out(uint8_t sel, uint16_t port, uint8_t value)
 	fprintf(tracef, "%s:  OUT %d/%d: %02x : ",
 		state->name, sel, port, value);
 	fprintf(tracef, "PC = %04X  BC = %04X  DE = %04X  HL = %04X\n",
-		REG_PC, REG_BC, REG_DE, REG_HL);
+		REG_LAST_PC, REG_BC, REG_DE, REG_HL);
     }
 
     if (state->state == disk_need_init)
@@ -618,7 +618,7 @@ static uint8_t disk_in(uint8_t sel, uint16_t port)
         fprintf(tracef, "%s:  IN  %d/%d: %02x : error %02x ",
 		state->name, sel, port, v, state->error);
         fprintf(tracef, "PC = %04X  BC = %04X  DE = %04X  HL = %04X\n",
-                REG_PC, REG_BC, REG_DE, REG_HL);
+                REG_LAST_PC, REG_BC, REG_DE, REG_HL);
     }
     return v;
 }

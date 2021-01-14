@@ -519,7 +519,7 @@ void z80_out(uint16_t port, uint8_t value)
                 "data 0x%02x (%3d) PC=%04x\n",
                 port >> 8, port & 0xff, port & 0xff,
 		abcbus_select, abcbus_select,
-                value, value, REG_PC);
+                value, value, REG_LAST_PC);
     }
     check_watchpoint_byte(port, Z80_OTWPT);
 
@@ -538,7 +538,7 @@ uint8_t z80_in(uint16_t port)
         fprintf(tracef, " IN: port %02x:%02x (%3d) sel 0x%02x (%2d) "
                 "data 0x%02x (%3d) PC=%04x\n",
                 port >> 8, port & 0xff, port & 0xff,
-		sel, sel, v, v, REG_PC);
+		sel, sel, v, v, REG_LAST_PC);
     }
     check_watchpoint_byte(port, Z80_INWPT);
 
