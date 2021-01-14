@@ -558,9 +558,6 @@ prb_getbufaddr:
 	if quicklib
 
 prx_quicklib:
-	;; Clear out possible extension like .BAS
-	ld de,blank11		; XXX: doing this server side would save 14b
-	res 1,c			; OPEN, not PREPARE
 	call prx_open		; Complete the file open
 	ret c			; File not found
 
@@ -911,12 +908,6 @@ nul_jptable:
 	jp notforme			; DELETE
 	jp notforme			; RENAME
 
-	endif
-
-;;; 11 blank characters = empty filename
-	if quicklib
-blank11:
-	defm "           "
 	endif
 
 device_list:

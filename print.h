@@ -20,8 +20,12 @@ enum input_state {
 struct fileop_file {
     struct host_file *hf;
     struct abcdata *abc;
-    bool binary;
+    uint8_t open;		/* Opened with? (0 = closed) */
 };
+
+#define FF_OPEN		0xA0
+#define FF_BINARY	0x01
+#define FF_PREPARE	0x02
 
 typedef union argbuf {
     uint8_t b[32];

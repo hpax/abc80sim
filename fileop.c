@@ -144,7 +144,7 @@ static inline bool file_open(const struct fileop_file *ff)
 
 static inline bool file_binary(const struct fileop_file *ff)
 {
-    return ff->binary;
+    return !!(ff->open & FF_BINARY);
 }
 
 static inline enum host_file_mode file_mode(const struct fileop_file *ff)
@@ -310,7 +310,9 @@ static unsigned int read_dir_entry(struct abcprint *me, char *buf)
     struct dirent *de;
     struct stat st;
     unsigned int dlen = 0;
-    struct host_file *hf = me->ff->hf;
+    struct fileop_file *ff = me->ff;
+    bool longfmt = !(ff->open & FF_PREPARE);
+    struct host_file *hf = ff->hf;
 
     if (!hf || !hf->d)
 	return 0;
@@ -328,22 +330,27 @@ static unsigned int read_dir_entry(struct abcprint *me, char *buf)
    }
 
     if (dlen) {
-	unsigned long blocks, pad;
-	struct tm tm;
-	memset(&tm, 0, sizeof tm);
+	if (longfmt) {
+	    unsigned long blocks, pad;
+	    struct tm tm;
+	    memset(&tm, 0, sizeof tm);
 
-	localtime_r(&st.st_mtime, &tm);
+	    localtime_r(&st.st_mtime, &tm);
 
-	blocks = (st.st_size + me->blksize - 1) / me->blksize;
-	pad = me->blksize * blocks - st.st_size;
+	    blocks = (st.st_size + me->blksize - 1) / me->blksize;
+	    pad = me->blksize * blocks - st.st_size;
 
-	/* pad = unused bytes in the last block */
-	dlen += snprintf(buf + dlen, DIRSTR_BUF - dlen,
-			 ",%lu,%lu,\"%04d-%02d-%02d %02d.%02d.%02d\"\r\n",
-			 blocks, pad, tm.tm_year + 1900, tm.tm_mon + 1,
-			 tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
+	    /* pad = unused bytes in the last block */
+	    dlen += snprintf(buf + dlen, DIRSTR_BUF - 2 - dlen,
+			     ",%lu,%lu,\"%04d-%02d-%02d %02d.%02d.%02d\"",
+			     blocks, pad, tm.tm_year + 1900, tm.tm_mon + 1,
+			     tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
+	}
+	buf[dlen++] = '\r';
+	buf[dlen++] = '\n';
     }
 
+    buf[dlen] = '\0';
     return dlen;
 }
 
@@ -408,7 +415,7 @@ static unsigned int read_dir_data(struct abcprint *me)
     qsort(lla, lines, sizeof *lla, qsort_compare_ll);
 
     /* Now lla is an in-order list of directory entry strings */
-    abc->blocks = (bytes+251)/252+1; /* Each block needs ETX, plus EOF block */
+    abc->blocks = (bytes+251)/252; /* Each block needs ETX or EOF */
     cp = calloc(abc->blocks, 253);
     abc->buf = cp;
     abc->data = cp;
@@ -428,8 +435,6 @@ static unsigned int read_dir_data(struct abcprint *me)
 	blk_bytes -= lp->len;
 	free(lp);
     }
-    if (blk_bytes < 252)
-	*cp++ = 0x03;
 
     free(lla);
 
@@ -454,30 +459,28 @@ static unsigned int fop_open(struct abcprint *me)
 
     do_close(me->ff);
 
-    unmangle_filename(path_buf, name);
-
-    if (!path_buf[0]) {
+    if (name[0] == ' ') {
         /* Empty filename (readdir) */
 
 	mode = HF_DIRECTORY;
         openflags = 0;
+	path_buf[0] = '\0';
     } else {
-        /* Actual filename */
-
+	unmangle_filename(path_buf, name);
         mode = HF_BINARY;
-        mode |= (cmd0 & 2) ? 0 : HF_RETRY;
-        openflags = (cmd0 & 2) ? (O_RDWR | O_TRUNC | O_CREAT) : O_RDWR;
+        mode |= (cmd0 & FF_PREPARE) ? 0 : HF_RETRY;
+        openflags = (cmd0 & FF_PREPARE) ? (O_RDWR | O_TRUNC | O_CREAT) : O_RDWR;
     }
 
     hf = open_host_file(mode, vol->path, path_buf, openflags);
     me->ff = ff = getfile_alloc(me, me->ix);
     ff->hf = hf;
-    ff->binary = cmd0 & 1;
 
     if (hf) {
+	ff->open = cmd0;
 	err = 0;
 
-	if (mode == HF_DIRECTORY && ff->binary) {
+	if (mode == HF_DIRECTORY && (cmd0 & FF_BINARY)) {
 	    err = read_dir_data(me);
 	    if (err)
 		do_close(me->ff);
