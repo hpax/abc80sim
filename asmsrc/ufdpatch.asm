@@ -321,11 +321,23 @@ unwind_ret:
 	ld sp,hl
 	ret
 
-	;; Need a few bytes for this...
-initstub:
-	call CHECKCTRLC		; Clear Ctrl-C flag
-	ld h,70h		; End of DOS
-	jp init_more
+	;; Jump to (HL) if it points to a JP instruction, otherwise
+	;; increment H by one and return (used by init below)
+try_init_rom:
+	ld a,(hl)
+	cp 0C3h			; JP
+	jr z,doit
+	inc h
+	ret
+doit:	jp (hl)
+
+	;; If HL points to CR, jump to END, otherwise jump to RUNCMD.
+	;; Jumping to END is so that we print ABC80 if nothing else happens.
+run_if_cmd:
+	ld a,(hl)
+	cp 13
+	jp nz,RUNCMD
+	jp END
 
 _ofkn_pad:
 	defs (6829h-6812h)-(_ofkn_pad - _ofkn), 0xff
@@ -348,39 +360,76 @@ _jp_done:
 ;;; --------------------------------------------------------------------------
 ;;; Patch to ufddos80.asm to initialize other device ROMs
 ;;;
-;;; This looks for a JP instruction at any 0x7x4B address (same offset
+;;; This looks for a JP instruction at any 0x[457]x4B address (same offset
 ;;; as DOS itself.) If one is found, call it; that routine must then
 ;;; advance HL past itself so this code knows where to look next.
 ;;;
+;;; We also factor out the autostart routine; DOS will initialize first,
+;;; and install its autostart command into the command line buffer (RADBUF).
+;;; Subsequent ROMs can override that. If DOS has not initialized and there
+;;; is no command, the buffer will simply contain <CR>.
+;;;
+	;; JP (HL) instruction, CALL this to do an effective CALL (HL)
+	defc JPHL=63A4h
+	;; The actual DOS initialization routine
+	defc DOSINIT=6543h
 
 	section init_jmp
 	org 604bh		; DOS init entry point
-	jp initstub
+	jp init
 
-	section do_init
-	org 6F9bh
-__do_init:
+	section autostart
+	org 683Dh
+__autostart:
+setup_autostart_cmd:
+	ld hl,autostart_cmd
+	ld de,RADBUF
+	ld bc,autostart_cmd_len
+	ldir
+	ret
 
-	;; The DOS real internal startup routine (pre-patch JP)
-	defc DOSINIT=6543h
+autostart:
+	call SCRATCH		; Initialize BASIC program area (empty)
+	call CHECKCTRLC		; Clear Ctrl-C flag
+	ld (iy+14),1		; Set command mode
+	ld sp,(STACK)		; Set user stack
+	ei
+	ld hl,RADBUF		; Pointer to command string
+	jp run_if_cmd
+;	ld a,(hl)
+;	cp 0Dh
+;	jp nz,RUNCMD		; Execute command
+;	jp END			; Execute nothing
 
-	;; JP (HL) instruction
-	defc JPHL=63A4h
+	;; Initialize DOS proper, then scan for ROMs in the range
+	;; 0x4000..0x5fff and 0x7000..0x7bff for JP instructions at
+	;; page offset 0x4b (same as DOS)
+init:
+	ld (iy+RADBUF-IYBASE),13	; No autostart command set up
+	call DOSINIT			; Initialize DOS proper
+	ld h,40h		; Scan 0x5000..0x7c00 except DOS itself
 
-	;; Called from initstub above
 init_next:
-	inc h
-init_more:
 	ld l,0x4b		; INIT offset 4B matches DOS
+	call try_init_rom
+
 	ld a,h
 	cp 0x7c
-	jp nc,DOSINIT
-	ld a,(hl)
-	cp 0xc3			; JP opcode
+	jr nc,autostart		; Run autostart command if set
+	cp 0x60
 	jr nz,init_next
-	call JPHL
-	jr init_more
+	ld h,0x70		; Skip DOS itself (0x6000..0x6fff)
+	jr init_next
 
 	;; If this pad is < 0 then overflow
-pad:
-	defs (6FAFh-6F9Bh)-(pad - __do_init), 0xff
+as_pad:
+	defs (6879h-683Dh)-(as_pad - __autostart), 0xff
+
+	section autostart_cmd
+	org 6F9Bh
+autostart_cmd:
+	defm "RUN START80"
+	defb 13
+	defc autostart_cmd_len=(ASMPC - autostart_cmd)
+acmd_pad:
+	defs (6FAFh-6F9Bh) - (acmd_pad - autostart_cmd)

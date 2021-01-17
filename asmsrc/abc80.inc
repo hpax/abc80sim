@@ -9,6 +9,10 @@
 	defc COLUMNS=472		; Columns per text row
 	defc CTRLC=65031		; Ctrl-C flag bit 7
 	defc IYBASE=65046
+	defc BOFA=65052
+	defc EOFA=65054
+	defc HEAP=65056
+	defc STACK=65063
 	defc SELECT=64831		; Current select code
 	defc DEVLIST=65034		; BASIC device list
 	defc RADBUF=65088		; BASIC line buffer
