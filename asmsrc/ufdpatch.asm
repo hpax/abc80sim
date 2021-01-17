@@ -410,7 +410,7 @@ init:
 	ld h,40h		; Scan 0x5000..0x7c00 except DOS itself
 
 init_next:
-	ld l,0x4b		; INIT offset 4B matches DOS
+	ld l,INIT_OFFS		; 4Bh, same as DOS
 	call try_init_rom
 
 	ld a,h
