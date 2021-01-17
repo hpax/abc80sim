@@ -430,6 +430,9 @@ as_pad:
 autostart_cmd:
 	defm "RUN START80"
 	defb 13
-	defc autostart_cmd_len=(ASMPC - autostart_cmd)
+	;; Pad with CR which are always copied; this makes
+	;; it a bit easier for someone else to patch the
+	;; binary if they should have a reason to.
 acmd_pad:
-	defs (6FAFh-6F9Bh) - (acmd_pad - autostart_cmd)
+	defs (6FAFh-6F9Bh) - (acmd_pad - autostart_cmd), 13
+	defc autostart_cmd_len=(ASMPC - autostart_cmd)
