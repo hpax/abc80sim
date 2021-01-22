@@ -745,12 +745,12 @@ recv_byte:
 	;; device not ready.
 wait_for_tx:
 	push hl
-	ld hl,0x0E0A
+	ld hl,0x0A0E
 	jr wait_for
 
 wait_for_rx:
 	push hl
-	ld hl,0x0D09		; Mask, expected value
+	ld hl,0x090D		; Mask, expected value
 
 wait_for:
 	push bc
@@ -767,8 +767,8 @@ wf_loop:
 	pop hl
 	ret
 wf_nope:
-	and ~3			; Invalid status bits?
-	cp h
+	and 0x0C		; Invalid status bits?
+	cp 0x08
 	jr nz,wf_error		; Not connected
 	ld a,(CLOCK)
 	cp c
@@ -855,11 +855,17 @@ start:
 
 init:
 	call select
+
+	ld hl,-256
+	add hl,sp
+	ld sp,hl
+	push hl
+
 	ld a,0xA9		; CLOSE ALL NO REPLY
 	call send_cmd
 
 	ld a,0xBA		; LIST VOLUMES
-	ld hl,CRAD
+	pop hl
 	push hl
 	ld bc,4*MAX_VOLS+1	; B=0
 	call input_command
@@ -867,9 +873,13 @@ init:
 
 	;; Create device list entries
 	;; HL -> CRAD here, A = 0
-	ld (CRAD+4*MAX_VOLS),a ; Make sure list is terminated even on overflow
-	ld de,voldevs
+	push hl
+	ld bc,4*MAX_VOLS
+	add hl,bc
+	ld (hl),b		; Make sure it is null-terminated on overflow
+	pop hl
 
+	ld de,voldevs
 mk_vols:
 	ld a,(hl)
 	and a
