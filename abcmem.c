@@ -408,6 +408,18 @@ static void abc80_mem_setmap(unsigned int map)
 {
     abc80_map = map;
     current_map[0] = current_map[1] = memmaps[abc80_map];
+    if (tracing(TRACE_MAP)) {
+	if (opts.sram) {
+	    int map = abc80_map - 1;
+	    if (map < 0)
+		fprintf(tracef, "MAP: selecting map system\n");
+	    else
+		fprintf(tracef, "MAP: selecting map %d (%s)\n",
+			map, (map & 16) ? "flash" : "SRAM");
+	} else if (opts.kb == 64) {
+	    fprintf(tracef, "MAP: selecting map %d\n", abc80_map);
+	}
+    }
 }
 
 void abc80_64k_control_out(uint16_t addr, uint8_t val)
@@ -474,9 +486,13 @@ static void write_sram(uint8_t *p, uint8_t ppage)
 	page = &memmaps[map][vpage];
 
 	if (tracing(TRACE_MAP)) {
-	    fprintf(tracef, "MAP: IC%u 0x%04x map %2d vpage %3u <- slot %u addr 0x%05x\n",
-		    (unsigned int)((xaddr >> 19) + 1), (unsigned int)(xaddr & 0x7ffff),
-		    (int)map-1, vpage, pslot, (unsigned int)(ppage << 13));
+	    static const char slotname[4][4] = { "IC1", "IC2", "IC3", "sys" };
+	    fprintf(tracef, "MAP: IC%u 0x%04x vpage %2d:%u:%2u -> %s 0x%05x (%2u:%2u)\n",
+		    (((unsigned int)xaddr >> 19) + 1),
+		    ((unsigned int)xaddr & 0x7ffff),
+		    (int)map-1, vpage >> 4, vpage & 15,
+		    slotname[pslot], ((unsigned int)pageaddr & 0x7ffff),
+		    ppage & 63, vpage & 15);
 	}
 
 	if (pslot == 3) {
@@ -519,9 +535,15 @@ static void sram_sync_mappings(void)
 {
     uint8_t *p;
     unsigned int i, j, k;
+    enum tracing old_traceflags = traceflags;
 
     if (!opts.sram)
 	return;
+
+    if (tracing(TRACE_MAP)) {
+	fprintf(tracef, "MAP: synchronizing SRAM and flash maps\n");
+	traceflags &= ~TRACE_MAP;
+    }
 
     /* IC1, IC3; subpage; page */
     for (i = 0; i <= (1 << 20); i += (1 << 20)) {
@@ -532,6 +554,8 @@ static void sram_sync_mappings(void)
 	    }
 	}
     }
+
+    traceflags = old_traceflags;
 }
 
 /*
@@ -759,13 +783,14 @@ void abc80_sram_out(uint16_t addr, uint8_t val)
 /*
  * Initialize SRAM/flash card if present
  */
-static uint8_t *init_sram(void)
+static int init_sram(void)
 {
     static const char default_config[] = "512,512,512,flash";
     unsigned int kb[3];
     char ic3[6];
     uint8_t *sram;
     int i;
+    int bootmap;
 
     sscanf(default_config, "%u,%u,%u,%5s", &kb[0], &kb[1], &kb[2], ic3);
     if (opts.sram_config)
@@ -779,7 +804,7 @@ static uint8_t *init_sram(void)
 	if ((kb[i] & (kb[i]-1)) || kb[i] < 8 || kb[i] > 512) {
 	    fprintf(stderr, "%s: invalid SRAM configuration: %s\n",
 		    program_name, opts.sram_config);
-	    return NULL;
+	    return -1;
 	}
 	sram_mask[i] = ((kb[i]-1) >> 3) | 0xc0;
     }
@@ -788,7 +813,11 @@ static uint8_t *init_sram(void)
 
     sram_ic3 = IC3_FLASH;	/* Default */
 
-    if (!strcmp(ic3, "flash") || !strcmp(ic3, "we")) {
+    bootmap = 0;		/* System boot */
+    if (!strcmp(ic3, "boot")) {
+	sram_ic3 = IC3_FLASH;
+	bootmap = 17;		/* Flash boot */
+    } else if (!strcmp(ic3, "flash") || !strcmp(ic3, "we")) {
 	sram_ic3 = IC3_FLASH;
     } else if (!strcmp(ic3, "rom") || !strcmp(ic3, "wp")) {
 	sram_ic3 = IC3_ROM;
@@ -834,23 +863,26 @@ static uint8_t *init_sram(void)
      */
     sram = malloc(3*K(512));
     if (!sram)
-	return NULL;
+	return -1;
 
     xmem = sram;
     memset(sram, 0xff, 3*K(512));
 
-    sysload_add_memspace("xmem", NULL, NULL, sram, -1, K(1536));
+    sysload_add_memspace("xmem", NULL, NULL, sram_sync_mappings,
+			 sram, -1, K(1536));
 
     /* XXX: would be nice to cap sram better */
     if (sram_ic3 == IC3_RAM) {
-	sysload_add_memspace("sram", NULL, NULL, sram, -1, K(1536));
+	sysload_add_memspace("sram", NULL, NULL, sram_sync_mappings,
+			     sram, -1, K(1536));
     } else {
-	sysload_add_memspace("sram", NULL, NULL, sram, -1, K(1024));
-	sysload_add_memspace("flash", NULL, NULL, sram+K(1024), -1,
-			     kb[2] << 10);
+	sysload_add_memspace("sram", NULL, NULL, sram_sync_mappings,
+			     sram, -1, K(1024));
+	sysload_add_memspace("flash", NULL, NULL, sram_sync_mappings,
+			     sram+K(1024), -1, kb[2] << 10);
     }
 
-    return sram;
+    return bootmap;
 }
 
 /* Common memory initialization for all ABC800 models */
@@ -864,8 +896,8 @@ static void mem_init_abc800(unsigned int flags, const uint8_t *master_rom,
     if (!(flags & MEMFL_NOPR))
 	memcpy(rom+K(28), master_rom+K(28), K(4));
 
-    sysload_add_memspace("vram", NULL, NULL, video_ram + K(2) - vram,
-			 vram - 1, vram);
+    sysload_add_memspace("vram", NULL, NULL, NULL,
+			 video_ram + K(2) - vram, vram - 1, vram);
 
     /*
      * Map 0: normal execution
@@ -890,7 +922,7 @@ static void mem_init_abc800cm(unsigned int flags, const uint8_t *master_rom,
      * 16-32K is ROM
      */
     if (opts.hr) {
-	sysload_add_memspace("fgram", NULL, NULL, fgram, -1, K(16));
+	sysload_add_memspace("fgram", NULL, NULL, NULL, fgram, -1, K(16));
 	map_memory(0x0e, K(0), K(16), fgram, write_screen);
     }
 }
@@ -907,10 +939,10 @@ void mem_init(unsigned int flags, const char *memfile)
     memset(empty_page_data, 0xff, sizeof empty_page_data);
 
     /* Register common sysload memory spaces */
-    sysload_add_memspace("ram", NULL, NULL, ram, -1, sizeof ram);
-    sysload_add_memspace("cpu", load_cpu, dump_cpu, NULL, -1,
-			 Z80_ADDRESS_LIMIT);
-    sysload_add_memspace("rom", NULL, NULL, rom, -1, sizeof rom);
+    sysload_add_memspace("ram", NULL, NULL, NULL, ram, -1, sizeof ram);
+    sysload_add_memspace("cpu", load_cpu, dump_cpu, NULL,
+			 NULL, -1, Z80_ADDRESS_LIMIT);
+    sysload_add_memspace("rom", NULL, NULL, NULL, rom, -1, sizeof rom);
 
     /* Unused ROM contains 0xff */
     memset(rom, 0xff, sizeof rom);
@@ -921,6 +953,7 @@ void mem_init(unsigned int flags, const char *memfile)
     switch (opts.model) {
     case MODEL_ABC80:
     {
+	int init_map = 0;
 	const uint8_t *dos = ufddos80;
 	const uint8_t *pr  = print80_30;
 	size_t prlen  = K(1);
@@ -930,11 +963,13 @@ void mem_init(unsigned int flags, const char *memfile)
 	    opts.basic = BASIC_NONE;
 
 	if (opts.sram) {
-	    if (!init_sram()) {
+	    int sram_status = init_sram();
+	    if (sram_status < 0) {
 		opts.sram = false;
 	    } else {
 		if (opts.kb > 32)
 		    opts.kb = 32;
+		init_map = sram_status;
 	    }
 	}
 	if (opts.kb != 64 && (opts.kb < 1 || opts.kb > 32)) {
@@ -1023,9 +1058,11 @@ void mem_init(unsigned int flags, const char *memfile)
 	map_memory(0x01, K(31), K(1), &video_ram[K(1)], write_screen);
 
 	if (opts.tkn80 == TKN80_NONE)
-	    sysload_add_memspace("vram", NULL, NULL, &video_ram[K(1)], K(1)-1, K(2));
+	    sysload_add_memspace("vram", NULL, NULL, NULL,
+				 &video_ram[K(1)], K(1)-1, K(2));
 	else
-	    sysload_add_memspace("vram", NULL, NULL, video_ram, K(2)-1, K(2));
+	    sysload_add_memspace("vram", NULL, NULL, NULL,
+				 video_ram, K(2)-1, K(2));
 
 	/*
 	 * ABC80 memory grows from the top down. Memory between 32K and
@@ -1053,8 +1090,8 @@ void mem_init(unsigned int flags, const char *memfile)
         /* Map 3: all RAM */
 	/* (nothing to do) */
 
-        abc80_mem_setmap(0);
 	sram_sync_mappings();
+        abc80_mem_setmap(init_map);
         break;
     }
 
@@ -1069,7 +1106,7 @@ void mem_init(unsigned int flags, const char *memfile)
     case MODEL_ABC802:
 	mem_init_abc800(flags, abc802rom, K(2));
 
-	sysload_add_memspace("mem", NULL, NULL, ram, -1, K(32));
+	sysload_add_memspace("mem", NULL, NULL, NULL, ram, -1, K(32));
 
         /* Map 1: execution in option ROM - RAM other than the ROM itself */
         map_memory(0x02, K(0), K(30), ram, write_ram);

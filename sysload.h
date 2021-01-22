@@ -15,8 +15,11 @@ struct load_data;
  */
 
 /* Memory space write operation (if not just memcpy) */
-typedef void
-(*load_op)(void *buf, uint32_t addr, uint8_t val);
+typedef void (*load_op)(void *buf, uint32_t addr, uint8_t val);
+/* Memory space data dump (if not just fwrite) */
+typedef struct dump_data (*dump_op)(void *buf, uint32_t addr);
+/* Execute after bulk write to this memory space */
+typedef void (*sync_op)(void);
 
 /* Memory space read operation (if not just memcpy) */
 struct dump_data {
@@ -24,10 +27,8 @@ struct dump_data {
     size_t len;
 };
 
-typedef struct dump_data
-(*dump_op)(void *buf, uint32_t addr);
-
-void sysload_add_memspace(const char *name, load_op write_op, dump_op read_op,
+void sysload_add_memspace(const char *name,
+			  load_op write_op, dump_op read_op, sync_op sync_op,
 			  void *buf, uint32_t mask, uint32_t limit);
 int load_sysfile(const char *name);
 void dump_memory(const char *name);

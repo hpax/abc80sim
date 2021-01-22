@@ -34,6 +34,7 @@ struct load_data {
     const struct load_data *next;
     load_op load_op;
     dump_op dump_op;
+    sync_op sync_op;
     void *buf;
     uint32_t mask;
     uint32_t limit;
@@ -41,7 +42,7 @@ struct load_data {
 
 /* No operations will ever be called when limit == 0 */
 static struct load_data memspace_null =
-{ "null", "null", NULL, NULL, NULL, NULL, 0, 0 };
+{ "null", "null", NULL, NULL, NULL, NULL, NULL, 0, 0 };
 static const struct load_data *memspaces = &memspace_null;
 
 static inline uint32_t
@@ -374,7 +375,8 @@ static int load_bin(FILE *file, const struct load_data *ws, uint32_t addr)
     }
 }
 
-void sysload_add_memspace(const char *name, load_op load_op, dump_op dump_op,
+void sysload_add_memspace(const char *name,
+			  load_op load_op, dump_op dump_op, sync_op sync_op,
 			  void *buf, uint32_t mask, uint32_t limit)
 {
     struct load_data *ws;
@@ -387,6 +389,7 @@ void sysload_add_memspace(const char *name, load_op load_op, dump_op dump_op,
     ws->dump_name = !strcmp(name, "cpu") ? "mem" : name; /* Historic */
     ws->load_op = load_op;
     ws->dump_op = dump_op;
+    ws->sync_op = sync_op;
     ws->buf = buf;
     ws->mask = mask;
     ws->limit = limit;
@@ -502,6 +505,9 @@ int load_sysfile(const char *filespec)
 	rv = loader(f, ws, addr);
 
     fclose(f);
+
+    if (ws->sync_op)
+	ws->sync_op();
 
     return rv;
 }
