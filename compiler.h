@@ -99,6 +99,13 @@ extern int asprintf(char **, const char *, ...);
 #endif
 
 /*
+ * localtime_r
+ */
+#ifndef HAVE_LOCALTIME_R
+struct tm *localtime_r(const time_t *, struct tm *);
+#endif
+
+/*
  * mode_t, speed_t
  */
 #ifndef HAVE_MODE_T

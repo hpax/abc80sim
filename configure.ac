@@ -130,6 +130,9 @@ AC_CHECK_TYPES([struct stat])
 AC_CHECK_FUNCS([stat _stat64])
 AC_CHECK_FUNCS([fstat _fstat64])
 
+dnl Other things different in Windows...
+AC_CHECK_FUNCS([localtime_r localtime_s])
+
 dnl Newer versions of POSIX have this
 AC_CHECK_TYPES(mode_t)
 
