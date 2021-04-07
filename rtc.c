@@ -48,21 +48,22 @@ static void sys_latch_time(void)
 static void sys_latch_time(void)
 {
     struct timeval tv;
-    const struct tm *tm;
+    struct tm tm;
     time_t t;
 
     gettimeofday(&tv, NULL);
     t = tv.tv_sec;
-    tm = localtime(&t);
+    if (!localtime_r(&t, &tm))
+      return;
 
-    rt.year  = tm->tm_year + 1900;
-    rt.month = tm->tm_mon + 1;
-    rt.day   = tm->tm_mday;
-    rt.hour  = tm->tm_hour;
-    rt.min   = tm->tm_min;
-    rt.sec   = tm->tm_sec;
+    rt.year  = tm.tm_year + 1900;
+    rt.month = tm.tm_mon + 1;
+    rt.day   = tm.tm_mday;
+    rt.hour  = tm.tm_hour;
+    rt.min   = tm.tm_min;
+    rt.sec   = tm.tm_sec;
     rt.usec  = tv.tv_usec;
-    rt.wday  = tm->tm_wday;
+    rt.wday  = tm.tm_wday;
 }
 
 #endif
