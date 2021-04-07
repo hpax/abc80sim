@@ -8,7 +8,7 @@
 
 /* Nothing to do */
 
-#elif defined(HAVE_LOCALTIME_S)
+#elif defined(__WIN32__)
 
 /* Windows */
 
@@ -26,7 +26,7 @@ struct tm *localtime_r(const time_t *time, struct tm *dest)
 
 /* Need to run localtime() under mutex */
 
-struct tm *localtime(const time_t *time, struct tm *dest)
+struct tm *localtime_r(const time_t *time, struct tm *dest)
 {
     static SDL_mutex *time_mutex;
     struct tm *tm;
