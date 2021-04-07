@@ -24,28 +24,31 @@ native=$(sh "$pv"/autoconf/helpers/config.guess)
 targets='x86_64-w64-mingw32'
 
 for target in $native $targets; do
-    mkdir "$target"
-    cd "$target"
-    dlldir="/usr/$target/sys-root/mingw/bin"
-    tar xf ../"$pv".tar.xz
     (
-	cd "$pv"
-	./configure --host="$target"
-	make clean
-	make -j
+	mkdir "$target"
+	cd "$target"
+	dlldir="/usr/$target/sys-root/mingw/bin"
+	tar xf ../"$pv".tar.xz
+	(
+	    cd "$pv"
+	    ./configure --host="$target"
+	    make clean
+	    make -j
+	)
+	if [ -d "$dlldir" ]; then
+	    mv "$pv" _build
+	    mkdir "$pv"
+	    cp $(find _build -type f -name '*.exe') "$pv"/
+	    rm -f _build/stdout.txt _build/stderr.txt || true
+	    for f in $(find _build -type f -name '*.txt'); do
+		todos < "$f" > "$pv"/"$(basename "$f")"
+	    done
+	    for d in SDL.dll libpng16-16.dll zlib1.dll; do
+		cp "$dlldir"/"$d" "$pv"/
+	    done
+	    zip -9r -o "$pv".zip "$pv"
+	fi
     )
-    mv "$pv" _build
-    mkdir "$pv"
-    cp $(find _build -type f -name '*.exe') "$pv"/
-    rm -f _build/stdout.txt _build/stderr.txt || true
-    for f in $(find _build -type f -name '*.txt'); do
-	todos < "$f" > "$pv"/"$(basename "$f")"
-    done
-    for d in SDL.dll libpng16-16.dll zlib1.dll; do
-	cp "$dlldir"/"$d" "$pv"/
-    done
-    zip -9r -o "$pv".zip "$pv"
-    cd ..
 done
 
 ln x86_64-w64-mingw32/"$pv".zip "$pv"-win64.zip
