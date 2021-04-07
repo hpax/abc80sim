@@ -339,7 +339,7 @@ static void get_temp_path(void)
     const char *tpath;
 
     if (temp_path)
-	return temp_path;
+	return;
 
     tpath = os_get_temp_path();
 
