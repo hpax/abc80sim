@@ -1,11 +1,13 @@
 #!/bin/bash -xe
 
 project=abc80sim
-reldir=../rel
+if [ -z "$dir" ]; then
+    dir=../rel
+fi
 pv="$(git describe --abbrev=4)"
 
-mkdir -p "$reldir"/"$pv"
-cd "$reldir"/"$pv"
+mkdir -p "$dir"/"$pv"
+cd "$dir"/"$pv"
 
 ( cd ../.. && git archive --format=tar --prefix="$pv"/ HEAD ) | \
     tar xvvf -
