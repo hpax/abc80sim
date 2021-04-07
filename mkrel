@@ -49,17 +49,26 @@ for target in $native $targets; do
 	    make clean
 	    make -j
 	)
-	dlldir=$("$target"-gcc -print-sysroot || true)/mingw/bin
-	if [ -d "$dlldir" ]; then
+	# Windows?
+	if [ -f "$pv"/abc80.exe ]; then
+	    cc=$(sed -ne 's/^CC[[:space:]]*=[[:space:]]*//p' "$pv"/Makefile)
+	    sysroot=$("$cc" -print-sysroot)
+	    if [ -d "$sysroot" ]; then
+		# -maxdepth 4 is just a safety valve...
+		dlldir=$(find -L "$sysroot" -maxdepth 4 \
+			      -type f -iname '*.dll' -printf '%h' -quit)
+	    fi
+	    if [ -d "$dlldir" ]; then
+		( cd "$pv" && get_dlls *.exe )
+	    fi
 	    mv "$pv" _build
 	    mkdir "$pv"
-	    cp $(find _build -type f -name '*.exe') "$pv"/
+	    cp $(find _build -type f \( -iname '*.exe' -o -iname '*.dll' \)) \
+	       "$pv"/
 	    rm -f _build/stdout.txt _build/stderr.txt || true
-	    for f in $(find _build -type f -name '*.txt'); do
+	    for f in $(find _build -type f -iname '*.txt'); do
 		todos < "$f" > "$pv"/"$(basename "$f")"
 	    done
-
-	    ( cd "$pv" && get_dlls *.exe )
 	    zip -9r -o "$pv".zip "$pv"
 	fi
     )
