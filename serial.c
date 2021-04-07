@@ -56,6 +56,7 @@ static int config_port(int fd, unsigned long baud, enum flowctrl flowctrl)
     HANDLE fh = (HANDLE)_get_osfhandle(fd);
     DCB dcb;
     COMMTIMEOUTS cto;
+    DWORD comerr;
 
     memset(&dcb, 0, sizeof dcb);
     dcb.DCBlength = sizeof dcb;
@@ -95,7 +96,7 @@ static int config_port(int fd, unsigned long baud, enum flowctrl flowctrl)
 	break;
 
     case FLOW_RTS:
-	dcb.fRtsControl = CTS_CONTROL_HANDSHAKE;
+	dcb.fRtsControl = RTS_CONTROL_HANDSHAKE;
 	dcb.fOutxCtsFlow = TRUE;
 	break;
 
@@ -118,8 +119,8 @@ static int config_port(int fd, unsigned long baud, enum flowctrl flowctrl)
     }
 
     PurgeComm(fh, PURGE_TXCLEAR|PURGE_RXCLEAR);
-    ClearCommError(fh, CE_RXOVER|CE_OVERRUN|CE_RXPARITY|CE_FRAME|CE_BREAK,
-		   NULL);
+    comerr = CE_RXOVER|CE_OVERRUN|CE_RXPARITY|CE_FRAME|CE_BREAK;
+    ClearCommError(fh, &comerr, NULL);
 
     return 0;
 }
