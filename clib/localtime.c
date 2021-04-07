@@ -24,22 +24,6 @@ struct tm *localtime_r(const time_t *time, struct tm *dest)
 
 #else
 
-/* Need to run localtime() under mutex */
-
-struct tm *localtime_r(const time_t *time, struct tm *dest)
-{
-    static SDL_mutex *time_mutex;
-    struct tm *tm;
-
-    SDL_mutexP(time_mutex);
-    tm = localtime(&time);
-    if (tm)
-	*dest = *tm;
-    else
-	dest = NULL;
-    SDL_mutexV(time_mutex);
-
-    return dest;
-}
+# error "No thread-safe version of localtime() known"
 
 #endif
