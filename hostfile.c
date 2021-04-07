@@ -287,11 +287,6 @@ static const char *temp_path;
 
 #ifdef __WIN32__
 
-static void tmpdir_cleanup(void)
-{
-    free(temp_path);
-}
-
 static const char *os_get_temp_path(void)
 {
     char *tpath;
@@ -299,7 +294,7 @@ static const char *os_get_temp_path(void)
 
     temp_len = GetTempPath(0, NULL);
     if (!temp_len)
-	return;			/* Leave at NULL */
+	return NULL;
 
     temp_len++;			/* Space for final NULL */
     tpath = calloc(1, temp_len);
@@ -307,7 +302,6 @@ static const char *os_get_temp_path(void)
 	return NULL;
 
     if (GetTempPath(temp_len, tpath)) {
-	atexit(tmpdir_cleanup);
 	return tpath;
     } else {
 	free(tpath);
@@ -330,11 +324,11 @@ static const char *os_get_temp_path(void)
     const char *tpath = NULL;
 
     if ((tpath = getenv("TMP")))
-	return tpath;
+	return strdup(tpath);
     if ((tpath = getenv("TEMP")))
-	return tpath;
+	return strdup(tpath);
 
-    return _PATH_TMP;
+    return strdup(_PATH_TMP);
 }
 
 #endif
@@ -342,9 +336,14 @@ static const char *os_get_temp_path(void)
 static void get_temp_path(void)
 {
     struct stat st;
-    const char *tpath = os_get_temp_path();
+    const char *tpath;
 
-    if (stat_file(tpath, NULL, &st) || !S_ISDIR(st.st_mode))
+    if (temp_path)
+	return temp_path;
+
+    tpath = os_get_temp_path();
+
+    if (!tpath || stat_file(tpath, NULL, &st) || !S_ISDIR(st.st_mode))
 	tpath = NULL;
 
     temp_path = tpath;
@@ -775,6 +774,9 @@ static void hostfile_cleanup(void)
         next = hf->next;
         close_file(&hf);
     }
+
+    if (temp_path)
+	free((void *)temp_path);
 }
 
 /*
@@ -830,7 +832,7 @@ int rename_file(struct host_file *hf, const char *newname)
     memcpy(q, hf->filename, dl);
     memcpy(q+dl, newname, fl+1);
 
-    if (rename(hf->filename, q))
+    if (my_rename(hf->filename, q))
 	goto fail;
 
     free((void *)hf->filename);
