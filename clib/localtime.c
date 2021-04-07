@@ -8,7 +8,7 @@
 
 /* Nothing to do */
 
-#elif defined(__WIN32__)
+#elif defined(HAVE_LOCALTIME_S)
 
 /* Windows */
 

@@ -131,7 +131,11 @@ AC_CHECK_FUNCS([stat _stat64])
 AC_CHECK_FUNCS([fstat _fstat64])
 
 dnl Other things different in Windows...
+PA_ADD_HEADERS(time.h)
+AC_SEARCH_LIBS([strcpy_s], [ssp])
+AC_SEARCH_LIBS([__strcpy_chk], [ssp])
 AC_CHECK_FUNCS(localtime_r)
+PA_HAVE_FUNC([localtime_s], [(NULL, NULL)])
 
 dnl Newer versions of POSIX have this
 AC_CHECK_TYPES(mode_t)
