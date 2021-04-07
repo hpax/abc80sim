@@ -4,16 +4,16 @@ project=abc80sim
 if [ -z "$dir" ]; then
     dir=../rel
 fi
-pv="$(git describe --abbrev=4)"
+if [ -z "$pv" ]; then
+    pv="$(git describe --abbrev=4)"
+fi
 
-mkdir -p "$dir"/"$pv"
-cd "$dir"/"$pv"
+dir="$dir/$pv"
 
-( cd ../.. && git archive --format=tar --prefix="$pv"/ HEAD ) | \
-    tar xvvf -
-cd "$pv"
-./autogen.sh
-cd ..
+mkdir -p "$dir"
+git archive --format=tar --prefix="$pv"/ HEAD | ( cd "$dir" && tar xvvf - )
+cd "$dir"
+( cd "$pv" && ./autogen.sh )
 tar cvvf "$pv".tar "$pv"
 xz -9ek "$pv".tar
 gzip -9 "$pv".tar
@@ -23,11 +23,12 @@ for target in x86_64-w64-mingw32; do
     cd "$target"
     dlldir="/usr/$target/sys-root/mingw/bin"
     tar xf ../"$pv".tar.xz
-    cd "$pv"
-    ./configure --host="$target"
-    make clean
-    make -j
-    cd ..
+    (
+	cd "$pv"
+	./configure --host="$target"
+	make clean
+	make -j
+    )
     mv "$pv" _build
     mkdir "$pv"
     cp $(find _build -type f -name '*.exe') "$pv"/
