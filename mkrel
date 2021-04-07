@@ -18,7 +18,12 @@ tar cvvf "$pv".tar "$pv"
 xz -9ek "$pv".tar
 gzip -9 "$pv".tar
 
-for target in x86_64-w64-mingw32; do
+# Do a native build to make sure we checked in what we were support to...
+native=$(sh "$pv"/autoconf/helpers/config.guess)
+# Other targets
+targets='x86_64-w64-mingw32'
+
+for target in $native $targets; do
     mkdir "$target"
     cd "$target"
     dlldir="/usr/$target/sys-root/mingw/bin"
