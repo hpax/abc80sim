@@ -23,11 +23,25 @@ native=$(sh "$pv"/autoconf/helpers/config.guess)
 # Other targets
 targets='x86_64-w64-mingw32'
 
+# Search for Windows DLLs. This tries to get the transitive closure
+# of all DLLs that we use that are actually present in $dlldir.
+get_dlls () {
+    local x
+    local f
+    for x; do
+	for f in $("$target"-strings $x | grep -i '\.dll$'); do
+	    if [ ! -f "$f" -a -f "$dlldir"/"$f" ]; then
+		cp "$dlldir"/"$f" .
+		get_dlls "$f"
+	    fi
+	done
+    done
+}
+
 for target in $native $targets; do
     (
 	mkdir "$target"
 	cd "$target"
-	dlldir="/usr/$target/sys-root/mingw/bin"
 	tar xf ../"$pv".tar.xz
 	(
 	    cd "$pv"
@@ -35,6 +49,7 @@ for target in $native $targets; do
 	    make clean
 	    make -j
 	)
+	dlldir=$("$target"-gcc -print-sysroot || true)/mingw/bin
 	if [ -d "$dlldir" ]; then
 	    mv "$pv" _build
 	    mkdir "$pv"
@@ -43,9 +58,8 @@ for target in $native $targets; do
 	    for f in $(find _build -type f -name '*.txt'); do
 		todos < "$f" > "$pv"/"$(basename "$f")"
 	    done
-	    for d in SDL.dll libpng16-16.dll zlib1.dll; do
-		cp "$dlldir"/"$d" "$pv"/
-	    done
+
+	    ( cd "$pv" && get_dlls *.exe )
 	    zip -9r -o "$pv".zip "$pv"
 	fi
     )
