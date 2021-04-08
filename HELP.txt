@@ -1,51 +1,87 @@
-Usage: ./abc80 [options] [ihex_files...]
+Usage: abc80 [options] [[[memspace][@start],]romfile...]
+
 Simulate a microcomputer from the Luxor ABC series.
+Most long options can be prefixed with --no- to negate.
 
-
-Options:
+Options (defaults in brackets):
        --abc80             simulate an ABC80 (default)
+       --abc800c           simulate an ABC800C
+       --abc800m           simulate an ABC800C
        --abc802            simulate an ABC802
+       --server port       act as a fileserver
   -4,  --40                start in 40-column mode
   -8,  --80                start in 80-column mode (default)
-  -b,  --no-basic          no BASIC ROM (uninitialized RAM instead)
+  -b,  --no-basic          no BASIC ROM (uninitialized ROM instead)
        --basic             reverts the --no-basic option
   -d,  --no-device         no device driver ROMs
        --device            reverts the --no-device option
+       --no-dos            no disk operating system ROM
+       --dos               reverts the --no-dos option
+       --no-pr             no printer extension ROM
+       --pr                reverts the --no-pr option
   -t,  --trace event,...   trace various events (see "--trace help")
   -Ft, --tracefile file    redirect trace output to a file
   -v, - -version           print the version string
   -h,  --help              print this help message
-  -s,  --speed #.#|max     set the CPU frequency to #.# MHz (default 3.0)
+  -s,  --speed #.#|max     set the CPU frequency to #.# MHz [original]
        --color             allow ABC800C-style color (default)
        --no-color          black and white only
-  -Dd, --diskdir dir       set directory for disk images (default abcdisk)
-  -Df, --filedir dir       set directory for file sharing (default abcdir)
-  -Ds, --scrndir dir       set directory for screen shots (default .)
-  -Dd, --dumpdir dir       set directory for memory dumps (default .)
+       --magic             enable magic I/O port 184 (default)
+       --no-magic          disable magic I/O port 184
+  -Dd, --diskdir dir       set directory for disk images [abcdisk]
+  -Df, --filedir dir       set directory for file sharing [abcdir]
+  -Ds, --scrndir dir       set directory for screen shots [.]
+  -Dd, --dumpdir dir       set directory for memory dumps [.]
   -Cp, --printcmd cmd      set command to launch a print job (* = filename)
   -Fc, --casfile file      input file for cassette (CAS:)
   -Lc, --caslist file      read list of files for the cassette from a file
+  -Dc, --casdir dir        set directory for named cassette files [= filedir]
+  -Cs, --scriptcmd cmd     command line to auto-type on startup
+  -Fs, --scriptfile file   script file to auto-type on startup
+  -Ls, --scriptlist file   read list of script files
   -e,  --console           enable console output device (PRC:)
   -Fe, --consolefile file  enable console output device to a file
-       --detach            detach from console if run from a command line
+       --detach            detach from console (default for --server)
+       --mo# file          mount file as drive MO#: (0-7)
+       --mf# file          mount file as drive MF#: (0-7)
+       --sf# file          mount file as drive SF#: (0-7)
+       --hd# file          mount file as drive HD#: (0-7)
 
 Options for ABC80 only:
-  -k, --kb #              set the memory size K (1-32 or 64)
-      --old-basic         run BASIC 1.0 (checksum 11273)
-      --11273             same as --old-basic
-      --new-basic         run BASIC 1.2 (checksum 9913)
-      --9913              same as --new-basic
-      --faketype          fake short keystrokes (default > 12.5 MHz)
-      --realtype          true key up/down emulation (default < 12.5 MHz)
+  -k,  --kb #              set the memory size K (1-32 or 64) [64]
+       --old-basic         run BASIC 1.0 (checksum 11273)
+       --11273             same as --old-basic
+       --10042             run BASIC 1.1 (checksum 10042)
+       --new-basic         run BASIC 1.2 (checksum 9913, default)
+       --9913              same as --new-basic
+       --basicii           run BASIC II (modified ABC800 BASIC)
+       --faketype          fake short keystrokes (default > 12.5 MHz)
+       --realtype          true key up/down emulation (default < 12.5 MHz)
+       --tkn80 none        no 80-character support
+       --no-tkn80          same as --tkn80 none
+       --tkn80 myab        MyAB TKN80 (video RAM at 22-24K) (default)
+       --tkn80 gejo        GeJo TKN80 (video RAM at 30-32K)
+       --tkn80 cat         CAT80 (video RAM at 18-20K) *preliminary*
+       --sram              simulate hpa's SRAM/flash card (1.5 MB SRAM)
+
+Options for ABC800C/M only:
+  --hr                     enable high resolution graphics (default)
+  --no-hr                  disable high resolution graphics
 
 Options for ABC802 only:
- -Fm, --memfile file      load a file into the ABC802 MEM: device
+  -Fm, --memfile file      load a file into the ABC802 MEM: device
 
-The simulator supports the following hotkeys:
+Option for fileserver only:
+       --baud baudrate     set serial port speed
+
+The simulator supports the following hotkeys; the same events can also be
+triggered by outputting the equivalent character to "magic" I/O port 184:
   Alt-q    quit the simulator
   Alt-s    take a screenshot
   Alt-r    CPU reset
   Alt-n    send NMI
   Alt-m    dump memory as currently seen from the CPU
-  Alt-u    dump underlying RAM only (even nonexistent)
+  Alt-p    dump primary RAM (64K, even nonexistent)
+  Alt-x    dump extended/graphics RAM (if any)
+  Alt-d    dump all memory spaces (atomically)
   Alt-f    turn faketype on or off

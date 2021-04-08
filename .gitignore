@@ -39,6 +39,7 @@ abc*/
 /configure
 /Makefile
 /baudtospeed.c
+/helptxt.c
 unused/
 /abcdir*
 /abcdisk*
