@@ -116,7 +116,7 @@ static no_return help(void)
 	   "       --no-tkn80          same as --tkn80 none\n"
 	   "       --tkn80 myab        MyAB TKN80 (video RAM at 22-24K) (default)\n"
 	   "       --tkn80 gejo        GeJo TKN80 (video RAM at 30-32K)\n"
-	   "       --tkn80 29k         vendor unknown, video RAM at 29K-30K, no double map\n"
+	   "       --tkn80 cat         CAT80 (video RAM at 18-20K) *preliminary*\n"
 	   "       --sram              simulate hpa's SRAM/flash card (1.5 MB SRAM)\n"
            "\n"
 	   "Options for ABC800C/M only:\n"
@@ -441,8 +441,8 @@ int main(int argc, char **argv)
 		    } else if (!strcmp(typestr, "gejo") ||
 			       !strcmp(typestr, "30k")) {
 			opts.tkn80 = TKN80_GEJO;
-		    } else if (!strcmp(typestr, "29k")) {
-			opts.tkn80 = TKN80_29K;
+		    } else if (!strcmp(typestr, "cat")) {
+			opts.tkn80 = TKN80_CAT;
 		    } else {
 			fprintf(stderr, "%s: unknown tkn80 type %s, using MyAB",
 				program_name, typestr);

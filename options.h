@@ -16,7 +16,7 @@ enum tkn80 {
     TKN80_NONE,
     TKN80_MYAB,
     TKN80_GEJO,
-    TKN80_29K
+    TKN80_CAT
 };
 
 /*

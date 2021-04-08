@@ -272,9 +272,9 @@ void abc80_mem_mode80(bool mode80)
 	    addr[1] = 0x7800 + ((row & 7) << 8) + (80 * (row >> 3));
 	    break;
 
-	case TKN80_29K:
-	    addr[1] = 0x7400 + ((row & 4) << 16) + ((row & 3) << 8)
-		+ (80 * (row >> 3));
+	case TKN80_CAT:
+	    /* CAT80 might be linear, and may not support BASIC? */
+	    addr[1] = 0x4800 + ((row & 7) << 8) + (80 * (row >> 3));
 	    break;
 	}
 
@@ -1050,8 +1050,8 @@ void mem_init(unsigned int flags, const char *memfile)
 	case TKN80_MYAB:
 	    map_memory(0x01, K(22), K(2), &video_ram[K(0)], write_screen);
 	    break;
-	case TKN80_29K:
-	    map_memory(0x01, K(29), K(1), &video_ram[K(0)], write_screen);
+	case TKN80_CAT:
+	    map_memory(0x01, K(18), K(2), &video_ram[K(0)], write_screen);
 	    break;
 	}
 	/* Standard 40-char video RAM */
