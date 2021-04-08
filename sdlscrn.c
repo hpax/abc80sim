@@ -30,7 +30,7 @@
 #define PX_WIDTH  (TS_WIDTH*FONT_XSIZE*FONT_XDUP)
 #define PX_HEIGHT (TS_HEIGHT*FONT_YSIZE*FONT_YDUP)
 
-extern const unsigned char abc_font[256][FONT_YSIZE];
+extern const unsigned char abc_font[512][FONT_YSIZE];
 
 static void trigger_refresh(void);
 
@@ -178,6 +178,141 @@ static void unlock_screen(struct surface *s)
 }
 
 /*
+ * Compute text attributes
+ */
+enum vid_attrib_flags {
+    GMODE_GFX    = 1,		/* Graphics active - must be 1 */
+    GMODE_SEP    = 2,		/* Separated graphics - must be 2 */
+    GMODE_HIDE   = 4,		/* Hidden text (render as space) */
+    GMODE_HOLD   = 8,		/* Repeat prev character if control */
+    GMODE_FLSH   = 16,		/* Flashing */
+    GMODE_DBLE   = 32,		/* Double height active */
+    GMODE_DBL2   = 64		/* Line below double */
+};
+struct vid_attrib {
+    uint8_t fg;
+    uint8_t bg;
+    uint8_t flags;
+    uint8_t ch;
+};
+
+static struct vid_attrib attrib[TS_HEIGHT][TS_WIDTH];
+
+/* Attributes for ABC80/800M/800C */
+static void make_attributes(void)
+{
+    static const uint32_t attrib_masks[] = {
+	[MODEL_ABC80]   = 0x00fe00fe,
+	[MODEL_ABC800C] = 0xf7fe33fe,
+	[MODEL_ABC800M] = 0x00000000,
+	[MODEL_ABC802]  = 0x00fe00fe,
+	[MODEL_ABC806]  = 0xffffffff /* Should come from attribute memory*/
+    };
+    const uint32_t attrib_mask = attrib_masks[opts.model];
+    const unsigned int width = TS_WIDTH >> vdu.mode40;
+    unsigned int x, y;
+
+    for (y = 0; y < TS_HEIGHT; y++) {
+	struct vid_attrib va;
+	va.fg    = 7;
+	va.bg    = 0;
+	va.flags = 0;
+	va.ch    = ' ';
+
+	for (x = 0; x < width; x++) {
+	    struct vid_attrib a;
+	    uint8_t ch = screendata(y, x);
+
+	    if (!(ch & 0x60)) {
+		uint8_t ctl = ch & 0x1f;
+		if (attrib_mask & (UINT32_C(1) << ctl)) {
+		    switch (ctl) {
+		    case 0x00: case 0x01: case 0x02: case 0x03:
+		    case 0x04: case 0x05: case 0x06: case 0x07:
+			/* Text mode color */
+			va.fg = ch & 7;
+			va.flags &= ~GMODE_GFX;
+			break;
+
+		    case 0x08:		/* FLSH */
+			va.flags |= GMODE_FLSH;
+			break;
+
+		    case 0x09:		/* STDY */
+			va.flags &= ~GMODE_FLSH;
+			break;
+
+		    case 0x0c:		/* NRML */
+			va.flags &= ~GMODE_DBLE;
+			break;
+
+		    case 0x0d:		/* DBLE */
+			va.flags |= GMODE_DBLE;
+			break;
+
+		    case 0x10: case 0x11: case 0x12: case 0x13:
+		    case 0x14: case 0x15: case 0x16: case 0x17:
+			/* Graphics color */
+			va.fg = ch & 7;
+			va.flags |= GMODE_GFX;
+			break;
+
+		    case 0x18:		/* HIDE */
+			va.flags |= GMODE_HIDE;
+			break;
+
+		    case 0x19:		/* GCON */
+			va.flags &= ~GMODE_SEP;
+			break;
+
+		    case 0x1a:		/* GSEP */
+			va.flags |= GMODE_SEP;
+			break;
+
+		    case 0x1c:	        /* BLBG */
+			va.fg = va.bg;	/* ? */
+			va.bg = 0;
+			break;
+
+		    case 0x1d:		/* NWBG */
+			va.bg = va.fg;
+			va.fg = 0;
+			break;
+
+		    case 0x1e:		/* GHOL */
+			va.flags |= GMODE_HOLD;
+			break;
+
+		    case 0x1f:		/* GREL */
+			va.flags &= ~GMODE_HOLD;
+			break;
+
+		    default:
+			break;
+		    }
+		}
+
+		va.ch = (ch & 0x80) |
+		    ((va.flags & GMODE_HOLD) ? (va.ch & 0x7f) : ' ');
+	    } else {
+		va.ch = ch;
+	    }
+
+	    if (y > 0 && (attrib[y-1][x].flags & GMODE_DBLE)) {
+		a = attrib[y-1][x];
+		a.flags = (a.flags & ~GMODE_DBLE) | GMODE_DBL2;
+	    } else {
+		a = va;
+		if (a.flags & GMODE_HIDE)
+		    a.ch = (a.ch & 0x80) | ' ';
+	    }
+	    attrib[y][x] = a;
+	}
+    }
+}
+
+
+/*
  * Update the on-screen structure to match the screendata[]
  * for character (tx,ty), but don't refresh the rectangle just
  * yet...
@@ -191,9 +326,9 @@ put_screen(struct surface *s, unsigned int tx, unsigned int ty, bool blink)
     unsigned char v, vv;
     uint32_t *pixelp, *pixelpp, fgp, bgp, fg_color[4];
     unsigned int x, xx, y, yy, gx;
+    struct vid_attrib va;
     uint32_t curmask;
-    unsigned char gmode, fg, bg;
-    unsigned char cc, invmask;
+    uint8_t invmask, notdble;
     uint16_t fgdata;
     unsigned int xdup = FONT_XDUP << vdu.mode40;
     int i;
@@ -202,34 +337,18 @@ put_screen(struct surface *s, unsigned int tx, unsigned int ty, bool blink)
         ty >= (unsigned int)TS_HEIGHT)
         return;
 
-    bg = 0;                     /* XXX: handle NWBG */
-    fg = 7;
+    /* Decoded characters & attributes */
+    va = attrib[ty][tx];
 
-    gmode = 0;
-    switch (opts.model) {
-    case MODEL_ABC80:
-    case MODEL_ABC800C:
-    case MODEL_ABC802:
-	for (gx = 0; gx < tx; gx++) {
-	    cc = screendata(ty, gx);
-	    if ((cc & 0x68) == 0) {
-		gmode = (cc & 0x10) << 3;
-		fg = (cc & 0x07);
-	    }
-	}
-	break;
-    case MODEL_ABC800M:
-	gmode = 0;
-	break;
-    case MODEL_ABC806:
-	/* Get values from attribute memory */
-	gmode = 0;
-	break;
-    }
+    fontp = abc_font[(va.ch & 0x7f) +
+		     ((va.flags & (GMODE_GFX|GMODE_SEP)) << 7)];
 
-    voffs = screenoffs(ty, tx, vdu.mode40) + vdu.startaddr;
-    cc = vdu.vram[voffs & VRAM_MASK];
-    fontp = abc_font[(cc & 0x7f) + gmode];
+    if ((va.flags & GMODE_FLSH) && !blink)
+	fontp = abc_font[' '];	/* Flashing & off: render as blank */
+
+    if (va.flags & GMODE_DBL2)
+	fontp += FONT_YSIZE >> 1; /* Second half */
+
     invmask = 0;
     switch (opts.model) {
     case MODEL_ABC80:
@@ -244,17 +363,13 @@ put_screen(struct surface *s, unsigned int tx, unsigned int ty, bool blink)
 	invmask = 0x80;
 	break;
     }
-
-    invmask = (cc & invmask) ? 7 : 0;
-    bg ^= invmask;
-    fg ^= invmask;
-
+    invmask = (va.ch & invmask) ? 7 : 0;
 
     if (vdu.fgctl & 0x80) {
 	bgp = fgp = 0;
     } else {
-	bgp = s->colors[bg];
-	fgp = s->colors[fg];
+	bgp = s->colors[va.bg ^ invmask];
+	fgp = s->colors[va.fg ^ invmask];
     }
 
     for (i = 0; i < 4; i++)
@@ -265,6 +380,7 @@ put_screen(struct surface *s, unsigned int tx, unsigned int ty, bool blink)
         ((tx * FONT_XSIZE * FONT_XDUP) << vdu.mode40);
 
     curmask = 0;
+    voffs = screenoffs(ty, tx, vdu.mode40) + vdu.startaddr;
     if (unlikely(voffs == vdu.curaddr)) {
 	uint8_t curmode = vdu.crtc.r.curstart & 0x60;
 
@@ -276,17 +392,23 @@ put_screen(struct surface *s, unsigned int tx, unsigned int ty, bool blink)
 
     gx = (tx*FONT_XSIZE) >> !vdu.mode40;
 
+    /* ABC800C/M "fine graphics" */
+
     fgoffs = (((vdu.fgstart + ty*FONT_YSIZE) << 6) +
 	      (gx >> 2)) & FGRAM_MASK;
 
     /* Sigh. Bigendian bit order. Why? */
     fgshift = (7-(gx & 3)) << 1;
 
+    notdble = !(va.flags & (GMODE_DBLE|GMODE_DBL2));
+
     for (y = 0; y < FONT_YSIZE; y++) {
 	fgdata = (vdu.fgram[fgoffs] << 8) + vdu.fgram[fgoffs+1];
 	fgoffs = (fgoffs + 64) & FGRAM_MASK;
 
-        vv = *fontp++;
+	vv = *fontp;
+	fontp += (y | notdble) & 1;
+
         if (curmask & 1)
             vv = 0x3f;
         curmask >>= 1;
@@ -338,6 +460,7 @@ static void refresh_screen(struct surface *s, bool force_blink)
 
     lock_screen(s);
 
+    make_attributes();
     for (y = 0; y < TS_HEIGHT; y++)
         for (x = 0; x < width; x++)
             put_screen(s, x, y, blink);
