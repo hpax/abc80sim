@@ -66,13 +66,13 @@ abc80win$(X): winwrap.c
 	$(PERL) bin2c.pl $< > $@ || ( rm -f $@ ; false )
 
 %.$(O): %.c $(HDRS)
-	$(CC) $(CFLAGS) -c -o $@ $<
+	$(CC) $(CFLAGS) -DMODULE='$(*F)' -c -o $@ $<
 
 %.i: %.c $(HDRS)
-	$(CC) $(CFLAGS) -E -o $@ $<
+	$(CC) $(CFLAGS) -DMODULE='$(*F)' -E -o $@ $<
 
 %.s: %.c $(HDRS)
-	$(CC) $(CFLAGS) -S -o $@ $<
+	$(CC) $(CFLAGS) -DMODULE='$(*F)' -S -o $@ $<
 
 helptxt.c: HELP.txt txt2c.sed
 	$(SED) -f txt2c.sed $< > $@
