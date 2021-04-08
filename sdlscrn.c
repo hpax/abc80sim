@@ -187,13 +187,15 @@ enum vid_attrib_flags {
     GMODE_HOLD   = 8,		/* Repeat prev character if control */
     GMODE_FLSH   = 16,		/* Flashing */
     GMODE_DBLE   = 32,		/* Double height active */
-    GMODE_DBL2   = 64		/* Line below double */
+    GMODE_DBL2   = 64,		/* Double width, lower half */
+    GMODE_EL     = 128,		/* Double width active */
+    GMODE_EL2    = 256,		/* Double width, second half */
 };
 struct vid_attrib {
-    uint8_t fg;
-    uint8_t bg;
-    uint8_t flags;
-    uint8_t ch;
+    unsigned int flags : 16;
+    unsigned int ch : 8;
+    unsigned int fg : 3;
+    unsigned int bg : 3;
 };
 
 static struct vid_attrib attrib[TS_HEIGHT][TS_WIDTH];
@@ -209,8 +211,10 @@ static void make_attributes(void)
 	[MODEL_ABC806]  = 0xffffffff /* Should come from attribute memory*/
     };
     const uint32_t attrib_mask = attrib_masks[opts.model];
-    const unsigned int width = TS_WIDTH >> vdu.mode40;
+    const unsigned int m40 = vdu.mode40;
+    const unsigned int width = TS_WIDTH >> m40;
     unsigned int x, y;
+    struct vid_attrib *vap = attrib[0];
 
     for (y = 0; y < TS_HEIGHT; y++) {
 	struct vid_attrib va;
@@ -221,6 +225,7 @@ static void make_attributes(void)
 
 	for (x = 0; x < width; x++) {
 	    struct vid_attrib a;
+
 	    uint8_t ch = screendata(y, x);
 
 	    if (!(ch & 0x60)) {
@@ -298,15 +303,22 @@ static void make_attributes(void)
 		va.ch = ch;
 	    }
 
-	    if (y > 0 && (attrib[y-1][x].flags & GMODE_DBLE)) {
-		a = attrib[y-1][x];
+	    if (y > 0 && (vap[-TS_WIDTH].flags & GMODE_DBLE)) {
+		a = vap[-TS_WIDTH];
 		a.flags = (a.flags & ~GMODE_DBLE) | GMODE_DBL2;
 	    } else {
 		a = va;
 		if (a.flags & GMODE_HIDE)
 		    a.ch = (a.ch & 0x80) | ' ';
 	    }
-	    attrib[y][x] = a;
+	    if (m40) {
+		a.flags |= GMODE_EL;
+		*vap++ = a;
+		a.flags = (a.flags & ~GMODE_EL) | GMODE_EL2;
+		*vap++ = a;
+	    } else {
+		*vap++ = a;
+	    }
 	}
     }
 }
@@ -315,7 +327,7 @@ static void make_attributes(void)
 /*
  * Update the on-screen structure to match the screendata[]
  * for character (tx,ty), but don't refresh the rectangle just
- * yet...
+ * yet. These are 80-column coordinates even in 40-column mode!!
  */
 
 static void
@@ -328,13 +340,12 @@ put_screen(struct surface *s, unsigned int tx, unsigned int ty, bool blink)
     unsigned int x, xx, y, yy, gx;
     struct vid_attrib va;
     uint32_t curmask;
-    uint8_t invmask, notdble;
+    uint8_t invmask;
     uint16_t fgdata;
-    unsigned int xdup = FONT_XDUP << vdu.mode40;
+    unsigned int notdble, notel, xshift;
     int i;
 
-    if (tx >= (unsigned int)(TS_WIDTH >> vdu.mode40) ||
-        ty >= (unsigned int)TS_HEIGHT)
+    if (tx >= (unsigned int)TS_WIDTH || ty >= (unsigned int)TS_HEIGHT)
         return;
 
     /* Decoded characters & attributes */
@@ -376,11 +387,11 @@ put_screen(struct surface *s, unsigned int tx, unsigned int ty, bool blink)
 	fg_color[i] = s->colors[fgcolor[vdu.fgctl & 0x7f][i]];
 
     pixelp = ((uint32_t *) s->surf->pixels) +
-        ty * PX_WIDTH * FONT_YSIZE * FONT_YDUP +
-        ((tx * FONT_XSIZE * FONT_XDUP) << vdu.mode40);
+        (ty * PX_WIDTH * FONT_YSIZE * FONT_YDUP) +
+        (tx * FONT_XSIZE * FONT_XDUP);
 
     curmask = 0;
-    voffs = screenoffs(ty, tx, vdu.mode40) + vdu.startaddr;
+    voffs = screenoffs(ty, tx >> vdu.mode40, vdu.mode40) + vdu.startaddr;
     if (unlikely(voffs == vdu.curaddr)) {
 	uint8_t curmode = vdu.crtc.r.curstart & 0x60;
 
@@ -390,7 +401,7 @@ put_screen(struct surface *s, unsigned int tx, unsigned int ty, bool blink)
         }
     }
 
-    gx = (tx*FONT_XSIZE) >> !vdu.mode40;
+    gx = tx*FONT_XSIZE;
 
     /* ABC800C/M "fine graphics" */
 
@@ -401,17 +412,20 @@ put_screen(struct surface *s, unsigned int tx, unsigned int ty, bool blink)
     fgshift = (7-(gx & 3)) << 1;
 
     notdble = !(va.flags & (GMODE_DBLE|GMODE_DBL2));
+    notel   = !(va.flags & (GMODE_EL|GMODE_EL2));
+    xshift  = (va.flags & GMODE_EL2) ? (FONT_XSIZE >> 1) : 0;
 
     for (y = 0; y < FONT_YSIZE; y++) {
 	fgdata = (vdu.fgram[fgoffs] << 8) + vdu.fgram[fgoffs+1];
 	fgoffs = (fgoffs + 64) & FGRAM_MASK;
 
-	vv = *fontp;
+	vv = *fontp << xshift;
 	fontp += (y | notdble) & 1;
 
         if (curmask & 1)
-            vv = 0x3f;
+            vv = ~0;
         curmask >>= 1;
+
         for (yy = 0; yy < FONT_YDUP; yy++) {
 	    uint16_t fgdtmp = fgdata;
 	    unsigned int fgshtmp = fgshift;
@@ -421,12 +435,12 @@ put_screen(struct surface *s, unsigned int tx, unsigned int ty, bool blink)
 		uint32_t hrp, px;
 
 		hrp = fg_color[(fgdtmp >> fgshtmp) & 3];
-		if ((x | vdu.mode40) & 1)
+		if (x & 1)
 		    fgshtmp -= 2;
 		px = hrp | ((v & 0x80) ? fgp : bgp);
-                for (xx = 0; xx < xdup; xx++)
+                for (xx = 0; xx < FONT_XDUP; xx++)
                     *pixelpp++ = px;
-                v <<= 1;
+                v <<= (notel | x) & 1;
             }
             pixelp += PX_WIDTH;
         }
@@ -448,21 +462,19 @@ static void update_screen(struct surface *s)
 static void refresh_screen(struct surface *s, bool force_blink)
 {
     unsigned int x, y;
-    unsigned int width;
     bool blink;
 
     SDL_mutexP(screen_mutex);
     vdu = xfr;
     SDL_mutexV(screen_mutex);
 
-    width = TS_WIDTH >> vdu.mode40;
     blink = force_blink | vdu.blink_on;
 
     lock_screen(s);
 
     make_attributes();
     for (y = 0; y < TS_HEIGHT; y++)
-        for (x = 0; x < width; x++)
+        for (x = 0; x < TS_WIDTH; x++)
             put_screen(s, x, y, blink);
 
     unlock_screen(s);
