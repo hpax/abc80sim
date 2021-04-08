@@ -198,7 +198,9 @@ struct vid_attrib {
     unsigned int bg : 3;
 };
 
-static struct vid_attrib attrib[TS_HEIGHT][TS_WIDTH];
+
+/* Row indicies are offset by 1; row 0 (= "-1") is always blank */
+static struct vid_attrib attrib[TS_HEIGHT+1][TS_WIDTH];
 
 /* Attributes for ABC80/800M/800C */
 static void make_attributes(void)
@@ -214,7 +216,7 @@ static void make_attributes(void)
     const unsigned int m40 = vdu.mode40;
     const unsigned int width = TS_WIDTH >> m40;
     unsigned int x, y;
-    struct vid_attrib *vap = attrib[0];
+    struct vid_attrib *vap = attrib[1]; /* First row */
 
     for (y = 0; y < TS_HEIGHT; y++) {
 	struct vid_attrib va;
@@ -303,7 +305,8 @@ static void make_attributes(void)
 		va.ch = ch;
 	    }
 
-	    if (y > 0 && (vap[-TS_WIDTH].flags & GMODE_DBLE)) {
+	    /* For the first row, this will always be false */
+	    if (vap[-TS_WIDTH].flags & GMODE_DBLE) {
 		a = vap[-TS_WIDTH];
 		a.flags = (a.flags & ~GMODE_DBLE) | GMODE_DBL2;
 	    } else {
@@ -349,7 +352,7 @@ put_screen(struct surface *s, unsigned int tx, unsigned int ty, bool blink)
         return;
 
     /* Decoded characters & attributes */
-    va = attrib[ty][tx];
+    va = attrib[ty+1][tx];
 
     fontp = abc_font[(va.ch & 0x7f) +
 		     ((va.flags & (GMODE_GFX|GMODE_SEP)) << 7)];
