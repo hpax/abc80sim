@@ -365,7 +365,9 @@ int main(int argc, char **argv)
 			opts.tkn80 = TKN80_MYAB;
 		    }
 		}
-	    } else if (!strcmp(optstr, "sram")) {
+	    } else if (!strcmp(optstr, "sram") ||
+		       !strcmp(optstr, "meg80") ||
+		       !strcmp(optstr, "meg")) {
 		opts.sram = enable;
 		if (optarg)
 		    opts.sram_config = optarg;

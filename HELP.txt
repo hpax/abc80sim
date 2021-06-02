@@ -62,7 +62,7 @@ Options for ABC80 only:
        --tkn80 myab        MyAB TKN80 (video RAM at 22-24K) (default)
        --tkn80 gejo        GeJo TKN80 (video RAM at 30-32K)
        --tkn80 cat         CAT80 (video RAM at 18-20K) *preliminary*
-       --sram              simulate hpa's SRAM/flash card (1.5 MB SRAM)
+       --meg80[=options]   simulate MEG80 SRAM/flash card
 
 Options for ABC800C/M only:
   --hr                     enable high resolution graphics (default)

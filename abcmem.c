@@ -785,45 +785,91 @@ void abc80_sram_out(uint16_t addr, uint8_t val)
  */
 static int init_sram(void)
 {
-    static const char default_config[] = "512,512,512,flash";
     unsigned int kb[3];
-    char ic3[6];
     uint8_t *sram;
-    int i;
     int bootmap;
+    int i;
 
-    sscanf(default_config, "%u,%u,%u,%5s", &kb[0], &kb[1], &kb[2], ic3);
-    if (opts.sram_config)
-	sscanf(opts.sram_config, "%u,%u,%u,%5s", &kb[0], &kb[1], &kb[2], ic3);
+    /* Defaults */
+    kb[0] = kb[1] = kb[2] = 512; /* 3x512K */
+    sram_ic3 = IC3_FLASH;	 /* IC3 is flash */
+    bootmap = 0;		 /* System boot */
+
+    if (opts.sram_config) {
+	const char *srp = opts.sram_config;
+	const char *esrp;
+	int ikb = 0;
+	unsigned long nkb;
+
+	while (*srp) {
+	    bool err = false;
+
+	    nkb = strtoul(srp, (char **)&esrp, 0);
+	    if (esrp != srp && (!*esrp || *esrp == ',')) {
+		if (ikb < 3) {
+		    kb[ikb++] = nkb;
+		    /* Configurations < 128K are theoretical only */
+		    if ((nkb & (nkb-1)) || nkb < 8 || nkb > 512)
+			err = true;
+		} else {
+		    err = true;
+		}
+	    } else {
+		size_t olen;
+		esrp = strchr(srp, ',');
+		if (!esrp)
+		    esrp = strchr(srp, '\0');
+		olen = esrp - srp;
+
+		if (olen == 0) {
+		    if (ikb < 3)
+			kb[ikb++] = 0;
+		    else
+			err = true;
+		} else if (olen == 4 && !memcmp(srp, "boot", 4)) {
+		    bootmap = 17; /* Flash boot */
+		} else if ((olen == 5 && !memcmp(srp, "flash", 5)) ||
+			   (olen == 2 && !memcmp(srp, "we", 2))) {
+		    sram_ic3 = IC3_FLASH;
+		} else if ((olen == 3 && !memcmp(srp, "rom", 3)) ||
+			   (olen == 2 && !memcmp(srp, "wp", 2))) {
+		    sram_ic3 = IC3_ROM;
+		} else if ((olen == 3 && !memcmp(srp, "ram", 3)) ||
+			   (olen == 4 && !memcmp(srp, "sram", 4))) {
+		    sram_ic3 = IC3_RAM;
+		} else {
+		    err = true;
+		}
+	    }
+
+	    srp = esrp;
+	    switch (*srp) {
+	    case ',':
+		srp++;
+		break;
+	    case '\0':
+		break;
+	    default:
+		err = true;
+		break;
+	    }
+
+	    if (err) {
+		fprintf(stderr, "%s: invalid MEG80 configuration: %s\n",
+			program_name, opts.sram_config);
+		return -1;
+	    }
+	}
+    }
 
     for (i = 0; i < 3; i++) {
 	sram_mask[i] = 0;
 	if (!kb[i])
 	    continue;
-	/* Configurations < 128K are of theoretical interest only */
-	if ((kb[i] & (kb[i]-1)) || kb[i] < 8 || kb[i] > 512) {
-	    fprintf(stderr, "%s: invalid SRAM configuration: %s\n",
-		    program_name, opts.sram_config);
-	    return -1;
-	}
 	sram_mask[i] = ((kb[i]-1) >> 3) | 0xc0;
     }
 
     sram_mask[3] = 0x07;	/* System memory */
-
-    sram_ic3 = IC3_FLASH;	/* Default */
-
-    bootmap = 0;		/* System boot */
-    if (!strcmp(ic3, "boot")) {
-	sram_ic3 = IC3_FLASH;
-	bootmap = 17;		/* Flash boot */
-    } else if (!strcmp(ic3, "flash") || !strcmp(ic3, "we")) {
-	sram_ic3 = IC3_FLASH;
-    } else if (!strcmp(ic3, "rom") || !strcmp(ic3, "wp")) {
-	sram_ic3 = IC3_ROM;
-    } else if (!strcmp(ic3, "ram") || !strcmp(ic3, "sram")) {
-	sram_ic3 = IC3_RAM;
-    }
 
     /*
      * Flash software identification ID.
