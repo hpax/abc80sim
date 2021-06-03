@@ -298,4 +298,8 @@ static inline uint64_t umulh(uint64_t a, uint64_t b)
 }
 #endif
 
+/* Handy macro for comparing a partial string against a string constant */
+#define isstr(str,ptr,len) \
+  ((size_t)(len) == sizeof(str)-1 && !memcmp(str, (ptr), sizeof(str)-1))
+
 #endif /* COMPILER_H */

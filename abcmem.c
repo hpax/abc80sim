@@ -781,7 +781,7 @@ void abc80_sram_out(uint16_t addr, uint8_t val)
 }
 
 /*
- * Initialize SRAM/flash card if present
+ * Initialize MEG80 SRAM/flash card if present
  */
 static int init_sram(void)
 {
@@ -826,16 +826,17 @@ static int init_sram(void)
 			kb[ikb++] = 0;
 		    else
 			err = true;
-		} else if (olen == 4 && !memcmp(srp, "boot", 4)) {
+		} else if (isstr("flash", srp, olen)) {
 		    bootmap = 17; /* Flash boot */
-		} else if ((olen == 5 && !memcmp(srp, "flash", 5)) ||
-			   (olen == 2 && !memcmp(srp, "we", 2))) {
+		} else if (isstr("system", srp, olen)) {
+		    bootmap = 0; /* System boot */
+		} else if (isstr("we", srp, olen)) {
 		    sram_ic3 = IC3_FLASH;
-		} else if ((olen == 3 && !memcmp(srp, "rom", 3)) ||
-			   (olen == 2 && !memcmp(srp, "wp", 2))) {
+		} else if (isstr("rom", srp, olen) ||
+			   isstr("wp", srp, olen)) {
 		    sram_ic3 = IC3_ROM;
-		} else if ((olen == 3 && !memcmp(srp, "ram", 3)) ||
-			   (olen == 4 && !memcmp(srp, "sram", 4))) {
+		} else if (isstr("ram", srp, olen) ||
+			   isstr("sram", srp, olen)) {
 		    sram_ic3 = IC3_RAM;
 		} else {
 		    err = true;
@@ -1013,8 +1014,8 @@ void mem_init(unsigned int flags, const char *memfile)
 	    if (sram_status < 0) {
 		opts.sram = false;
 	    } else {
-		if (opts.kb > 32)
-		    opts.kb = 32;
+		if (opts.kb == 64)
+		    opts.kb = 16;
 		init_map = sram_status;
 	    }
 	}
