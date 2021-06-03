@@ -48,7 +48,7 @@ Options (defaults in brackets):
        --hd# file          mount file as drive HD#: (0-7)
 
 Options for ABC80 only:
-  -k,  --kb #              set the memory size K (1-32 or 64) [64]
+  -k,  --kb #              set the memory size K (1-32, 64) [64, 16 with MEG80]
        --old-basic         run BASIC 1.0 (checksum 11273)
        --11273             same as --old-basic
        --10042             run BASIC 1.1 (checksum 10042)
@@ -62,7 +62,11 @@ Options for ABC80 only:
        --tkn80 myab        MyAB TKN80 (video RAM at 22-24K) (default)
        --tkn80 gejo        GeJo TKN80 (video RAM at 30-32K)
        --tkn80 cat         CAT80 (video RAM at 18-20K) *preliminary*
-       --meg80[=options]   simulate MEG80 SRAM/flash card
+       --meg80[=opt,...]   simulate MEG80 SRAM/flash card
+               =flash        start with MEG80 active (flash mode)
+               =ram          slot 3 contains SRAM
+               =rom          slot 3 is write protected (ROM)
+               =#,#...       amount of memory (K) in each slot (8-512) [512]
 
 Options for ABC800C/M only:
   --hr                     enable high resolution graphics (default)
