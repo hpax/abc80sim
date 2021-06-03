@@ -67,43 +67,17 @@ static void init_volumes(struct abcprint *me)
     if (hf) {
 	struct dirent *de;
 	while ((de = read_dir(hf))) {
-	    unsigned int nlen;
-	    unsigned int mode;
 	    char volname[16];
-	    char *dot;
-	    int prio;
+	    struct stat st;
+	    const int prio = 2;	/* Explicit volume */
+	    const int mode = 2;	/* Binary */
 
-	    nlen = mangle_for_readdir(volname, de->d_name);
-	    if (!nlen)
+	    if (!mangle_volname(volname, de->d_name))
 		continue;
 
-	    dot = strchr(volname, '.');
-	    if (!dot) {
-		dot = volname + nlen;
-		memcpy(dot, ".@", 3); /* Default mode */
-		nlen += 2;
-	    }
-
-	    if (nlen <= 2)
-		continue;
-
-	    if (dot < volname+1 || dot > volname+3)
-		continue;	/* Volume name must be 1-3 characters */
-
-	    /* Mode must be one character */
-	    if (dot != volname+nlen-2)
-		continue;
-
-	    mode = volname[nlen-1] - '@';
-	    if (mode > 2)
-		continue;
-
-	    prio = mode + 2;
-	    if (mode == 0)
-		mode = 2;	/* Default to binary, at least for now */
-
-	    /* Volume is a 3-byte space-padded string */
-	    memset(dot, ' ', 3);
+	    if (stat_file(fileop_path, de->d_name, &st) ||
+		!S_ISDIR(st.st_mode))
+		continue;	/* Not a directory */
 
 	    /*
 	     * Did this volume already exist? Let a low priority override
@@ -119,7 +93,7 @@ static void init_volumes(struct abcprint *me)
 	    }
 
 	    if (prio > vol->prio) {
-		memcpy(vol->name, volname, 3);
+		memcpy(vol->name, volname, 4);
 		if (vol->path)
 		    free((void *)vol->path);
 		vol->path = concat_path(fileop_path, de->d_name);
