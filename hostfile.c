@@ -98,7 +98,7 @@ char *concat_path(const char *dir, const char *file)
     dl = strlen(dir);
     fl = strlen(file);
 
-    path = malloc(dl + fl + 1);
+    path = malloc(dl + fl + 2);	/* One byte for /, one for \0 */
     if (path) {
 	char *p = path;
 
