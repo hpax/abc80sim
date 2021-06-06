@@ -63,10 +63,16 @@ struct ctl_state {
  */
 #define OUT_OF_RANGE 0x21	/* Status code for an invalid sector */
 
+/*
+ * MOx: covers all of these formats:
+ * SSSD = 40×8×1 (80K, FD2/DD80),
+ * SSDD = 40×16×1 (160K, FD2D/DD82/ABC830) and
+ * DSDD = 40×16×2 (320K, FD4D/DD84/DD52)
+ */
 static struct ctl_state mo_state = {
     .clustshift = 0,
-    .maxsectors = 40 * 1 * 16,
-    .c = 40, .h = 1, .s = 16,
+    .maxsectors = 40 * 2 * 16,
+    .c = 40, .h = 2, .s = 16,
     .fmtdata_in_buf = true,
     .ilmsk = 15,
     .ilfac = 7,
