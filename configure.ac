@@ -26,6 +26,7 @@ AC_CANONICAL_HOST
 dnl Checks for programs.
 AC_USE_SYSTEM_EXTENSIONS
 AC_PROG_CC
+AC_PROG_CC_C99
 AC_PROG_LN_S
 AC_PROG_MAKE_SET
 AC_PROG_INSTALL
@@ -62,6 +63,9 @@ dnl Don't put things in common if we can avoid it.  We don't want to
 dnl assume all compilers support common, and this will help find those
 dnl problems.  This also works around an OSX linker problem.
 PA_ADD_CFLAGS([-fno-common])
+
+dnl gcc stack protector; also needed for MinGW to build dirent.h correctly...
+PA_ADD_CFLAGS([-fstack-protector])
 
 dnl See if we can find sdl-config
 AC_CHECK_TOOL([SDL_CONFIG], [sdl-config], [false])
