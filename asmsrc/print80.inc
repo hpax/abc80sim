@@ -1011,11 +1011,11 @@ pr_device:
 __end:
 
 ;;
-;; In RAM; this is assuming the IEC area is used as a RAM instead.
-;; 0x73c0-0x7400 is used by UFD-DOS.
+;; In RAM; this is assuming external SRAM or equivalent at 20-22K.
+;; The top 64 bytes are used by UFD-DOS.
 ;;
-	defc ram_start = 0x72c0
-	defc ram_end   = 0x73c0
+	defc ram_end   = 22*1024 - 64
+	defc ram_start = ram_end - 7*MAX_VOLS - 2 - 4
 
 	section bss
 	org ram_start

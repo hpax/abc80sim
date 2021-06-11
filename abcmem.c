@@ -1079,8 +1079,13 @@ void mem_init(unsigned int flags, const char *memfile)
 	if (!(flags & MEMFL_NOPR))
 	    memcpy(rom+praddr, pr, prlen);
 
-	/* Hack: allow device ROMs to be written to */
-	map_memory(0x01, K(28), K(4), &rom[K(28)], write_ram);
+	/*
+	 * Hack: map 20-22K as writable. This seems to be consistent
+	 * with (some?) UFD-DOS modifications putting a 2K external
+	 * RAM at this address. Map it still out of the ROM space as
+	 * it would be different from the RAM space on 64K.
+	 */
+	map_memory(0x01, K(20), K(2), &rom[K(20)], write_ram);
 
 	/*
 	 * Note: leave 80-character VRAM always mapped, there is no

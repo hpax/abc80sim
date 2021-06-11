@@ -4,7 +4,7 @@ PERL   = perl
 UFDDOS = ../roms/ufddos80.rom
 PRINT  = ../roms/print80_29.rom ../roms/print80_30.rom
 ROMS   = $(PRINT) $(UFDDOS)
-BAS    = prinit.bas
+BAS    = prnet.bas prnet.bac
 
 all: $(ROMS) $(BAS)
 
@@ -30,5 +30,7 @@ spotless: clean
 
 print80_30.map: print80_30.asm print80.inc abc80.inc
 print80_29.map: print80_29.asm print80.inc abc80.inc
-prinit.bas:     print80_29.bin
-	bin2abc --bas -s 0x7400 -e 0x747c --new -o $@ $<
+prnet.bac:      print80_29.bin
+	bin2abc --bac80 --driver --new -s 0x7400 -e 0x744b -o $@ $<
+prnet.bas:      print80_29.bin
+	bin2abc --bas --driver --new -s 0x7400 -e 0x744b -o $@ $<

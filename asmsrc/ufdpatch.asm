@@ -40,10 +40,6 @@
 ;;;         Denna fil använder teknik med conditional assembly
 ;;;         Se ASMZ Manual.
 ;;;
-;;;         De variabler som gäller är som följer:
-;;;
-	defc nopoke=0		; Enhetslistan i DOS
-	defc stealiec=1		; Enhetslistan i RAM i IEC-arean
 ;;;
 ;;;  DR_: offset i doset:s enhetstabell
 ;;;  Sätt DROFF att motsvara den typ av
@@ -77,29 +73,22 @@
 ;;;  Tekniken är helt enkelt den att man använder den tabell som finns
 ;;;  "bränd" i i DOS:et och som läggs ut i RAM vid initiering.
 ;;;
-	if nopoke
-
-        defc devdes=678ah          ; Låter tabellen ligga kvar i DOS:et
-        defc rdwret=67aah          ; Brytmöjligheten ligger kvar i DOS arean.
-
-	else
-	if stealiec
-
-	defc devdes=73c0h	; Adress till enhetstabell i RAM
-	defc rdwret=73e0h	; Adress till brytmöjlighet sect. read/write.
-
+;;;  Om man har t.ex. externt SRAM, definiera devdes= ovan. En del
+;;;  externa UFD-DOS-tillkopplingar verkar ha haft externt SRAM p20-22K.
+;;;
+	defc devdes=57c0h	; Enhetslistan i externt SRAM 20-22K
+	;defc devdes=73c0h	; Enhetsli
+        ;defc devdes=678ah	; Låter tabellen ligga kvar i DOS:et
+;;;
 ;;;  - Fix no: 3 -
 ;;;  Detta är gjort för att man skall ha
 ;;;  kvar de första 64 bytes av POKE-arean
 ;;;  på adress 65408.
 ;;;
-	else
+	;defc devdes=65472	; Adress till enhetstabell i DRAM
 
-	defc devdes=65472	; Adress till enhetstabell i RAM
-	defc rdwret=65504	; Adress till brytmöjlighet sect. read/write.
+	defc rdwret=devdes+32	; Adress till brytmöjlighet sect. read/write.
 
-	endif
-	endif
 ;;;
 ;;;  - Fix no: 4 -
 ;;; BUGGAR I RANDOM ACCESS RUTINER FIXADE
@@ -363,6 +352,9 @@ _jp_done:
 ;;; This looks for a JP instruction at any 0x[457]x4B address (same offset
 ;;; as DOS itself.) If one is found, call it; that routine must then
 ;;; advance HL past itself so this code knows where to look next.
+;;; We can't use 0x[4567]x00 like ABC800 since that is a jump table on
+;;; several standard ABC80 ROMs. This also lets ABC80 and 800 have different
+;;; entry points... a potentially good thing at least.
 ;;;
 ;;; We also factor out the autostart routine; DOS will initialize first,
 ;;; and install its autostart command into the command line buffer (RADBUF).
