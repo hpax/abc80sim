@@ -826,9 +826,11 @@ static int init_sram(void)
 			kb[ikb++] = 0;
 		    else
 			err = true;
-		} else if (isstr("flash", srp, olen)) {
+		} else if (isstr("flash", srp, olen) ||
+			   isstr("boot", srp, olen)) {
 		    bootmap = 17; /* Flash boot */
-		} else if (isstr("system", srp, olen)) {
+		} else if (isstr("system", srp, olen) ||
+			   isstr("noboot", srp, olen)) {
 		    bootmap = 0; /* System boot */
 		} else if (isstr("we", srp, olen)) {
 		    sram_ic3 = IC3_FLASH;
