@@ -27,6 +27,7 @@
 ;;; additional ROM entry points (ABC800 has this, but not ABC80.)
 
 	include "abc80.inc"
+	include "auxram.inc"
 
 	defc selcode=60			; ABC-bus select code (parallel port)
 	;; Maximum number of remote volumes
@@ -1014,8 +1015,8 @@ __end:
 ;; In RAM; this is assuming external SRAM or equivalent at 20-22K.
 ;; The top 64 bytes are used by UFD-DOS.
 ;;
-	defc ram_end   = 22*1024 - 64
-	defc ram_start = ram_end - 7*MAX_VOLS - 2 - 4
+	defc ram_end   = AUXRAM_PRINTNET_END
+	defc ram_start = AUXRAM_PRINTNET_BASE
 
 	section bss
 	org ram_start

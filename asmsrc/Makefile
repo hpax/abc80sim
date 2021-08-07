@@ -18,7 +18,7 @@ all: $(ROMS) $(BAS)
 ../roms/%.rom: %.bin
 	cp -f $< $@
 
-ufdpatch.map: ufdpatch.asm abc80.inc
+ufdpatch.map: ufdpatch.asm abc80.inc auxram.inc
 ufddos80.bin: ufddos80.in ufdpatch.map patchrom.pl
 	$(PERL) patchrom.pl ufddos80.in ufdpatch.map ufddos80.bin
 
@@ -28,8 +28,8 @@ clean:
 spotless: clean
 	rm -f $(ROMS) $(BAS)
 
-print80_30.map: print80_30.asm print80.inc abc80.inc
-print80_29.map: print80_29.asm print80.inc abc80.inc
+print80_30.map: print80_30.asm print80.inc abc80.inc auxram.inc
+print80_29.map: print80_29.asm print80.inc abc80.inc auxram.inc
 prnet.bac:      print80_29.bin
 	bin2abc --bac80 --driver --new -s 0x7400 -e 0x744b -o $@ $<
 prnet.bas:      print80_29.bin

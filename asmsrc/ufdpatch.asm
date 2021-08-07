@@ -2,6 +2,7 @@
 ;;; Ported from ufdpatch.ny by hpa
 ;;;
 	include "abc80.inc"
+	include "auxram.inc"
 
 	org 6000h		; Start of DOS, needed for patch offset
 
@@ -76,7 +77,7 @@
 ;;;  Om man har t.ex. externt SRAM, definiera devdes= ovan. En del
 ;;;  externa UFD-DOS-tillkopplingar verkar ha haft externt SRAM p20-22K.
 ;;;
-	defc devdes=57c0h	; Enhetslistan i externt SRAM 20-22K
+	defc devdes = AUXRAM_UFDDOS_BASE ; Enhetslistan i externt SRAM 20-22K
         ;defc devdes=678ah	; Låter tabellen ligga kvar i DOS:et
 
 ;;;
