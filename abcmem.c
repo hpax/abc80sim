@@ -487,10 +487,10 @@ static void write_sram(uint8_t *p, uint8_t ppage)
 
 	if (tracing(TRACE_MAP)) {
 	    static const char slotname[4][4] = { "IC1", "IC2", "IC3", "sys" };
-	    fprintf(tracef, "MAP: IC%u 0x%04x vpage %2d:%u:%2u -> %s 0x%05x (%2u:%2u)\n",
+	    fprintf(tracef, "MAP: IC%u 0x%04x vpage %2d:%u:%2u (%04x) -> %s 0x%05x (%2u:%2u)\n",
 		    (((unsigned int)xaddr >> 19) + 1),
 		    ((unsigned int)xaddr & 0x7ffff),
-		    (int)map-1, vpage >> 4, vpage & 15,
+		    (int)map-1, vpage >> 4, vpage & 15, vpage << 9,
 		    slotname[pslot], ((unsigned int)pageaddr & 0x7ffff),
 		    ppage & 63, vpage & 15);
 	}
