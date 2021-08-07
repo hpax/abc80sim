@@ -77,17 +77,31 @@
 ;;;  externa UFD-DOS-tillkopplingar verkar ha haft externt SRAM p20-22K.
 ;;;
 	defc devdes=57c0h	; Enhetslistan i externt SRAM 20-22K
-	;defc devdes=73c0h	; Enhetsli
         ;defc devdes=678ah	; Låter tabellen ligga kvar i DOS:et
+
 ;;;
 ;;;  - Fix no: 3 -
 ;;;  Detta är gjort för att man skall ha
 ;;;  kvar de första 64 bytes av POKE-arean
 ;;;  på adress 65408.
 ;;;
-	;defc devdes=65472	; Adress till enhetstabell i DRAM
+	defc rdwret   = devdes + 32	; Adress till sect read/write hook
 
-	defc rdwret=devdes+32	; Adress till brytmöjlighet sect. read/write.
+;;;
+;;; COND NOPOKE
+;;;  - Fix no: 7 -
+;;;
+;;;  UFD-entryt flyttas till ledigt område i doset, för att POKE
+;;;  arean skall få vara helt oanvänd. Detta medför att vid de
+;;;  tillfälen man inte har 64k RAM å kan man inte använda UFD:er
+;;;  Det medför också att program som inte använder pekaren i DOS:et,
+;;;  utan använder adreserna 65526 o.s.v direkt, kommer att gå galet.
+;;;  De flesta använder emellertid pekaren, så det blir antagligen
+;;;  inga problem.
+;;;
+	defc ufdres   = devdes + 54	; Flagga för "Ej UFD reset"
+	defc ufdoffs  = devdes + 55	; Sektor offset
+	defc ufddrive = devdes + 57	; Selectkod för UFD-driven
 
 ;;;
 ;;;  - Fix no: 4 -
@@ -205,39 +219,6 @@ bpos:		ld   b,(ix+12)
 ;;;
 ;;; hpa: flyttat till initstub nedan
 
-;;;
-;;; COND NOPOKE
-;;;  - Fix no: 7 -
-;;;
-;;;  UFD-entryt flyttas till ledigt område i doset, för att POKE
-;;;  arean skall få vara helt oanvänd. Detta medför att vid de
-;;;  tillfälen man inte har 64k RAM å kan man inte använda UFD:er
-;;;  Det medför också att program som inte använder pekaren i DOS:et,
-;;;  utan använder adreserna 65526 o.s.v direkt, kommer att gå galet.
-;;;  De flesta använder emellertid pekaren, så det blir antagligen
-;;;  inga problem.
-;;;
-	if nopoke
-
-ufdres:		defb 0          ; Flagga för "Ej UFD reset"
-ufdoffs:	defw 0          ; Sektor offset
-ufddrive:	defb 0		; Selectkod för UFD-driven
-
-	else
-	if stealiec
-
-	defc ufdres=0x73f6	; Flagga för "Ej UFD reset"
-	defc ufdoffs=0x73f7	; Sektor offset
-	defc ufddrive=0x73f9	; Selectkod för UFD-driven
-
-	else
-
-	defc ufdres=65526	; Flagga för "Ej UFD reset"
-	defc ufdoffs=65527      ; Sektor offset
-	defc ufddrive=65529	; Selectkod för UFD-driven
-
-	endif
-	endif
 
 ;;;  - Fix no: 5 -
 ;;;        Patch för att 640kB DOSGEN skall vara körbart
