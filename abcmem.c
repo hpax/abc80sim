@@ -1040,13 +1040,13 @@ void mem_init(unsigned int flags, const char *memfile)
 	 * address, which means using a printer ROM with the appropriate
 	 * ORG.
 	 *
-	 * This also applies to SRAM users and 64K users with *any*
-	 * TKN80, since the standard is that the VRAM is moved to
-	 * 30-32K in that case... assume a user with such a modded
-	 * machine will have modded this too.
+	 * This also applies to 64K users with *any* TKN80, since the
+	 * standard is that the VRAM is moved to 30-32K in that
+	 * case... assume a user with such a modded machine will have
+	 * modded this too.
 	 */
 	if (opts.tkn80 == TKN80_GEJO ||
-	    (opts.tkn80 != TKN80_NONE && (opts.sram || opts.kb == 64))) {
+	    (opts.tkn80 != TKN80_NONE && opts.kb == 64)) {
 	    pr = print80_29;
 	    praddr = K(29);
 	}
