@@ -324,7 +324,7 @@ unwind_ret:
 
 	;; Set up the pointer to DOSBUF0
 setup_dosbuf0:
-	ld hl,0xf600
+	ld hl,0xf500
 	ld (0xfd12),hl		; Pointer to DOSBUF0
 	ret
 
