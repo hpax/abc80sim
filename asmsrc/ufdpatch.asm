@@ -278,6 +278,36 @@ bpos:		ld   b,(ix+12)
 ;;; ----- FOLLOWING PATCHES ARE BY HPA ------
 
 ;;; --------------------------------------------------------------------------
+;;; Allow DOS to always be installed regardless of if there are any
+;;; disk drives detected. This is useful e.g. for loading a RAM/ROM-disk
+;;; driver on a cassette-only system.
+;;;
+	defc always_load_dos = 1
+
+	if always_load_dos
+	section always_load
+	org 6590h
+	nop
+	endif
+
+;;; --------------------------------------------------------------------------
+;;; Make it possible to drop the stack further than DOSBUF0
+;;;
+
+	if AUXRAM_BASE >= 0x8000
+
+	section setup_stack
+	org 6573h
+	ld hl,AUXRAM_BASE
+	pop de
+	ld sp,hl
+	ld (STACK),hl
+	push de
+	call setup_dosbuf0	; Doesn't fit anymore
+
+	endif
+
+;;; --------------------------------------------------------------------------
 ;;; Indirect NAME and KILL/UNSAVE via the device jump table
 ;;; (as it should be.) This is trivial because BASIC gives us
 ;;; a trampoline for exactly this purpose.
@@ -292,6 +322,12 @@ unwind_ret:
 	ld sp,hl
 	ret
 
+	;; Set up the pointer to DOSBUF0
+setup_dosbuf0:
+	ld hl,0xf600
+	ld (0xfd12),hl		; Pointer to DOSBUF0
+	ret
+
 	;; Jump to (HL) if it points to a JP instruction, otherwise
 	;; increment H by one and return (used by init below)
 try_init_rom:
@@ -301,14 +337,6 @@ try_init_rom:
 	inc h
 	ret
 doit:	jp (hl)
-
-	;; If HL points to CR, jump to END, otherwise jump to RUNCMD.
-	;; Jumping to END is so that we print ABC80 if nothing else happens.
-run_if_cmd:
-	ld a,(hl)
-	cp 13
-	jp nz,RUNCMD
-	jp END
 
 _ofkn_pad:
 	defs (6829h-6812h)-(_ofkn_pad - _ofkn), 0xff
@@ -368,12 +396,8 @@ autostart:
 	ld (iy+14),1		; Set command mode
 	ld sp,(STACK)		; Set user stack
 	ei
-	ld hl,RADBUF		; Pointer to command string
-	jp run_if_cmd
-;	ld a,(hl)
-;	cp 0Dh
-;	jp nz,RUNCMD		; Execute command
-;	jp END			; Execute nothing
+	ld hl,RADBUF		; Pointer to command string (only CR = empty)
+	jp RUNCMD
 
 	;; Initialize DOS proper, then scan for ROMs in the range
 	;; 0x4000..0x5fff and 0x7000..0x7bff for JP instructions at
