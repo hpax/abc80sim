@@ -238,9 +238,9 @@ static void abc80_register_ioports(void)
     register_ioport(56, 0x12, 0x1, abc80_pioa_out, abc80_pioa_in);
     register_ioport(58, 0x12, 0x1, abc80_piob_out, abc80_piob_in);
 
-    if (opts.sram) {
-	register_ioport(0x14, 0x14, ~0x14, abc80_sram_out, abc80_sram_in);
-	register_outport(7, 0x17, 0, abc80_sram_control_out);
+    if (opts.meg80) {
+	register_ioport(0x14, 0x14, ~0x14, abc80_meg80_out, abc80_meg80_in);
+	register_outport(7, 0x17, 0, abc80_meg80_control_out);
     } else if (opts.kb == 64) {
 	register_outport(7, 0x17, 0, abc80_64k_control_out);
     }

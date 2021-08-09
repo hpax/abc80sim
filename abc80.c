@@ -73,7 +73,7 @@ static void parse_trace(char *arg)
 	{"disk", TRACE_DISK, "disk commands"},
 	{"cas", TRACE_CAS, "cassette I/O"},
 	{"pr", TRACE_PR, "printer interface"},
-	{"flash", TRACE_FLASH, "SRAM card flash programming"},
+	{"flash", TRACE_FLASH, "MEG80 card flash programming"},
 	{"map", TRACE_MAP, "memory map settings"},
 	{NULL, 0, NULL}
     };
@@ -368,9 +368,9 @@ int main(int argc, char **argv)
 	    } else if (!strcmp(optstr, "sram") ||
 		       !strcmp(optstr, "meg80") ||
 		       !strcmp(optstr, "meg")) {
-		opts.sram = enable;
+		opts.meg80 = enable;
 		if (optarg)
-		    opts.sram_config = optarg;
+		    opts.meg80_config = optarg;
 	    } else if (!strcmp(optstr, "server")) {
 		server_port = LONG_ARG();
 	    } else if (!strcmp(optstr, "baud")) {

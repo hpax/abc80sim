@@ -56,8 +56,8 @@ struct opts {
     bool color;			/* Color screen */
     bool hr;			/* High resolution graphics (ABC800C/M) */
     bool magic;			/* Allow magic I/O port */
-    bool sram;			/* ABC80 SRAM card */
-    const char *sram_config;	/* SRAM card per-socket configuration */
+    bool meg80;			/* ABC80 MEG80 card */
+    const char *meg80_config;	/* MEG80 card per-socket configuration */
     enum autobool faketype;	/* ABC80 keyboard fake for high speeds */
     enum memflags memflags;	/* Memory configuration */
     double hz;			/* Frequency in Hz (HUGE_VAL if unlimited) */

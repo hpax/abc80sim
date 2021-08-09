@@ -205,7 +205,7 @@ void mem_write_word(uint16_t address, uint16_t value)
 }
 
 /*
- * The ABC80 memory map is controlled by OUT 7 (64K) or 7+31 (SRAM)
+ * The ABC80 memory map is controlled by OUT 7 (64K) or 7+31 (MEG80)
  */
 static unsigned int abc80_map;
 
@@ -402,20 +402,20 @@ static struct dump_data dump_cpu(void *buf, uint32_t addr)
 }
 
 /*
- * ABC80 memory augmentations: SRAM and 64K
+ * ABC80 memory augmentations: MEG80 and 64K
  */
 static void abc80_mem_setmap(unsigned int map)
 {
     abc80_map = map;
     current_map[0] = current_map[1] = memmaps[abc80_map];
     if (tracing(TRACE_MAP)) {
-	if (opts.sram) {
+	if (opts.meg80) {
 	    int map = abc80_map - 1;
 	    if (map < 0)
 		fprintf(tracef, "MAP: selecting map system\n");
 	    else
-		fprintf(tracef, "MAP: selecting map %d (%s)\n",
-			map, (map & 16) ? "flash" : "SRAM");
+		fprintf(tracef, "MAP: selecting map %d (in %s)\n",
+			map, (map & 16) ? "flash" : "sram");
 	} else if (opts.kb == 64) {
 	    fprintf(tracef, "MAP: selecting map %d\n", abc80_map);
 	}
@@ -428,7 +428,7 @@ void abc80_64k_control_out(uint16_t addr, uint8_t val)
     abc80_mem_setmap(val & 3);
 }
 
-void abc80_sram_control_out(uint16_t addr, uint8_t val)
+void abc80_meg80_control_out(uint16_t addr, uint8_t val)
 {
     (void)addr;
 
@@ -437,47 +437,47 @@ void abc80_sram_control_out(uint16_t addr, uint8_t val)
 }
 
 /*
- * SRAM control interface
+ * MEG80 control interface
  */
-static inline bool sram_addr_is_memmap(size_t xaddr)
+static inline bool meg80_addr_is_memmap(size_t xaddr)
 {
     return !(xaddr & ~(size_t)0x101fe7);
 }
 
-static uint8_t sram_mask[4];
-enum sram_ic3 {
-    IC3_RAM,			/* IC3 contains SRAM */
+static uint8_t meg80_mask[4];
+enum meg80_ic3 {
+    IC3_RAM,			/* IC3 contains MEG80 */
     IC3_FLASH,			/* IC3 contains programmable flash */
     IC3_ROM			/* IC3 contains write-protected flash */
 };
-static enum sram_ic3 sram_ic3;
+static enum meg80_ic3 meg80_ic3;
 
 #if PAGE_SHIFT != 9
-# error "Need to change write_sram() to deal with PAGE_SHIFT != 9"
+# error "Need to change write_meg80() to deal with PAGE_SHIFT != 9"
 #endif
 /*
  * This can be called internally to sync the memory maps, or
- * externally if and only if this is actually a low 8K actual SRAM page.
+ * externally if and only if this is actually a low 8K actual MEG80 page.
  * It can be called internally even if this memory address is not
  * actually writable!
  */
 static void write_flash(uint8_t *p, uint8_t v);
-static void write_sram(uint8_t *p, uint8_t ppage)
+static void write_meg80(uint8_t *p, uint8_t ppage)
 {
     size_t xaddr = p - xmem;
 
-    if (!sram_mask[xaddr >> 19])
+    if (!meg80_mask[xaddr >> 19])
 	ppage = 255;		/* Unpopulated slot, can only write FF */
 
     *p = ppage;
 
-    if (sram_addr_is_memmap(xaddr)) {
+    if (meg80_addr_is_memmap(xaddr)) {
 	unsigned int map, vpage, pslot;
 	size_t pageaddr;
 	struct mem_page *page;
 
 	pslot = ppage >> 6;
-	ppage &= sram_mask[pslot];
+	ppage &= meg80_mask[pslot];
 
 	/* Map 0 reflects the system map, so add 1 */
 	map = ((xaddr & 0x1e0) >> 5) + ((xaddr & (2 << 19)) >> 16) + 1;
@@ -487,7 +487,7 @@ static void write_sram(uint8_t *p, uint8_t ppage)
 
 	if (tracing(TRACE_MAP)) {
 	    static const char slotname[4][4] = { "IC1", "IC2", "IC3", "sys" };
-	    fprintf(tracef, "MAP: IC%u 0x%04x vpage %2d:%u:%2u (%04x) -> %s 0x%05x (%2u:%2u)\n",
+	    fprintf(tracef, "MAP: IC%u 0x%04x vpage %2d:%u:%2u (0x%04x) -> %s 0x%05x (%2u:%2u)\n",
 		    (((unsigned int)xaddr >> 19) + 1),
 		    ((unsigned int)xaddr & 0x7ffff),
 		    (int)map-1, vpage >> 4, vpage & 15, vpage << 9,
@@ -498,7 +498,7 @@ static void write_sram(uint8_t *p, uint8_t ppage)
 	if (pslot == 3) {
 	    /* System map; map 0 is the preserved initial system map */
 	    *page = memmaps[0][pageaddr >> PAGE_SHIFT];
-	} else if (!sram_mask[pslot]) {
+	} else if (!meg80_mask[pslot]) {
 	    /* Unpopulated slot, treat as ROM containing FF */
 	    *page = empty_page;
 	} else {
@@ -509,11 +509,11 @@ static void write_sram(uint8_t *p, uint8_t ppage)
 		 * Bottom 8K in IC1 or IC3; this is a memory map,
 		 * so we need to redirect a write back here
 		 */
-		page->write = write_sram;
+		page->write = write_meg80;
 	    }
 
 	    if (pslot == 2) {	/* IC3 populated differently? */
-		switch (sram_ic3) {
+		switch (meg80_ic3) {
 		case IC3_RAM:
 		    break;	/* Same as all other slots */
 		case IC3_ROM:
@@ -529,19 +529,19 @@ static void write_sram(uint8_t *p, uint8_t ppage)
 }
 
 /*
- * Sync SRAM mappings with system map
+ * Sync MEG80 mappings with system map
  */
-static void sram_sync_mappings(void)
+static void meg80_sync_mappings(void)
 {
     uint8_t *p;
     unsigned int i, j, k;
     enum tracing old_traceflags = traceflags;
 
-    if (!opts.sram)
+    if (!opts.meg80)
 	return;
 
     if (tracing(TRACE_MAP)) {
-	fprintf(tracef, "MAP: synchronizing SRAM and flash maps\n");
+	fprintf(tracef, "MAP: synchronizing MEG80 maps\n");
 	traceflags &= ~TRACE_MAP;
     }
 
@@ -550,7 +550,7 @@ static void sram_sync_mappings(void)
 	for (j = 0; j < 8192; j += 32) {
 	    for (k = 0; k < 8; k++) {
 		p = xmem + i + j + k;
-		write_sram(p, *p);
+		write_meg80(p, *p);
 	    }
 	}
     }
@@ -570,32 +570,32 @@ static void sram_sync_mappings(void)
  * In "software ID mode", the first two bytes of flash contents are
  * replaced with vendor ID and product ID, respectively.
  */
-static bool sram_ic3_flash_id_active;	  /* Software ID mode active */
-static uint8_t sram_ic3_flash_id[2];	  /* The flash ID for this chip */
-static uint8_t sram_ic3_flash_id_save[2]; /* Saved real contents */
+static bool meg80_ic3_flash_id_active;	  /* Software ID mode active */
+static uint8_t meg80_ic3_flash_id[2];	  /* The flash ID for this chip */
+static uint8_t meg80_ic3_flash_id_save[2]; /* Saved real contents */
 
 static inline void flash_resume_flash_id(void)
 {
     uint8_t * const fl = xmem + K(1024);
-    if (likely(!sram_ic3_flash_id_active))
+    if (likely(!meg80_ic3_flash_id_active))
 	return;
 
-    sram_ic3_flash_id_save[0] = fl[0];
-    sram_ic3_flash_id_save[1] = fl[1];
-    write_sram(&fl[0], sram_ic3_flash_id[0]);
-    write_sram(&fl[1], sram_ic3_flash_id[1]);
+    meg80_ic3_flash_id_save[0] = fl[0];
+    meg80_ic3_flash_id_save[1] = fl[1];
+    write_meg80(&fl[0], meg80_ic3_flash_id[0]);
+    write_meg80(&fl[1], meg80_ic3_flash_id[1]);
 }
 
 static void flash_exit_flash_id(void)
 {
     uint8_t * const fl = xmem + K(1024);
-    if (!sram_ic3_flash_id_active)
+    if (!meg80_ic3_flash_id_active)
 	return;
 
     /* At this point the flash array should contain "true" values */
-    sram_ic3_flash_id_active = false;
-    write_sram(&fl[0], fl[0]);
-    write_sram(&fl[1], fl[1]);
+    meg80_ic3_flash_id_active = false;
+    write_meg80(&fl[0], fl[0]);
+    write_meg80(&fl[1], fl[1]);
 
     if (tracing(TRACE_FLASH)) {
 	fprintf(tracef, "FLASH: sw_id: exit  %02X %02X\n",
@@ -609,7 +609,7 @@ static inline bool is_cmd(size_t faddr, unsigned int cmdmask)
 	return false;
 
     faddr >>= 15;
-    return !faddr || (faddr == (sram_mask[2] & 0x3c) >> 2);
+    return !faddr || (faddr == (meg80_mask[2] & 0x3c) >> 2);
 }
 
 static void write_flash(uint8_t *p, uint8_t v)
@@ -634,11 +634,11 @@ static void write_flash(uint8_t *p, uint8_t v)
     unsigned int faddr = xaddr & 0x7ffff;
     uint8_t op, np;
 
-    if (unlikely(sram_ic3_flash_id_active)) {
+    if (unlikely(meg80_ic3_flash_id_active)) {
 	/* Restore true contents */
 	uint8_t * const fl = xmem + K(1024);
-	fl[0] = sram_ic3_flash_id_save[0];
-	fl[1] = sram_ic3_flash_id_save[1];
+	fl[0] = meg80_ic3_flash_id_save[0];
+	fl[1] = meg80_ic3_flash_id_save[1];
 
 	if (state == FL_NORM && v == 0xf0) {
 	    flash_exit_flash_id();
@@ -657,7 +657,7 @@ static void write_flash(uint8_t *p, uint8_t v)
 		    faddr, v, op, np, (v != np) ? " (!)" : "");
 	}
 	if (faddr < 8192)
-	    write_sram(p, v);	/* Update memory mappings */
+	    write_meg80(p, v);	/* Update memory mappings */
 	state = FL_NORM;
 	break;
 
@@ -671,15 +671,15 @@ static void write_flash(uint8_t *p, uint8_t v)
 	    }
 	    memset(s, 0xff, 4096);
 	    if (faddr < 8192)
-		sram_sync_mappings();
+		meg80_sync_mappings();
 	} else if (v == 0x10 && is_cmd(faddr, 0x5555)) {
 	    /* Chip erase */
 	    if (tracing(TRACE_FLASH)) {
 		fprintf(tracef, "FLASH: erase: 00000 ... %05X (chip)\n",
-			((sram_mask[2] & 63) << 13) | 0x1fff);
+			((meg80_mask[2] & 63) << 13) | 0x1fff);
 	    }
 	    memset(xmem+K(1024), 0xff, K(512));
-	    sram_sync_mappings();
+	    meg80_sync_mappings();
 	}
 	state = FL_NORM;
 	break;
@@ -709,13 +709,13 @@ static void write_flash(uint8_t *p, uint8_t v)
 		     * software ID mode - probably < 128K is an EEPROM
 		     * anyway, which did not have this feature it seems.
 		     */
-		    if (!sram_ic3_flash_id_active && sram_ic3_flash_id[0]) {
+		    if (!meg80_ic3_flash_id_active && meg80_ic3_flash_id[0]) {
 			if (tracing(TRACE_FLASH)) {
 			    fprintf(tracef, "FLASH: sw_id: enter %02X %02X\n",
-				    sram_ic3_flash_id[0],
-				    sram_ic3_flash_id[1]);
+				    meg80_ic3_flash_id[0],
+				    meg80_ic3_flash_id[1]);
 			}
-			sram_ic3_flash_id_active = true;
+			meg80_ic3_flash_id_active = true;
 		    }
 		    state = FL_NORM;
 		    break;
@@ -749,7 +749,7 @@ static void write_flash(uint8_t *p, uint8_t v)
     flash_resume_flash_id();
 }
 
-static inline uint8_t *io_to_sram(uint16_t addr)
+static inline uint8_t *io_to_meg80(uint16_t addr)
 {
     size_t xaddr = addr;
 
@@ -757,46 +757,46 @@ static inline uint8_t *io_to_sram(uint16_t addr)
     if ((xaddr & 3) == 3)
 	xaddr &= ~3;
 
-    if (!sram_mask[xaddr & 3])
+    if (!meg80_mask[xaddr & 3])
 	return NULL;		/* Not present */
 
     return &xmem[(xaddr & 0x1fe8) + (xaddr >> 13) + ((xaddr & 3) << 19)];
 }
 
-uint8_t abc80_sram_in(uint16_t addr)
+uint8_t abc80_meg80_in(uint16_t addr)
 {
-    const uint8_t *p = io_to_sram(addr);
+    const uint8_t *p = io_to_meg80(addr);
     return p ? *p : 0xff;
 }
 
-void abc80_sram_out(uint16_t addr, uint8_t val)
+void abc80_meg80_out(uint16_t addr, uint8_t val)
 {
-    uint8_t *p = io_to_sram(addr);
+    uint8_t *p = io_to_meg80(addr);
 
     if (p)			/* If p == NULL then socket empty */
-	write_sram(p, val);
+	write_meg80(p, val);
 
     if ((addr & 3) == 3)
-	abc80_sram_control_out(addr, val);
+	abc80_meg80_control_out(addr, val);
 }
 
 /*
  * Initialize MEG80 SRAM/flash card if present
  */
-static int init_sram(void)
+static int init_meg80(void)
 {
     unsigned int kb[3];
-    uint8_t *sram;
+    uint8_t *meg80;
     int bootmap;
     int i;
 
     /* Defaults */
     kb[0] = kb[1] = kb[2] = 512; /* 3x512K */
-    sram_ic3 = IC3_FLASH;	 /* IC3 is flash */
+    meg80_ic3 = IC3_FLASH;	 /* IC3 is flash */
     bootmap = 0;		 /* System boot */
 
-    if (opts.sram_config) {
-	const char *srp = opts.sram_config;
+    if (opts.meg80_config) {
+	const char *srp = opts.meg80_config;
 	const char *esrp;
 	int ikb = 0;
 	unsigned long nkb;
@@ -833,13 +833,13 @@ static int init_sram(void)
 			   isstr("noboot", srp, olen)) {
 		    bootmap = 0; /* System boot */
 		} else if (isstr("we", srp, olen)) {
-		    sram_ic3 = IC3_FLASH;
+		    meg80_ic3 = IC3_FLASH;
 		} else if (isstr("rom", srp, olen) ||
 			   isstr("wp", srp, olen)) {
-		    sram_ic3 = IC3_ROM;
+		    meg80_ic3 = IC3_ROM;
 		} else if (isstr("ram", srp, olen) ||
-			   isstr("sram", srp, olen)) {
-		    sram_ic3 = IC3_RAM;
+			   isstr("meg80", srp, olen)) {
+		    meg80_ic3 = IC3_RAM;
 		} else {
 		    err = true;
 		}
@@ -859,20 +859,20 @@ static int init_sram(void)
 
 	    if (err) {
 		fprintf(stderr, "%s: invalid MEG80 configuration: %s\n",
-			program_name, opts.sram_config);
+			program_name, opts.meg80_config);
 		return -1;
 	    }
 	}
     }
 
     for (i = 0; i < 3; i++) {
-	sram_mask[i] = 0;
+	meg80_mask[i] = 0;
 	if (!kb[i])
 	    continue;
-	sram_mask[i] = ((kb[i]-1) >> 3) | 0xc0;
+	meg80_mask[i] = ((kb[i]-1) >> 3) | 0xc0;
     }
 
-    sram_mask[3] = 0x07;	/* System memory */
+    meg80_mask[3] = 0x07;	/* System memory */
 
     /*
      * Flash software identification ID.
@@ -888,47 +888,51 @@ static int init_sram(void)
      */
     switch (kb[2]) {
     case 128:
-	sram_ic3_flash_id[0] = 0xbf;
-	sram_ic3_flash_id[1] = 0xb5;
+	meg80_ic3_flash_id[0] = 0xbf;
+	meg80_ic3_flash_id[1] = 0xb5;
 	break;
     case 256:
-	sram_ic3_flash_id[0] = 0xbf;
-	sram_ic3_flash_id[1] = 0xb6;
+	meg80_ic3_flash_id[0] = 0xbf;
+	meg80_ic3_flash_id[1] = 0xb6;
 	break;
     case 512:
-	sram_ic3_flash_id[0] = 0xbf;
-	sram_ic3_flash_id[1] = 0xb7;
+	meg80_ic3_flash_id[0] = 0xbf;
+	meg80_ic3_flash_id[1] = 0xb7;
 	break;
     default:
-	sram_ic3_flash_id[0] = 0;
-	sram_ic3_flash_id[1] = 0;
+	meg80_ic3_flash_id[0] = 0;
+	meg80_ic3_flash_id[1] = 0;
 	break;
     }
 
     /*
      * Flash and unpopulated slots want to be filled with FF.
-     * SRAM can be initialized to anything... FF is as good as
+     * MEG80 can be initialized to anything... FF is as good as
      * anything, no?
      */
-    sram = malloc(3*K(512));
-    if (!sram)
+    meg80 = malloc(3*K(512));
+    if (!meg80)
 	return -1;
 
-    xmem = sram;
-    memset(sram, 0xff, 3*K(512));
+    xmem = meg80;
+    memset(meg80, 0xff, 3*K(512));
 
-    sysload_add_memspace("xmem", NULL, NULL, sram_sync_mappings,
-			 sram, -1, K(1536));
+    sysload_add_memspace("xmem", NULL, NULL, meg80_sync_mappings,
+			 meg80, -1, K(1536));
 
-    /* XXX: would be nice to cap sram better */
-    if (sram_ic3 == IC3_RAM) {
-	sysload_add_memspace("sram", NULL, NULL, sram_sync_mappings,
-			     sram, -1, K(1536));
+    /*
+     * XXX: would be nice to cap sram better, but if IC1 is < 512K]
+     * then the address space is noncontiguous. Either way, it is not a
+     * normal configuration.
+     */
+    if (meg80_ic3 == IC3_RAM) {
+	sysload_add_memspace("sram", NULL, NULL, meg80_sync_mappings,
+			     meg80, -1, K(1536));
     } else {
-	sysload_add_memspace("sram", NULL, NULL, sram_sync_mappings,
-			     sram, -1, K(1024));
-	sysload_add_memspace("flash", NULL, NULL, sram_sync_mappings,
-			     sram+K(1024), -1, kb[2] << 10);
+	sysload_add_memspace("sram", NULL, NULL, meg80_sync_mappings,
+			     meg80, -1, K(1024));
+	sysload_add_memspace("flash", NULL, NULL, meg80_sync_mappings,
+			     meg80+K(1024), -1, kb[2] << 10);
     }
 
     return bootmap;
@@ -1011,18 +1015,18 @@ void mem_init(unsigned int flags, const char *memfile)
 	if (flags & MEMFL_NOBASIC)
 	    opts.basic = BASIC_NONE;
 
-	if (opts.sram) {
-	    int sram_status = init_sram();
-	    if (sram_status < 0) {
-		opts.sram = false;
+	if (opts.meg80) {
+	    int meg80_status = init_meg80();
+	    if (meg80_status < 0) {
+		opts.meg80 = false;
 	    } else {
 		if (opts.kb == 64)
 		    opts.kb = 16;
-		init_map = sram_status;
+		init_map = meg80_status;
 	    }
 	}
 	if (opts.kb != 64 && (opts.kb < 1 || opts.kb > 32)) {
-	    unsigned int k = opts.sram ? 16 : 64;
+	    unsigned int k = opts.meg80 ? 16 : 64;
             fprintf(stderr, "%s: invalid ABC80 memory size %uK, using %uK\n",
                     program_name, opts.kb, k);
             opts.kb = k;
@@ -1144,7 +1148,7 @@ void mem_init(unsigned int flags, const char *memfile)
         /* Map 3: all RAM */
 	/* (nothing to do) */
 
-	sram_sync_mappings();
+	meg80_sync_mappings();
         abc80_mem_setmap(init_map);
         break;
     }
