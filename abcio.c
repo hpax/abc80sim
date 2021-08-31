@@ -424,6 +424,7 @@ static void abc800_register_ioports(void)
  */
 static void script_next_char(void)
 {
+    static bool quit = false;	/* opts.batch is set, and it is time to end */
     static const char *cmdp;
     static char *cmdstr;
     static struct host_file *hf;
@@ -433,7 +434,10 @@ static void script_next_char(void)
 	return;
 
     while (nextchar == EOF) {
-	if (cmdp) {
+	if (quit) {
+	    do_quit();
+	    break;
+	} else if (cmdp) {
 	    nextchar = *cmdp++;
 	    if (!nextchar) {
 		nextchar = '\r';
@@ -455,10 +459,11 @@ static void script_next_char(void)
 	    filename = filelist_pop(&script_files, &type);
 
 	    if (!filename) {
-		atomic_store(&keyb_data, 0); /* Nothing there */
-		enable_real_keyboard();
-		scripting = false;
-		return;
+		if (opts.batch) {
+		    nextchar = '\r'; /* Doesn't really matter what... */
+		    quit = true; /* Terminate when this character consumed */
+		}
+		break;
 	    }
 
 	    if (type == 1) {
@@ -471,14 +476,20 @@ static void script_next_char(void)
 	}
     }
 
-    /* Convert newlines to CR */
-    if (nextchar == '\n')
-	nextchar = '\r';
-    else if (nextchar == '\n'+128)
-	nextchar = '\n';
+    if (nextchar == EOF) {
+	atomic_store(&keyb_data, 0); /* Nothing there */
+	enable_real_keyboard();
+	scripting = false;
+    } else {
+	/* Convert newlines to CR */
+	if (nextchar == '\n')
+	    nextchar = '\r';
+	else if (nextchar == '\n'+128)
+	    nextchar = '\n';
 
-    atomic_store(&keyb_data, (uint8_t)nextchar | KEYB_NEW | KEYB_DOWN);
-    z80_interrupt(keyb_irq);
+	atomic_store(&keyb_data, (uint8_t)nextchar | KEYB_NEW | KEYB_DOWN);
+	z80_interrupt(keyb_irq);
+    }
 }
 
 /*
@@ -569,7 +580,7 @@ void io_init(void)
 
     abcbus_reset();
 
-    scripting = !!filelist_peek(&script_files, NULL);
+    scripting = filelist_peek(&script_files, NULL) || opts.batch;
     if (!scripting)
 	enable_real_keyboard();
 }

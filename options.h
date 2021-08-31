@@ -54,6 +54,7 @@ struct opts {
     bool startup_width40;	/* Start in 40-char mode (if applicable) */
     enum abc80_basic basic;	/* BASIC version (ABC80 only) */
     bool headless;		/* Headless, no screen output */
+    bool batch;			/* Quit after end of script */
     bool color;			/* Color screen */
     bool hr;			/* High resolution graphics (ABC800C/M) */
     bool magic;			/* Allow magic I/O port */

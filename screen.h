@@ -23,6 +23,7 @@ extern uint8_t crtc_in(uint16_t);
 extern void fg_out(uint16_t, uint8_t);
 
 extern void do_magic(int);
+extern void do_quit(void);
 extern void enable_real_keyboard(void);
 
 /* Pointer to video RAM (text and graphics, respectively) */

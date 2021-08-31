@@ -930,6 +930,12 @@ void do_magic(int abcsym)
     }
 }
 
+/* Schedule termination */
+void do_quit(void)
+{
+    do_magic('q');		/* Same as Alt-q */
+}
+
 /* Used from the CPU thread context to cause a screen redraw */
 static void trigger_refresh(void)
 {
