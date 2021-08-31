@@ -110,7 +110,7 @@ void register_abcbus_dev(uint8_t sel, const struct abcbus_dev *dev)
     busdev[sel] = dev;
 }
 
-/* Magic event (out (253),x) */
+/* Magic event (out (184),x) */
 static void do_magic_out(uint16_t addr, uint8_t value)
 {
     (void)addr;

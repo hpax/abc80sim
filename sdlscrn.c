@@ -467,6 +467,9 @@ static void refresh_screen(struct surface *s, bool force_blink)
     unsigned int x, y;
     bool blink;
 
+    if (unlikely(!s || !s->surf))
+	    return;		/* Nothing to do */
+
     SDL_mutexP(screen_mutex);
     vdu = xfr;
     SDL_mutexV(screen_mutex);
@@ -548,31 +551,59 @@ void screen_init(bool width40, bool color)
     int window = 1;             /* True = run in a window */
     int debug = 1;              /* False = force clean shutdown */
     int i, x, y;
-
+    Uint32 sdlinit;
 
     atexit(SDL_Quit);
 
-    if (SDL_Init(SDL_INIT_TIMER | SDL_INIT_VIDEO
-                 | (debug ? SDL_INIT_NOPARACHUTE : 0)))
+    sdlinit = SDL_INIT_TIMER;
+    /*
+     * The event subsystem is part of the video subsystem, so we need
+     * it even for headless operation.
+     */
+    sdlinit |= SDL_INIT_VIDEO;
+
+    if (debug)
+	    sdlinit |= SDL_INIT_NOPARACHUTE;
+
+    if (SDL_Init(sdlinit))
         return;
 
     assert((int)UEV_END <= (int)SDL_NUMEVENTS);
 
-    rscreen.surf = SDL_SetVideoMode(PX_WIDTH, PX_HEIGHT, 32,
-                                    SDL_HWSURFACE | SDL_DOUBLEBUF |
-                                    (window ? 0 : SDL_FULLSCREEN));
+    if (!opts.headless) {
+	rscreen.surf = SDL_SetVideoMode(PX_WIDTH, PX_HEIGHT, 32,
+					SDL_HWSURFACE | SDL_DOUBLEBUF |
+					(window ? 0 : SDL_FULLSCREEN));
 
-    /* No mouse cursor in full screen mode */
-    if (!window)
-        SDL_ShowCursor(SDL_DISABLE);
+	/* No mouse cursor in full screen mode */
+	if (!window)
+	    SDL_ShowCursor(SDL_DISABLE);
+	if (!init_surface(&rscreen))
+	    return;
+
+	/* Enable keyboard decoding */
+	SDL_EnableUNICODE(1);
+
+	/* Enable keyboard repeat */
+	SDL_EnableKeyRepeat(SDL_DEFAULT_REPEAT_DELAY,
+			    SDL_DEFAULT_REPEAT_INTERVAL);
+    }
+
+    /* Create interlock mutexes */
+    screen_mutex = SDL_CreateMutex();
+    magic_mutex  = SDL_CreateMutex();
+    magic_done   = SDL_CreateCond();
 
     /* If not color, then overwrite colors 1-6 with white */
     if (!color) {
-        for (i = 1; i < NCOLORS - 1; i++)
-            rgbcolors[i] = rgbcolors[NCOLORS - 1];
+	    for (i = 1; i < NCOLORS - 1; i++)
+		    rgbcolors[i] = rgbcolors[NCOLORS - 1];
     }
 
-    /* Initialize CRTC values to something sensible (also used by ABC80) */
+    /*
+     * Initialize CRTC values to something sensible (also used
+     * by ABC80/800C with fake values)
+     */
     memset(&cpu, 0, sizeof cpu);
     cpu.crtc.r.htotal = 80;
     cpu.crtc.r.hdisp = 80;
@@ -593,20 +624,6 @@ void screen_init(bool width40, bool color)
             }
         }
     }
-
-    /* Create interlock mutexes */
-    screen_mutex = SDL_CreateMutex();
-    magic_mutex  = SDL_CreateMutex();
-    magic_done   = SDL_CreateCond();
-
-    if (!init_surface(&rscreen))
-        return;
-
-    /* Enable keyboard decoding */
-    SDL_EnableUNICODE(1);
-
-    /* Enable keyboard repeat */
-    SDL_EnableKeyRepeat(SDL_DEFAULT_REPEAT_DELAY, SDL_DEFAULT_REPEAT_INTERVAL);
 
     /* Draw initial screen */
     refresh_screen(&rscreen, false);
@@ -920,7 +937,8 @@ static void trigger_refresh(void)
     xfr = cpu;
     SDL_mutexV(screen_mutex);
 
-    push_user_event(UEV_REFRESH_SCREEN, 0, NULL);
+    if (!opts.headless)
+	push_user_event(UEV_REFRESH_SCREEN, 0, NULL);
 }
 
 /* Called by the CPU thread once any script file is fully consumed */

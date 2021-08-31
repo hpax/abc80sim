@@ -28,6 +28,7 @@ Options (defaults in brackets):
        --no-color          black and white only
        --magic             enable magic I/O port 184 (default)
        --no-magic          disable magic I/O port 184
+  -H,  --headless          run headless (no screen/keyboard support)
   -Dd, --diskdir dir       set directory for disk images [abcdisk]
   -Df, --filedir dir       set directory for file sharing [abcdir]
   -Ds, --scrndir dir       set directory for screen shots [.]

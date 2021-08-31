@@ -371,6 +371,8 @@ int main(int argc, char **argv)
 		opts.meg80 = enable;
 		if (optarg)
 		    opts.meg80_config = optarg;
+	    } else if (!strcmp(optstr, "headless")) {
+		opts.headless = enable;
 	    } else if (!strcmp(optstr, "server")) {
 		server_port = LONG_ARG();
 	    } else if (!strcmp(optstr, "baud")) {
@@ -430,6 +432,9 @@ int main(int argc, char **argv)
                         }
                         break;
                     }
+		case 'H':
+		    opts.headless = true;
+		    break;
                 case 'v':
                     show_version();
                     break;
