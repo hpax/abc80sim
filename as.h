@@ -77,14 +77,13 @@ struct as {
     } p;
     size_t mask;		/* Address mask */
     size_t base;		/* Base offset within this address space */
+    size_t len;		        /* Size of the namespace, per map */
 
     unsigned int flags;	        /* Flags for the drivers */
     unsigned int grain;		/* Granularity of address translation */
 
     unsigned int map;		/* Current map number */
     unsigned int nmaps;		/* Total maps */
-
-    size_t len;		        /* Size of the namespace per map */
 
     const char *name;		/* Address space name */
     const char *dump_name;	/* name when dumping to a file */
@@ -95,6 +94,7 @@ struct as {
 #define AS_NOLOAD	1	/* Do not load data into this namespace */
 #define AS_NODUMP	2	/* Do not dump this namespace by itself */
 #define AS_ONE_MAP	4	/* Load or dump only one (current) map */
+#define AS_ALIAS	8	/* It is an alias map */
 
 /*
  * Wrapper functions for methods
@@ -109,10 +109,12 @@ static inline struct asoffs do_translate_addr(struct as *as, size_t offs)
 
     while (1) {
 	aso.offs = (aso.offs & aso.as->mask) + aso.as->base;
-	if (!aso.as->translate)
+	if (aso.as->translate)
+	    aso = aso.as->translate(aso);
+	else if (!aso.as->ops)
+	    aso.as = aso.as->p.parent_as;
+	else
 	    return aso;		/* Found a "real" address space */
-
-	aso = aso.as->translate(aso);
     }
 }
 
@@ -228,6 +230,20 @@ struct as *as_new_pagespace(const char *name, size_t len,
 void as_set_pages(struct as *vas, size_t voffs, unsigned int map,
 		  struct as *pas, size_t poffs, size_t len);
 
+/*
+ *  Alias address space
+ */
+struct as *as_new_aliasspace(const char *name, size_t len);
+static inline void
+as_point_alias(struct as *alias_as, struct as *parent_as, size_t offs)
+{
+    alias_as->p.parent_as = parent_as;
+    alias_as->base = offs;
+}
+
+/*
+ * Initialization
+ */
 void as_init(void);
 
 #endif /* AS_H */
