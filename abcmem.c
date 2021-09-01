@@ -6,6 +6,7 @@
 #include "rom.h"
 #include "hostfile.h"
 #include "abcfile.h"
+#include "as.h"
 #include "sysload.h"
 
 #define K(x) ((x)*1024)
@@ -42,9 +43,6 @@ static void write_rom(uint8_t * p, uint8_t v)
 }
 static uint8_t empty_page_data[PAGE_SIZE];
 static const struct mem_page empty_page = { empty_page_data, write_rom };
-
-/* Latch the last M1 address fetched, like ABC800 does */
-static uint16_t last_m1_address;
 
 /*
  * Currently active memory map(s)
@@ -844,8 +842,10 @@ static void mem_init_abc800cm(unsigned int flags, const uint8_t *master_rom,
  */
 void mem_init(unsigned int flags, const char *memfile)
 {
-    /* Initialize empty page */
-    memset(empty_page_data, 0xff, sizeof empty_page_data);
+    /* General memory subsystem */
+    as_init();
+
+    cpu_as = as_new_pagespace("cpu", Z80_ADDRESS_LIMIT, MEM_MAPS, PAGE_SHIFT);
 
     /* Register common sysload memory spaces */
     sysload_add_memspace("ram", NULL, NULL, NULL, ram, -1, sizeof ram);

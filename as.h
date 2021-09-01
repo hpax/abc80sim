@@ -15,9 +15,6 @@ typedef uint8_t (*as_read_op)(struct as *as, size_t offs);
 /* CPU write operation to this memory space */
 typedef void (*as_write_op)(struct as *as, size_t offs, uint8_t val);
 
-/* Select one of possibly several maps */
-typedef void (*as_map_op)(struct as *as, unsigned int map);
-
 /*
  * Bulk memory space preload operation (if not just memcpy).  This
  * will typically differ from as_write_op in that it doesn't need to
@@ -27,8 +24,7 @@ typedef void (*as_map_op)(struct as *as, unsigned int map);
  * address space it might be desirable to cross all possible maps,
  * e.g. for a paged ROM.
  */
-typedef void (*as_load_op)(struct as *as, unsigned int map,
-			   size_t offs, uint8_t val);
+typedef void (*as_load_op)(struct as *as, size_t offs, uint8_t val);
 
 /* Execute after bulk preload to this memory space */
 typedef void (*as_sync_op)(struct as *as);
@@ -41,31 +37,53 @@ struct as_data {
     const void *data;
     size_t len;
 };
-typedef struct as_data (*as_dump_op)(struct as *as, unsigned int map, size_t offs);
+typedef struct as_data (*as_dump_op)(struct as *as, size_t offs);
 
 struct as_ops {
     as_read_op read;
     as_write_op write;
-    as_map_op map;
     as_dump_op dump;
-    as_load_op load;
+    as_write_op load;
     as_sync_op sync;
 };
+
+/* (address space, offset) pair */
+struct asoffs {
+    struct as *as;
+    size_t offs;
+};
+typedef struct asoffs (*as_translate_op)(struct asoffs aso);
+
+#define MAX_GRAIN ((sizeof(size_t))*CHAR_BIT - 1)
+
+static inline size_t grain_size(unsigned int grain)
+{
+    return (size_t)1 << grain;
+}
+static inline size_t grain_mask(unsigned int grain)
+{
+    return grain_size(grain) - 1;
+}
 
 /* Definition of an address space */
 struct as {
     /* The hottest items... */
+    as_translate_op translate;
     const struct as_ops *ops;
-    void *p;			/* Data buffer *for the current map* */
-    size_t mask;		/* Address mask (optional) */
+    union {
+	uint8_t *data;
+	struct asoffs *page;
+	struct as *parent_as;
+    } p;
+    size_t mask;		/* Address mask */
+    size_t base;		/* Base offset within this address space */
 
     unsigned int flags;	        /* Flags for the drivers */
-    unsigned int grain;		/* Granularity of page tables if applicable */
+    unsigned int grain;		/* Granularity of address translation */
 
     unsigned int map;		/* Current map number */
     unsigned int nmaps;		/* Total maps */
 
-    void *base;			/* Base buffer */
     size_t len;		        /* Size of the namespace per map */
 
     const char *name;		/* Address space name */
@@ -76,82 +94,79 @@ struct as {
 
 #define AS_NOLOAD	1	/* Do not load data into this namespace */
 #define AS_NODUMP	2	/* Do not dump this namespace by itself */
-#define AS_DUMP_ONE	4	/* Only dump one (current) map */
+#define AS_ONE_MAP	4	/* Load or dump only one (current) map */
 
 /*
- * Inline functions for methods with fast-out defaults
+ * Wrapper functions for methods
  */
+
+static inline struct asoffs do_translate_addr(struct as *as, size_t offs)
+{
+    struct asoffs aso;
+
+    aso.as   = as;
+    aso.offs = offs;
+
+    while (1) {
+	aso.offs = (aso.offs & aso.as->mask) + aso.as->base;
+	if (!aso.as->translate)
+	    return aso;		/* Found a "real" address space */
+
+	aso = aso.as->translate(aso);
+    }
+}
+
 static inline uint8_t do_as_read(struct as *as, size_t offs)
 {
-    as_read_op read_op = as->ops->read;
-
-    offs &= as->mask;
+    struct asoffs aso = do_translate_addr(as, offs);
+    as_read_op read_op = aso.as->ops->read;
 
     if (!read_op) {
-	const uint8_t *p = as->p;
-	return p[offs];
+	return aso.as->p.data[aso.offs];
     } else {
-	return read_op(as, offs);
+	return read_op(aso.as, aso.offs);
     }
 }
 
 static inline void do_as_write(struct as *as, size_t offs, uint8_t v)
 {
-    as_write_op write_op = as->ops->write;
-
-    offs &= as->mask;
+    struct asoffs aso = do_translate_addr(as, offs);
+    as_write_op write_op = aso.as->ops->write;
 
     if (!write_op) {
-	uint8_t *p = as->p;
-	p[offs & as->mask] = v;
+	aso.as->p.data[aso.offs] = v;
     } else {
-	write_op(as, offs, v);
+	write_op(aso.as, aso.offs, v);
     }
 }
 
-static inline void do_as_map(struct as *as, unsigned int map)
+static inline struct as_data do_as_dump(struct as *as, size_t offs)
 {
-    as_map_op map_op = as->ops->map;
-
-    assert(map < as->nmaps);
-    if (map_op)
-	map_op(as, map);
-    as->map = map;
-}
-
-static inline struct as_data
-do_as_dump(struct as *as, unsigned int map, size_t offs)
-{
-    as_dump_op dump_op = as->ops->dump;
-
-    offs &= as->mask;
+    struct asoffs aso = do_translate_addr(as, offs);
+    as_dump_op dump_op = aso.as->ops->dump;
 
     if (!dump_op) {
 	struct as_data asd;
+
 	asd.data = NULL;
 	asd.len  = 0;
 	return asd;
     } else {
-	return dump_op(as, map, offs);
+	return dump_op(as, offs);
     }
 }
 
-static inline void do_as_load(struct as *as, unsigned int map,
-			      size_t offs, uint8_t v)
+static inline void do_as_load(struct as *as, size_t offs, uint8_t v)
 {
-    as_load_op load_op = as->ops->load;
-
-    offs &= as->mask;
+    struct asoffs aso = do_translate_addr(as, offs);
+    as_write_op load_op = aso.as->ops->load;
 
     if (!load_op) {
-	uint8_t *p = as->base;
-	p += map * as->len;
-	p[offs] = v;
+	aso.as->p.data[aso.offs] = v;
     } else {
-	return load_op(as, map, offs, v);
+	load_op(aso.as, aso.offs, v);
     }
 }
-
 
 static inline void do_as_sync(struct as *as)
 {
@@ -160,6 +175,11 @@ static inline void do_as_sync(struct as *as)
     if (sync_op)
 	return sync_op(as);
 }
+
+/*
+ * Dummy address space
+ */
+extern struct as *null_as;
 
 /*
  * The top-level address space for the CPU
@@ -172,7 +192,26 @@ extern struct as *cpu_as;
 struct as *get_addrspace(const char *name, size_t len);
 
 /*
- * Constructors etc.
+ * Choose a specific map/bank in an address space
+ */
+static inline void as_set_map(struct as *as, unsigned int map)
+{
+    assert(map < as->nmaps);
+    as->map  = map;
+    as->base = as->len * map;
+}
+
+/*
+ * Iterator for memory translations
+ */
+struct xlt_addr {
+    struct asoffs ao;		/* Address space:offset */
+    size_t len;			/* Length of contiguous translation */
+};
+bool as_translate_iter(struct xlt_addr *va, struct xlt_addr *pa);
+
+/*
+ * Memory spaces
  */
 struct as *as_new_space(const char *name, const struct as_ops *ops,
 			size_t len, unsigned int nmaps);
@@ -181,6 +220,9 @@ struct as *new_mem(const char *name, const struct as_ops *ops,
 struct as *new_ram(const char *name, size_t len, unsigned int nmaps);
 struct as *new_rom(const char *name, size_t len, unsigned int nmaps);
 
+/*
+ * Page tables
+ */
 struct as *as_new_pagespace(const char *name, size_t len,
 			    unsigned int nmaps, unsigned int grain);
 void as_set_pages(struct as *vas, size_t voffs, unsigned int map,

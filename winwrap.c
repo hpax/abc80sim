@@ -57,7 +57,7 @@ static no_return ErrorExit(wchar_t *msg)
 	wchar_t errtitle[24];
 
 	swprintf(errtitle, sizeof errtitle, L"Error %08X", dw);
-	
+
 	MessageBoxW(NULL, format_error(msg, dw), errtitle, MB_OK);
 	ExitProcess(dw ? dw : ERROR_PATH_NOT_FOUND);
 	abort();

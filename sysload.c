@@ -27,45 +27,17 @@
 #include "sysload.h"
 #include "hostfile.h"
 
-/* Namespace definition */
-struct load_data {
-    const char *name;		/* memspace name */
-    const char *dump_name;	/* name when dumping to a file */
-    const struct load_data *next;
-    load_op load_op;
-    dump_op dump_op;
-    sync_op sync_op;
-    void *buf;
-    uint32_t mask;
-    uint32_t limit;
-};
-
-/* No operations will ever be called when limit == 0 */
-static struct load_data memspace_null =
-{ "null", "null", NULL, NULL, NULL, NULL, NULL, 0, 0 };
-static const struct load_data *memspaces = &memspace_null;
-
-static inline uint32_t
-write_byte(const struct load_data *ws, uint32_t addr, uint8_t val)
+static size_t load_data(struct as *as, size_t offs,
+			const uint8_t *data, size_t len)
 {
-    if (likely(addr < ws->limit)) {
-	addr &= ws->mask;
-	if (!ws->load_op) {
-	    uint8_t *p = ws->buf;
-	    p[addr] = val;
-	} else {
-	    ws->load_op(ws->buf, addr, val);
-	}
+    if (as->flags & AS_NOLOAD) {
+	/* No need to jump through all the hoops... */
+	return offs + len;
+    } else {
+	while (len--)
+	    do_as_load(as, offs++, *data++);
+	return offs;
     }
-    return addr + 1;
-}
-
-static uint32_t load_data(const struct load_data *ws, uint32_t addr,
-			   const uint8_t *data, unsigned int len)
-{
-    while (len--)
-	addr = write_byte(ws, addr, *data++);
-    return addr;
 }
 
 /*
@@ -98,7 +70,7 @@ static inline bool is_white(int c)
     return (c >= '\a' && c <= '\r') || c == 0x7f || c == 0xff;
 }
 
-static int load_ihex(FILE *file, const struct load_data *ws, uint32_t offset)
+static int load_ihex(FILE *file, struct as *as, size_t offset)
 {
 
     int c;
@@ -109,7 +81,7 @@ static int load_ihex(FILE *file, const struct load_data *ws, uint32_t offset)
     uint8_t ldata[255+5];	/* Record data including metadata */
     uint8_t *p = NULL;
     uint8_t csum = 0;
-    uint32_t baseaddr = 0;
+    size_t baseaddr = 0;
 
     rewind(file);
 
@@ -123,7 +95,7 @@ static int load_ihex(FILE *file, const struct load_data *ws, uint32_t offset)
 	if (is_eoln(c) || is_eof(c)) {
 	    if (lpos > 0) {
 		unsigned int len = ldata[0];
-		uint32_t laddr = (ldata[1] << 8) + ldata[2];
+		size_t laddr = (ldata[1] << 8) + ldata[2];
 		uint8_t ltype = ldata[3];
 
 		if (csum)
@@ -135,8 +107,8 @@ static int load_ihex(FILE *file, const struct load_data *ws, uint32_t offset)
 		switch (ltype) {
 		case 0:		/* Data */
 		{
-		    uint32_t addr = laddr + baseaddr;
-		    load_data(ws, addr + offset, ldata+4, len);
+		    size_t addr = laddr + baseaddr;
+		    load_data(as, addr + offset, ldata+4, len);
 		    bytes += len;
 		    break;
 		}
@@ -225,7 +197,7 @@ static int load_ihex(FILE *file, const struct load_data *ws, uint32_t offset)
     }
 }
 
-static int load_srec(FILE *file, const struct load_data *ws, uint32_t offset)
+static int load_srec(FILE *file, struct as *as, size_t offset)
 {
     int c;
     int hval = 0;
@@ -252,7 +224,7 @@ static int load_srec(FILE *file, const struct load_data *ws, uint32_t offset)
 		unsigned int ltype = p[0];
 		int len = p[1];
 		int alen = addrlen[p[0]];
-		uint32_t addr = 0;
+		size_t addr = 0;
 		const uint8_t *dp;
 
 		if (left)
@@ -284,7 +256,7 @@ static int load_srec(FILE *file, const struct load_data *ws, uint32_t offset)
 		case 2:
 		case 3:
 		    /* Data record */
-		    load_data(ws, addr + offset, dp, len);
+		    load_data(as, addr + offset, dp, len);
 		    bytes += len;
 		    break;
 		case 7:
@@ -357,7 +329,7 @@ static int load_srec(FILE *file, const struct load_data *ws, uint32_t offset)
     }
 }
 
-static int load_bin(FILE *file, const struct load_data *ws, uint32_t addr)
+static int load_bin(FILE *file, struct as *as, size_t addr)
 {
     int c;
     int bytes = 0;
@@ -370,45 +342,12 @@ static int load_bin(FILE *file, const struct load_data *ws, uint32_t addr)
 	c = fgetc(file);
 	if (c == EOF)
 	    return bytes;
-	addr = write_byte(ws, addr, c);
+	do_as_load(as, addr++, c);
 	bytes++;
     }
 }
 
-void sysload_add_memspace(const char *name,
-			  load_op load_op, dump_op dump_op, sync_op sync_op,
-			  void *buf, uint32_t mask, uint32_t limit)
-{
-    struct load_data *ws;
-
-    ws = calloc(1, sizeof *ws);
-    if (!ws)
-	return;
-
-    ws->name = name;
-    ws->dump_name = !strcmp(name, "cpu") ? "mem" : name; /* Historic */
-    ws->load_op = load_op;
-    ws->dump_op = dump_op;
-    ws->sync_op = sync_op;
-    ws->buf = buf;
-    ws->mask = mask;
-    ws->limit = limit;
-    ws->next = memspaces;
-    memspaces = ws;
-}
-
-static const struct load_data *get_memspace(const char *name, size_t len)
-{
-    const struct load_data *ws;
-
-    for (ws = memspaces; ws; ws = ws->next) {
-	if (!strncmp(ws->name, name, len) && !ws->name[len])
-	    return ws;
-    }
-    return NULL;
-}
-
-typedef int (*load_func)(FILE *file, const struct load_data *ws, uint32_t addr);
+typedef int (*load_func)(FILE *file, struct as *as, size_t addr);
 
 struct file_format {
     const char *name;
@@ -424,17 +363,17 @@ static const struct file_format file_formats[] =
 };
 
 /* Iterates through the loaders until one succeeds */
-static int load_any(FILE *file, const struct load_data *ws, uint32_t addr)
+static int load_any(FILE *file, struct as *as, size_t addr)
 {
     const struct file_format *fmt;
     int bytes = -1;
 
     for (fmt = file_formats; fmt->loader; fmt++) {
 	/* Validate the file contents by loading to null */
-	if (fmt->loader(file, &memspace_null, addr) < 0)
+	if (fmt->loader(file, null_as, addr) < 0)
 	    continue;
 
-	bytes = fmt->loader(file, ws, addr);
+	bytes = fmt->loader(file, as, addr);
 	if (bytes >= 0)
 	    break;
     }
@@ -446,15 +385,15 @@ int load_sysfile(const char *filespec)
     FILE *f;
     const char *p = filespec;
     const char *comma;
-    const struct load_data *ws;
+    struct as *as;
     load_func loader = NULL;
-    uint32_t addr = 0;
+    size_t addr = 0;
     int rv;
 
-    ws = get_memspace("cpu", 3);
+    as = get_addrspace("cpu", 3);
 
     while ((comma = strchr(p, ','))) {
-	const struct load_data *wms;
+	struct as *wms;
 	const struct file_format *fmt;
 	size_t len = comma-p;
 	const char *at = strchr(p, '@');
@@ -467,9 +406,9 @@ int load_sysfile(const char *filespec)
 	    len = at-p;
 	}
 
-	wms = get_memspace(p, len);
+	wms = get_addrspace(p, len);
 	if (wms) {
-	    ws = wms;
+	    as = wms;
 	    goto next;
 	}
 
@@ -489,7 +428,7 @@ int load_sysfile(const char *filespec)
 	continue;
     }
 
-    if (!ws)
+    if (!as)
 	return -1;		/* No memspace, and "cpu" undefined */
 
     f = fopen(p, "rb");
@@ -500,14 +439,13 @@ int load_sysfile(const char *filespec)
     }
 
     if (!loader)
-	rv = load_any(f, ws, addr);
+	rv = load_any(f, as, addr);
     else
-	rv = loader(f, ws, addr);
+	rv = loader(f, as, addr);
 
     fclose(f);
 
-    if (ws->sync_op)
-	ws->sync_op();
+    do_as_sync(as);
 
     return rv;
 }
@@ -518,34 +456,70 @@ int load_sysfile(const char *filespec)
  */
 const char *memdump_path;
 
+static void dump_memory_xlt(struct host_file *hf, struct xlt_addr *xlt)
+{
+    while (xlt->len) {
+	if (xlt->ao.as->translate) {
+	    struct xlt_addr pxlt;
+
+	    if (!as_translate_iter(xlt, &pxlt))
+		break;
+
+	    dump_memory_xlt(hf, &pxlt);
+	} else {
+	    struct as_data asd = do_as_dump(xlt->ao.as, xlt->ao.offs);
+
+	    asd.len = min(asd.len, xlt->len);
+	    if (!asd.len)
+		break;
+
+	    fwrite(asd.data, 1, asd.len, hf->f);
+
+	    xlt->len -= asd.len;
+	    xlt->ao.offs += asd.len;
+	}
+    }
+}
+
+static void dump_memory_one_map(struct host_file *hf, struct as *as)
+{
+    struct xlt_addr xlt;
+
+    xlt.ao.as   = as;
+    xlt.ao.offs = 0;
+    xlt.len     = as->len;
+
+    dump_memory_xlt(hf, &xlt);
+}
+
 void dump_memory(const char *namespace)
 {
-    const struct load_data *ws;
+    struct as *as;
     struct host_file *hf;
-    struct dump_data dd;
-    uint32_t addr, limit;
 
-    ws = get_memspace(namespace, strlen(namespace));
-    if (!ws)
+    as = get_addrspace(namespace, strlen(namespace));
+    if (!as)
 	return;			/* Nothing to dump */
 
-    limit = ws->limit & ws->mask;
-    if (!limit)
+    if ((as->flags & AS_NODUMP) || !as->len)
 	return;			/* Empty namespace */
 
-    hf = dump_file(HF_BINARY, memdump_path, ws->dump_name, ".bin");
+    hf = dump_file(HF_BINARY, memdump_path, as->dump_name, ".bin");
     if (!hf)
         return;
 
-    if (!ws->dump_op) {
-	fwrite(ws->buf, 1, ws->limit, hf->f);
+    if (as->flags & AS_ONE_MAP) {
+	dump_memory_one_map(hf, as);
     } else {
-	addr = 0;
-	while (addr < limit) {
-	    dd = ws->dump_op(ws->buf, addr);
-	    fwrite(dd.data, 1, dd.len, hf->f);
-	    addr += dd.len;
+	unsigned int orig_map = as->map;
+	unsigned int m;
+
+	for (m = 0; m < as->nmaps; m++) {
+	    as_set_map(as, m);
+	    dump_memory_one_map(hf, as);
 	}
+
+	as_set_map(as, orig_map);
     }
 
     if (!ferror(hf->f))

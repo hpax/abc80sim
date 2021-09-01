@@ -27,4 +27,7 @@ static inline void mem_rfsh(uint16_t addr)
     (void)addr;
 }
 
+/* Last M1 address */
+extern uint16_t last_m1_address;
+
 #endif /* Z80MEM_H */

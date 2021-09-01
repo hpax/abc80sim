@@ -6,7 +6,7 @@
 /* -------------------------------------------------------------------------
  *  List of all registered address spaces
  * ------------------------------------------------------------------------- */
-static struct as *null_as;
+struct as *null_as;
 static struct as *addrspaces;
 
 /* -------------------------------------------------------------------------
@@ -25,6 +25,7 @@ struct as *as_new_space(const char *name, const struct as_ops *ops,
     as->nmaps = nmaps;
     as->len = len;
     as->mask = ~(size_t)0;
+    as->grain = MAX_GRAIN;
 
     /* Add to linked list */
     as->next   = addrspaces;
@@ -33,7 +34,9 @@ struct as *as_new_space(const char *name, const struct as_ops *ops,
     return as;
 }
 
-/* The name, len pair allows for a separator other than \0 */
+/*
+ * The name, len pair allows for a separator other than \0.
+ */
 struct as *get_addrspace(const char *name, size_t len)
 {
     struct as *as;
@@ -57,24 +60,16 @@ struct as *new_mem(const char *name, const struct as_ops *ops,
     if (!p)
 	return NULL;
 
-    as->p = as->base = p;
+    as->p.data = p;
     return as;
 }
 
-static void mem_as_map(struct as *as, unsigned int map)
-{
-    as->p = (uint8_t *)as->base + (map * as->len);
-}
-
-static struct as_data mem_as_dump(struct as *as, unsigned int map, size_t offs)
+static struct as_data mem_as_dump(struct as *as, size_t offs)
 {
     struct as_data asd;
 
-    assert(map < as->nmaps);
-
-    offs &= as->mask;
-    asd.data = (const uint8_t *)as->base + (map * as->len) + offs;
-    asd.len  = as->len - (offs % as->len);
+    asd.data = as->p.data + offs;
+    asd.len  = as->len - offs;
 
     return asd;
 }
@@ -92,7 +87,6 @@ static void rom_as_write(struct as *as, size_t offs, uint8_t v)
 const struct as_ops ram_as_ops = {
     .read  = NULL,		/* Just read it */
     .write = NULL,		/* Just write it */
-    .map   = mem_as_map,
     .dump  = mem_as_dump,
     .load  = NULL,		/* Just load it */
     .sync  = NULL		/* No syncing */
@@ -101,7 +95,6 @@ const struct as_ops ram_as_ops = {
 const struct as_ops rom_as_ops = {
     .read  = NULL,		/* Just read it */
     .write = rom_as_write,	/* Drop write on floor */
-    .map   = mem_as_map,
     .dump  = mem_as_dump,
     .load  = NULL,		/* Just load it */
     .sync  = NULL		/* No syncing */
@@ -113,102 +106,31 @@ struct as *new_ram(const char *name, size_t len, unsigned int nmaps)
 }
 struct as *new_rom(const char *name, size_t len, unsigned int nmaps)
 {
-    return new_mem(name, &rom_as_ops, len, nmaps);
+    struct as *as = new_mem(name, &rom_as_ops, len, nmaps);
+    memset(as->p.data, 0xff, len * nmaps);
+    return as;
 }
 
 /* -------------------------------------------------------------------------
  *  Paged memory space
  * ------------------------------------------------------------------------- */
-struct page {
-    struct as *as;
-    size_t offs;
-};
 
-static inline struct page *page_mapbase(struct as *as, unsigned int map)
+static struct asoffs page_as_translate(struct asoffs vso)
 {
-    return (struct page *)as->base + ((map * as->len) >> as->grain);
+    struct asoffs pso;
+
+    pso = vso.as->p.page[vso.offs >> vso.as->grain];
+    pso.offs += vso.offs & grain_mask(vso.as->grain);
+
+    return pso;
 }
-static inline size_t page_size(unsigned int grain)
-{
-    return (size_t)1 << grain;
-}
-static inline size_t page_mask(unsigned int grain)
-{
-    return page_size(grain)-1;
-}
-
-static uint8_t page_as_read(struct as *as, size_t offs)
-{
-    struct page *page = as->p;
-
-    offs &= as->mask;
-    page += offs >> as->grain;
-    offs = page->offs + (offs & page_mask(as->grain));
-
-    return do_as_read(page->as, offs);
-}
-
-static void page_as_write(struct as *as, size_t offs, uint8_t v)
-{
-    struct page *page = as->p;
-
-    offs &= as->mask;
-    page += offs >> as->grain;
-    offs = page->offs + (offs & page_mask(as->grain));
-
-    do_as_write(page->as, offs, v);
-}
-
-static void page_as_map(struct as *as, unsigned int map)
-{
-    as->p = (struct page *)as->base + ((map * as->len) >> as->grain);
-}
-
-static struct as_data page_as_dump(struct as *as, unsigned int map, size_t offs)
-{
-    struct as_data asd;
-    struct page *page;
-    size_t maxbytes;
-
-    offs &= as->mask;
-    page = page_mapbase(as, map) + (offs >> as->grain);
-    offs = page->offs + (offs & page_mask(as->grain));
-
-    maxbytes = page_size(as->grain) - offs;
-
-    asd = page->as->ops->dump(page->as, page->as->map, offs);
-    if (asd.len > maxbytes)
-	asd.len = maxbytes;
-
-    return asd;
-}
-
-static void page_as_load(struct as *as, unsigned int map, size_t offs, uint8_t v)
-{
-    struct page *page;
-
-    offs &= as->mask;
-    page = page_mapbase(as, map) + (offs >> as->grain);
-    offs = page->offs + (offs & page_mask(as->grain));
-
-    do_as_load(as, as->map, offs, v);
-}
-
-static const struct as_ops page_as_ops = {
-    .read  = page_as_read,
-    .write = page_as_write,
-    .map   = page_as_map,
-    .dump  = page_as_dump,
-    .load  = page_as_load,
-    .sync  = NULL
-};
 
 void as_set_pages(struct as *vas, size_t voffs, unsigned int map,
 		  struct as *pas, size_t poffs, size_t len)
 {
     unsigned int pages;
-    const size_t psize = page_size(vas->grain);
-    struct page *p = vas->p;
+    const size_t psize = grain_size(vas->grain);
+    struct asoffs *p = vas->p.page;
 
     assert(((voffs|poffs|len) & (psize-1)) == 0); /* Must be page aligned */
     assert(map < vas->nmaps);
@@ -228,11 +150,10 @@ void as_set_pages(struct as *vas, size_t voffs, unsigned int map,
 struct as *as_new_pagespace(const char *name, size_t len,
 			    unsigned int nmaps, unsigned int grain)
 {
-    const size_t psize = (size_t)1 << grain;
-    struct page *p;
+    const size_t psize = grain_size(grain);
+    struct asoffs *p;
     unsigned int i;
-    struct as *as = as_new_space(name, &page_as_ops, len, nmaps);
-
+    struct as *as = as_new_space(name, NULL, len, nmaps);
     if (!as)
 	return NULL;
 
@@ -244,8 +165,10 @@ struct as *as_new_pagespace(const char *name, size_t len,
     if (!p)
 	return NULL;
 
-    as->p = as->base = p;
-    as->flags |= AS_DUMP_ONE;
+    as->p.page = p;
+    as->flags |= AS_ONE_MAP;
+
+    as->translate = page_as_translate;
 
     /* Initialize all pages to point to the null address space */
     for (i = 0; i < nmaps; i++) {
@@ -258,10 +181,9 @@ struct as *as_new_pagespace(const char *name, size_t len,
 /* -------------------------------------------------------------------------
  *  Null address space (empty bus)
  * ------------------------------------------------------------------------- */
-static void null_as_load(struct as *as, unsigned int map, size_t offs, uint8_t v)
+static void null_as_load(struct as *as, size_t offs, uint8_t v)
 {
     (void)as;
-    (void)map;
     (void)offs;
     (void)v;
 }
@@ -269,7 +191,6 @@ static void null_as_load(struct as *as, unsigned int map, size_t offs, uint8_t v
 const struct as_ops null_as_ops = {
     .read  = NULL,		/* Just read it */
     .write = rom_as_write,	/* Drop write on floor */
-    .map   = mem_as_map,
     .dump  = mem_as_dump,
     .load  = null_as_load,	/* Drop attempts at loading on the floor */
     .sync  = NULL		/* No syncing */
@@ -280,9 +201,55 @@ const struct as_ops null_as_ops = {
 static void null_as_init(void)
 {
     null_as = new_mem("null", &null_as_ops, NULL_BUF_SIZE, 1);
-    memset(null_as->p, 0xff, NULL_BUF_SIZE);
+    memset(null_as->p.data, 0xff, NULL_BUF_SIZE);
     null_as->mask = NULL_BUF_SIZE-1;
     null_as->flags |= AS_NOLOAD | AS_NODUMP;
+}
+
+/* -------------------------------------------------------------------------
+ *  Translation map iterator
+ *
+ *  This derives contiguous translation maps from the as_translate
+ *  operations as long as the "grain" parameter is set correctly.
+ *
+ *  Returns true if a new translation is available, otherwise false;
+ *  in the latter case va->len will contain a nonzero value if *va
+ *  contains a final translation.
+ * ------------------------------------------------------------------------- */
+bool as_translate_iter(struct xlt_addr *va, struct xlt_addr *pa)
+{
+    struct asoffs pao;
+    size_t grainsize, grainmask;
+
+    if (va->ao.offs >= va->ao.as->len)
+	va->len = 0;
+    else if (va->ao.offs + va->len > va->ao.as->len)
+	va->len = va->ao.as->len - va->ao.offs;
+
+    if (!va->len || !va->ao.as->translate)
+	return false;		/* All done */
+
+    grainsize = grain_size(va->ao.as->grain);
+    grainmask = grainsize - 1;
+
+    pa->ao = pao = va->ao.as->translate(va->ao);
+    pa->len = 0;
+
+    do {
+	size_t tlen = min(va->len, grainsize - (va->ao.offs & grainmask));
+
+	pa->len += tlen;
+	va->len += tlen;
+	va->ao.offs += tlen;
+	va->len -= tlen;
+
+	if (!va->len)
+	    break;
+
+	pao = va->ao.as->translate(va->ao);
+    } while (pao.as == pa->ao.as && pao.offs == pa->ao.offs + pa->len);
+
+    return true;
 }
 
 /* -------------------------------------------------------------------------

@@ -12,6 +12,9 @@
 /* Latch the last M1 address fetched, like ABC800 does */
 uint16_t last_m1_address;
 
+/* The CPU memory space, must be initialized by platform code */
+struct as *cpu_as;
+
 /*
  * Memory tracing bookkeeping
  */
