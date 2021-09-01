@@ -251,6 +251,8 @@ struct as *as_new_pagespace(const char *name, size_t len,
     for (i = 0; i < nmaps; i++) {
 	as_set_pages(as, 0, i, null_as, 0, len);
     }
+
+    return as;
 }
 
 /* -------------------------------------------------------------------------
