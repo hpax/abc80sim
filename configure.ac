@@ -91,9 +91,6 @@ PA_ADD_HEADERS(x86intrin.h)
 PA_HAVE_FUNC(__builtin_expect, (1,1))
 PA_HAVE_FUNC(__builtin_constant_p, (0))
 PA_HAVE_FUNC(__rdtsc, ())
-PA_HAVE_FUNC(__umulh, (1ULL, 1ULL))
-PA_HAVE_FUNC(__emulu, (1U, 1U))
-PA_HAVE_FUNC(_addcarry_u64, (1, 1ULL, 1ULL, NULL))
 
 dnl System headers
 PA_ADD_HEADERS(windows.h)
@@ -121,12 +118,6 @@ AC_CHECK_TYPES(speed_t)
 dnl Useful functions which we may lack
 AC_CHECK_FUNCS([mempcpy])
 AC_CHECK_FUNCS([asprintf])
-
-dnl 128-bit integers?
-AC_CHECK_TYPES([uint128_t])
-AC_CHECK_TYPES([__uint128_t])
-AC_CHECK_TYPES([__uint128])
-AC_CHECK_TYPES([unsigned __int128])
 
 dnl Windows stat functions are a bit different, sigh...
 AC_CHECK_TYPES([struct _stat64])

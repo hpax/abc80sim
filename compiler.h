@@ -71,13 +71,17 @@
 #endif /* NOT_USING_SDL */
 
 #ifndef __cplusplus             /* C++ has false, true, bool as keywords */
-#ifdef HAVE_STDBOOL_H
-#include <stdbool.h>
-#else
+# ifdef HAVE_STDBOOL_H
+#  include <stdbool.h>
+# elif defined(HAVE__BOOL)
+#  define bool _Bool
+#  define false 0
+#  define true 1
+# else
 /* This is sort of dangerous, since casts will behave different than
    casting to the standard boolean type.  Always use !!, not (bool). */
 typedef enum bool { false, true } bool;
-#endif
+# endif
 #endif
 
 /*
@@ -113,22 +117,6 @@ typedef int mode_t;
 #endif
 #ifndef HAVE_SSIZE_T
 typedef int ssize_t;
-#endif
-
-/*
- * 128-bit integers
- */
-#ifdef HAVE_UINT128_T
-/* Already good */
-#elif defined(HAVE___UINT128_T)
-typedef __uint128_t uint128_t;
-# define HAVE_UINT128_T
-# elif defined(HAVE___UINT128)
-typedef __uint128 uint128_t;
-# define HAVE_UINT128_T
-#elif defined(HAVE_UNSIGNED___INT128)
-typedef unsigned __int128 uint128_t;
-# define HAVE_UINT128_T
 #endif
 
 /*
@@ -260,42 +248,6 @@ typedef unsigned __int128 uint128_t;
    *p is a member. */
 #ifndef container_of
 # define container_of(p, c, m) ((c *)((char *)(p) - offsetof(c,m)))
-#endif
-
-/* Upper half of a 64-bit multiply */
-#ifdef HAVE___UMULH
-static inline uint64_t umulh(uint64_t a, uint64_t b)
-{
-    return __umulh(a,b);
-}
-#elif defined(HAVE_UINT128_T)
-static inline uint64_t umulh(uint64_t a, uint64_t b)
-{
-    return (uint64_t)(((uint128_t)a * b) >> 64);
-}
-#else
-static inline uint64_t umulh(uint64_t a, uint64_t b)
-{
-    uint32_t a0 = a;
-    uint32_t a1 = a >> 32;
-    uint32_t b0 = b;
-    uint32_t b1 = b >> 32;
-
-    uint64_t c0 = (uint64_t)a0 * b0;
-    uint64_t c1 = (uint64_t)a1 * b0;
-    uint64_t c2 = (uint64_t)a0 * b1;
-    uint64_t c3 = (uint64_t)a1 * b1;
-
-    uint64_t c12, c012;
-
-    c12 = c1 + c2;
-    c3 += (c12 < c1);		/* Handle carry */
-
-    c012 = c12 + (c0 >> 32);	/* The low 32 bits can't carry */
-    c3 += (c012 >> 32) + ((c012 < c12) << 32);
-
-    return c3;
-}
 #endif
 
 /* Handy macro for comparing a partial string against a string constant */
