@@ -189,6 +189,16 @@ extern struct as *null_as;
 extern struct as *cpu_as;
 
 /*
+ * Canned as_ops and as_ops members
+ */
+struct as_data mem_as_dump(struct as *as, size_t offs);
+void rom_as_write(struct as *as, size_t offs, uint8_t v);
+
+extern const struct as_ops rom_as_ops;
+extern const struct as_ops ram_as_ops;
+extern const struct as_ops null_as_ops;
+
+/*
  * Find an address space by name
  */
 struct as *get_addrspace(const char *name, size_t len);
@@ -217,10 +227,10 @@ bool as_translate_iter(struct xlt_addr *va, struct xlt_addr *pa);
  */
 struct as *as_new_space(const char *name, const struct as_ops *ops,
 			size_t len, unsigned int nmaps);
-struct as *new_mem(const char *name, const struct as_ops *ops,
-		   size_t len, unsigned int nmaps);
-struct as *new_ram(const char *name, size_t len, unsigned int nmaps);
-struct as *new_rom(const char *name, size_t len, unsigned int nmaps);
+struct as *new_mem(const char *name, size_t len, unsigned int nmaps,
+		   void *buf, const struct as_ops *ops);
+struct as *new_ram(const char *name, size_t len, unsigned int nmaps, void *buf);
+struct as *new_rom(const char *name, size_t len, unsigned int nmaps, void *buf);
 
 /*
  * Page tables

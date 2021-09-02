@@ -41,8 +41,9 @@ extern void register_abcbus_dev(uint8_t sel, const struct abcbus_dev *dev);
 extern void abc80_mem_mode80(bool);
 extern void abc80_64k_control_out(uint16_t addr, uint8_t val);
 extern uint8_t abc80_meg80_in(uint16_t addr);
-extern void abc80_meg80_out(uint16_t addr, uint8_t val);
+extern void abc80_meg80_rw_out(uint16_t addr, uint8_t val);
 extern void abc80_meg80_control_out(uint16_t addr, uint8_t val);
+extern void abc80_meg80_rwctl_out(uint16_t addr, uint8_t val);
 
 extern void abc800_set_mem(bool);
 

@@ -225,29 +225,30 @@ static uint8_t abc80_set_width_in(uint16_t port)
 
 static void abc80_register_ioports(void)
 {
-    register_ioport(0, 0x10, 0xffff, abcbus_out, abcbus_in);
-    register_inport(2, 0x17, 0xffff, NULL); /* INP 2 unusable on 80 */
+    register_ioport(0, 0x10, ~0, abcbus_out, abcbus_in);
+    register_inport(2, 0x17, ~0, NULL); /* INP 2 unusable on 80 */
     if (opts.tkn80 != TKN80_NONE) {
 	register_inport(3, 0x17, 0x1, abc80_set_width_in);
 	register_inport(4, 0x17, 0x1, abc80_set_width_in);
     }
-    register_inport(5, 0x17, 0xffff, NULL); /* INP 5 unusable on 80 */
-    register_inport(6, 0x17, 0xffff, NULL); /* INP 6 unusable on 80 */
-    register_outport(6, 0x17, 0, abc80_sound_out);
+    register_inport(5, 0x17, ~0, NULL); /* INP 5 unusable on 80 */
+    register_inport(6, 0x17, ~0, NULL); /* INP 6 unusable on 80 */
+    register_outport(6, 0x17, ~0, abc80_sound_out);
 
     register_ioport(56, 0x12, 0x1, abc80_pioa_out, abc80_pioa_in);
     register_ioport(58, 0x12, 0x1, abc80_piob_out, abc80_piob_in);
 
     if (opts.meg80) {
-	register_ioport(0x14, 0x14, ~0x14, abc80_meg80_out, abc80_meg80_in);
-	register_outport(7, 0x17, 0, abc80_meg80_control_out);
+	register_ioport(0x14, 0x14, ~0x14, abc80_meg80_rw_out, abc80_meg80_in);
+	register_ioport(0x17, 0x17, ~0x17, abc80_meg80_rwctl_out, abc80_meg80_in);
+	register_outport(7, 0x17, ~0, abc80_meg80_control_out);
     } else if (opts.kb == 64) {
-	register_outport(7, 0x17, 0, abc80_64k_control_out);
+	register_outport(7, 0x17, ~0, abc80_64k_control_out);
     }
 
     /* Magic events */
     if (opts.magic)
-	register_outport(184, 0xff, 0xff, do_magic_out);
+	register_outport(184, 0xff, ~0, do_magic_out);
 }
 
 /*
@@ -397,8 +398,8 @@ static uint8_t dart_keyb_in(uint16_t port)
 
 static void abc800_register_ioports(void)
 {
-    register_ioport(0x00,  0xf0, 0xffff, abcbus_out, abcbus_in);
-    register_outport(0x06, 0xfe, 0xffff, opts.hr ? fg_out : NULL);
+    register_ioport(0x00,  0xf0, ~0, abcbus_out, abcbus_in);
+    register_outport(0x06, 0xfe, ~0, opts.hr ? fg_out : NULL);
 
     register_ioport(0x20, 0xf2, 0x01, dart_pr_out, dart_pr_in);
     register_ioport(0x22, 0xf2, 0x01, dart_keyb_out, dart_keyb_in);
@@ -558,7 +559,7 @@ uint8_t z80_in(uint16_t port)
 
 void io_init(void)
 {
-    register_ioport(0, 0, 0xffff, NULL, NULL);
+    register_ioport(0, 0, ~0, NULL, NULL);
 
     if (is_abc80()) {
 	abc80_register_ioports();

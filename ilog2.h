@@ -174,6 +174,14 @@ static inline unsigned int const_func ilog2c_64(uint64_t v)
     return (v < 2) ? 0 : ilog2_64(v - 1) + 1;
 }
 
+#if SIZE_MAX == UINT32_MAX
+# define ilog2_sz(v)  ilog2_32(v)
+# define ilog2c_sz(v) ilog2c_32(v)
+#else
+# define ilog2_sz(v)  ilog2_64(v)
+# define ilog2c_sz(v) ilog2c_64(v)
+#endif
+
 #undef ROUND
 
 #endif /* ILOG2_H */

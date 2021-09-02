@@ -2,6 +2,7 @@
 #include "z80.h"
 #include "as.h"
 #include "debug.h"
+#include "ilog2.h"
 
 /* -------------------------------------------------------------------------
  *  List of all registered address spaces
@@ -51,20 +52,26 @@ struct as *get_addrspace(const char *name, size_t len)
 /* -------------------------------------------------------------------------
  *  Address space backed by a memory buffer
  * ------------------------------------------------------------------------- */
-struct as *new_mem(const char *name, const struct as_ops *ops,
-		   size_t len, unsigned int nmaps)
+struct as *new_mem(const char *name, size_t len, unsigned int nmaps,
+		   void *buf, const struct as_ops *ops)
 {
     struct as *as = as_new_space(name, ops, len, nmaps);
-    void *p = calloc(nmaps, len);
 
-    if (!p)
-	return NULL;
+    if (!buf) {
+	buf = calloc(nmaps, len);
+	if (!buf)
+	    return NULL;
+    }
 
-    as->p.data = p;
+    as->p.data = buf;
+    if (is_power2(len)) {
+	as->grain = ilog2_sz(len);
+	as->mask = grain_mask(as->grain);
+    }
     return as;
 }
 
-static struct as_data mem_as_dump(struct as *as, size_t offs)
+struct as_data mem_as_dump(struct as *as, size_t offs)
 {
     struct as_data asd;
 
@@ -77,7 +84,7 @@ static struct as_data mem_as_dump(struct as *as, size_t offs)
 /* -------------------------------------------------------------------------
  *  Specializations of the memory buffer address spaces: ROM and RAM
  * ------------------------------------------------------------------------- */
-static void rom_as_write(struct as *as, size_t offs, uint8_t v)
+void rom_as_write(struct as *as, size_t offs, uint8_t v)
 {
     (void)as;
     (void)offs;
@@ -100,14 +107,15 @@ const struct as_ops rom_as_ops = {
     .sync  = NULL		/* No syncing */
 };
 
-struct as *new_ram(const char *name, size_t len, unsigned int nmaps)
+struct as *new_ram(const char *name, size_t len, unsigned int nmaps, void *buf)
 {
-    return new_mem(name, &ram_as_ops, len, nmaps);
+    return new_mem(name, len, nmaps, buf, &ram_as_ops);
 }
-struct as *new_rom(const char *name, size_t len, unsigned int nmaps)
+struct as *new_rom(const char *name, size_t len, unsigned int nmaps, void *buf)
 {
-    struct as *as = new_mem(name, &rom_as_ops, len, nmaps);
-    memset(as->p.data, 0xff, len * nmaps);
+    struct as *as = new_mem(name, len, nmaps, buf, &rom_as_ops);
+    if (!buf)
+	memset(as->p.data, 0xff, len * nmaps);
     return as;
 }
 
@@ -134,6 +142,7 @@ void as_set_pages(struct as *vas, size_t voffs, unsigned int map,
 
     assert(((voffs|poffs|len) & (psize-1)) == 0); /* Must be page aligned */
     assert(map < vas->nmaps);
+    assert(vas != pas);
 
     pages = len >> vas->grain;
     p += ((map * vas->len) + voffs) >> vas->grain;
@@ -193,27 +202,14 @@ struct as *as_new_aliasspace(const char *name, size_t len)
     return as;
 }
 
-void as_point_alias(struct as *alias_as, struct as *parent_as, size_t offs)
-{
-    alias_as->p.parent_as = parent_as;
-    alias_as->base = offs;
-}
-
 /* -------------------------------------------------------------------------
  *  Null address space (empty bus)
  * ------------------------------------------------------------------------- */
-static void null_as_load(struct as *as, size_t offs, uint8_t v)
-{
-    (void)as;
-    (void)offs;
-    (void)v;
-}
-
 const struct as_ops null_as_ops = {
     .read  = NULL,		/* Just read it */
     .write = rom_as_write,	/* Drop write on floor */
     .dump  = mem_as_dump,
-    .load  = null_as_load,	/* Drop attempts at loading on the floor */
+    .load  = rom_as_write,	/* Drop attempts at loading on the floor */
     .sync  = NULL		/* No syncing */
 };
 
@@ -221,7 +217,7 @@ const struct as_ops null_as_ops = {
 
 static void null_as_init(void)
 {
-    null_as = new_mem("null", &null_as_ops, NULL_BUF_SIZE, 1);
+    null_as = new_mem("null", NULL_BUF_SIZE, 1, NULL, &null_as_ops);
     memset(null_as->p.data, 0xff, NULL_BUF_SIZE);
     null_as->mask = NULL_BUF_SIZE-1;
     null_as->flags |= AS_NOLOAD | AS_NODUMP;
