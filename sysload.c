@@ -459,25 +459,23 @@ const char *memdump_path;
 static void dump_memory_xlt(struct host_file *hf, struct xlt_addr *xlt)
 {
     while (xlt->len) {
-	if (xlt->ao.as->translate) {
-	    struct xlt_addr pxlt;
+	size_t len;
+	struct as_data asd;
+	struct xlt_addr pxlt;
 
-	    if (!as_translate_iter(xlt, &pxlt))
-		break;
+	len = as_translate_iter(xlt, &pxlt);
+	if (!len)
+	    break;
 
-	    dump_memory_xlt(hf, &pxlt);
-	} else {
-	    struct as_data asd = do_as_dump(xlt->ao.as, xlt->ao.offs);
+	asd = do_as_dump(pxlt.ao.as, pxlt.ao.offs);
+	len = min(asd.len, len);
+	if (!len)
+	    break;
 
-	    asd.len = min(asd.len, xlt->len);
-	    if (!asd.len)
-		break;
+	fwrite(asd.data, 1, len, hf->f);
 
-	    fwrite(asd.data, 1, asd.len, hf->f);
-
-	    xlt->len -= asd.len;
-	    xlt->ao.offs += asd.len;
-	}
+	xlt->len -= len;
+	xlt->ao.offs += len;
     }
 }
 

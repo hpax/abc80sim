@@ -229,45 +229,39 @@ static void null_as_init(void)
  *  This derives contiguous translation maps from the as_translate
  *  operations as long as the "grain" parameter is set correctly.
  *
- *  Returns true if a new translation is available, otherwise false;
- *  in the latter case va->len will contain a nonzero value if *va
- *  contains a final translation.
+ *  Returns the length of the translated chunk if available, or 0 on
+ *  end of map.
  * ------------------------------------------------------------------------- */
-bool as_translate_iter(struct xlt_addr *va, struct xlt_addr *pa)
+size_t as_translate_iter(const struct xlt_addr *va, struct xlt_addr *pa)
 {
-    struct asoffs pao;
-    size_t grainsize, grainmask;
+    struct asoffs vo = va->ao;
+    size_t tlen = va->len;
 
-    if (va->ao.offs >= va->ao.as->len)
-	va->len = 0;
-    else if (va->ao.offs + va->len > va->ao.as->len)
-	va->len = va->ao.as->len - va->ao.offs;
+    while (1) {
+	size_t grainsize, grainmask;
 
-    if (!va->len || !va->ao.as->translate)
-	return false;		/* All done */
+	if (vo.offs >= vo.as->len)
+	    tlen = 0;
+	else
+	    tlen = min(tlen, vo.as->len - vo.offs);
 
-    grainsize = grain_size(va->ao.as->grain);
-    grainmask = grainsize - 1;
+	if (!tlen)
+	    return 0;		/* End of the road */
 
-    pa->ao = pao = va->ao.as->translate(va->ao);
-    pa->len = 0;
+	if (!as_translate_one_level(&vo)) {
+	    /* Terminal translation */
+	    pa->ao  = vo;
+	    pa->len = tlen;
+	    return tlen;
+	}
 
-    do {
-	size_t tlen = min(va->len, grainsize - (va->ao.offs & grainmask));
-
-	pa->len += tlen;
-	va->len += tlen;
-	va->ao.offs += tlen;
-	va->len -= tlen;
-
-	if (!va->len)
-	    break;
-
-	pao = va->ao.as->translate(va->ao);
-    } while (pao.as == pa->ao.as && pao.offs == pa->ao.offs + pa->len);
-
-    return true;
+	grainsize = grain_size(vo.as->grain);
+	grainmask = grainsize - 1;
+	tlen = min(tlen, grainsize - (vo.offs & grainmask));
+    }
 }
+
+/* XXX: add coalescion function */
 
 /* -------------------------------------------------------------------------
  *  Initialization

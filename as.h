@@ -99,6 +99,22 @@ struct as {
 /*
  * Wrapper functions for methods
  */
+static inline bool as_translate_one_level(struct asoffs *aso)
+{
+    aso->offs = (aso->offs & aso->as->mask) + aso->as->base;
+
+    if (aso->as->translate) {
+	/* It has a translation function */
+	*aso = aso->as->translate(*aso);
+	return true;
+    } else if (!aso->as->ops) {
+	/* It is an alias (note: offset already applied) */
+	aso->as = aso->as->p.parent_as;
+	return true;
+    } else {
+	return false;		/* Terminal translation */
+    }
+}
 
 static inline struct asoffs do_translate_addr(struct as *as, size_t offs)
 {
@@ -107,15 +123,11 @@ static inline struct asoffs do_translate_addr(struct as *as, size_t offs)
     aso.as   = as;
     aso.offs = offs;
 
-    while (1) {
-	aso.offs = (aso.offs & aso.as->mask) + aso.as->base;
-	if (aso.as->translate)
-	    aso = aso.as->translate(aso);
-	else if (!aso.as->ops)
-	    aso.as = aso.as->p.parent_as;
-	else
-	    return aso;		/* Found a "real" address space */
-    }
+    /* Descent translations until complete */
+    while (as_translate_one_level(&aso))
+	;			/* Keep iterating */
+
+    return aso;
 }
 
 static inline uint8_t do_as_read(struct as *as, size_t offs)
@@ -142,10 +154,10 @@ static inline void do_as_write(struct as *as, size_t offs, uint8_t v)
     }
 }
 
+/* do_as_dump() takes an ALREADY TRANSLATED ADDRESS */
 static inline struct as_data do_as_dump(struct as *as, size_t offs)
 {
-    struct asoffs aso = do_translate_addr(as, offs);
-    as_dump_op dump_op = aso.as->ops->dump;
+    as_dump_op dump_op = as->ops->dump;
 
     if (!dump_op) {
 	struct as_data asd;
@@ -220,7 +232,7 @@ struct xlt_addr {
     struct asoffs ao;		/* Address space:offset */
     size_t len;			/* Length of contiguous translation */
 };
-bool as_translate_iter(struct xlt_addr *va, struct xlt_addr *pa);
+size_t as_translate_iter(const struct xlt_addr *va, struct xlt_addr *pa);
 
 /*
  * Memory spaces
