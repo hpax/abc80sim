@@ -65,6 +65,14 @@ static inline size_t grain_mask(unsigned int grain)
     return grain_size(grain) - 1;
 }
 
+enum as_flags {
+    AS_NOLOAD	  =  1,	/* Do not load data into this namespace */
+    AS_NODUMP	  =  2,	/* Do not dump this namespace by itself */
+    AS_ONE_MAP	  =  4,	/* Load or dump only one (current) map */
+    AS_NODUMP_ALL =  8,	/* Don't dump as part of an "all" dump */
+    AS_ALIAS	  = 16	/* It is an alias map */
+};
+
 /* Definition of an address space */
 struct as {
     /* The hottest items... */
@@ -79,7 +87,7 @@ struct as {
     size_t base;		/* Base offset within this address space */
     size_t len;		        /* Size of the namespace, per map */
 
-    unsigned int flags;	        /* Flags for the drivers */
+    enum as_flags flags;        /* Flags for the drivers */
     unsigned int grain;		/* Granularity of address translation */
 
     unsigned int map;		/* Current map number */
@@ -90,11 +98,6 @@ struct as {
 
     struct as *next;	        /* Linked list of known address spaces */
 };
-
-#define AS_NOLOAD	1	/* Do not load data into this namespace */
-#define AS_NODUMP	2	/* Do not dump this namespace by itself */
-#define AS_ONE_MAP	4	/* Load or dump only one (current) map */
-#define AS_ALIAS	8	/* It is an alias map */
 
 /*
  * Wrapper functions for methods

@@ -237,13 +237,16 @@ size_t as_translate_iter(const struct xlt_addr *va, struct xlt_addr *pa)
     struct asoffs vo = va->ao;
     size_t tlen = va->len;
 
+    vo.offs += vo.as->base;
+
     while (1) {
 	size_t grainsize, grainmask;
+	size_t bo = vo.offs - vo.as->base;
 
-	if (vo.offs >= vo.as->len)
+	if (bo >= vo.as->len)
 	    tlen = 0;
 	else
-	    tlen = min(tlen, vo.as->len - vo.offs);
+	    tlen = min(tlen, vo.as->len - bo);
 
 	if (!tlen)
 	    return 0;		/* End of the road */

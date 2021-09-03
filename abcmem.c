@@ -18,6 +18,7 @@ static struct as *ram_as;     /* Primary RAM */
 static struct as *nvram_as;   /* Small external SRAM */
 static struct as *vram_as;    /* Video (text) RAM */
 static struct as *fgram_as;   /* High resolution RAM (ABC800) */
+static struct as *xmem_as;    /* Memory space for dumping extended RAM */
 static struct as *mem_as;     /* MEM: (ABC802) - alias to part of RAM */
 
 #define K(x) ((x)*1024)
@@ -563,6 +564,7 @@ static int init_meg80(void)
 	    static const char * const as_names[3]
 		= { "meg80-ic1", "meg80-ic2", "meg80-ic3" };
 	    as[i] = new_ram(as_names[i], kb[i] << 10, 1, xmem + K(512)*i);
+	    as[i]->flags |= AS_NODUMP_ALL;
 	}
     }
     if (kb[2])
@@ -570,7 +572,7 @@ static int init_meg80(void)
     as[3] = sys_as;
 
     meg80p_as = as_new_pagespace("meg80p", 4*K(512), 1, 19);
-    meg80p_as->flags |= AS_NODUMP;
+    meg80p_as->flags |= AS_NODUMP_ALL;
 
     for (i = 0; i < 4; i++)
 	as_set_pages(meg80p_as, i*K(512), 0, as[i], 0, 1 << 19);
@@ -578,6 +580,7 @@ static int init_meg80(void)
     meg80v_as = as_new_space("meg80v", NULL, Z80_ADDRESS_LIMIT, 32);
     meg80v_as->grain = 9;
     meg80v_as->translate = meg80_translate;
+    meg80v_as->flags |= AS_NODUMP_ALL; /* Meaningful only when aliased to cpu */
     meg80_set_map(bootmap);
 
     /*
@@ -617,10 +620,15 @@ static int init_meg80(void)
     sram_as = as_new_aliasspace("sram", K(1536));
     as_point_alias(sram_as, meg80p_as, 0);
 
+    xmem_as = as_new_aliasspace("xmem", K(1536));
+    as_point_alias(xmem_as, meg80p_as, 0);
+
     if (ic3_ops != &ram_as_ops) {
 	sram_as->len = K(1024);
 	flash_as = as_new_aliasspace("flash", K(1024));
 	as_point_alias(flash_as, meg80p_as, K(1024));
+    } else {
+	xmem_as->flags |= AS_NODUMP_ALL;
     }
 
     return 0;
@@ -634,7 +642,7 @@ static void mem_init_abc800(unsigned int flags, const uint8_t *master_rom)
 
     sys_as = as_new_pagespace("sys", K(64), 3, 10);
     sys_as->translate = abc800_sys_translate;
-    sys_as->flags |= AS_NODUMP | AS_ONE_MAP;
+    sys_as->flags |= AS_NODUMP_ALL | AS_ONE_MAP;
 
     if (!(flags & MEMFL_NOBASIC))
 	memcpy(rom, master_rom, K(24));
@@ -678,6 +686,10 @@ static void mem_init_abc800cm(unsigned int flags, const uint8_t *master_rom)
 
     for (m = 1; m < 3; m++)
 	as_set_pages(sys_as, 0, m, fgram_as, 0, K(16));
+
+    xmem_as = as_new_aliasspace("xmem", K(16));
+    xmem_as->flags |= AS_NODUMP_ALL;
+    as_point_alias(xmem_as, fgram_as, 0);
 }
 
 static inline void set_vram_1k(void)
@@ -723,7 +735,7 @@ void mem_init(unsigned int flags, const char *memfile)
 
 	sys_as = as_new_pagespace("sys", Z80_ADDRESS_LIMIT,
 				  opts.kb == 64 ? 4 : 1, 10);
-	sys_as->flags |= AS_NODUMP | AS_ONE_MAP;
+	sys_as->flags |= AS_NODUMP_ALL | AS_ONE_MAP;
 	as_point_alias(cpu_as, sys_as, 0);
 
 	if (opts.meg80) {
@@ -801,7 +813,7 @@ void mem_init(unsigned int flags, const char *memfile)
 	 * it would be different from the RAM space on 64K.
 	 */
 	nvram_as = new_ram("nvram", K(2), 1, rom+K(20));
-	nvram_as->flags |= AS_NODUMP;
+	nvram_as->flags |= AS_NODUMP_ALL;
 	as_set_pages(sys_as, K(20), 0, nvram_as, K(0), K(2));
 
 	/*
@@ -881,6 +893,4 @@ void mem_init(unsigned int flags, const char *memfile)
     case MODEL_ABC806:
 	break;			/* Not implemented yet */
     }
-
-    sys_as->flags |= AS_NODUMP | AS_ONE_MAP;
 }

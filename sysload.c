@@ -496,7 +496,7 @@ static void dump_as(struct as *as, const char *path)
 {
     struct host_file *hf;
 
-    if ((as->flags & AS_NODUMP) || !as->len)
+    if (!as->len)
 	return;			/* Empty namespace */
 
     hf = dump_file(HF_BINARY, path, memdump_path, as->dump_name, ".bin");
@@ -531,7 +531,8 @@ void dump_memory(const char *namespace)
     if (!as)
 	return;			/* Nothing to dump */
 
-    dump_as(as, NULL);
+    if (!(as->flags & AS_NODUMP))
+	dump_as(as, NULL);
 }
 
 /* Dump all memory spaces and other dumpables into a separate directory */
@@ -564,8 +565,10 @@ void dump_all(void)
     if (!dirpath)
 	return;
 
-    for (as = addrspaces; as; as = as->next)
-	dump_as(as, dirpath);
+    for (as = addrspaces; as; as = as->next) {
+	if (!(as->flags & (AS_NODUMP|AS_NODUMP_ALL)))
+	    dump_as(as, dirpath);
+    }
 
     abc_screenshot(dirpath);
 
