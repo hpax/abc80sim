@@ -643,6 +643,7 @@ static void mem_init_abc800(unsigned int flags, const uint8_t *master_rom)
     sys_as = as_new_pagespace("sys", K(64), 3, 10);
     sys_as->translate = abc800_sys_translate;
     sys_as->flags |= AS_NODUMP_ALL | AS_ONE_MAP;
+    as_point_alias(cpu_as, sys_as, 0);
 
     if (!(flags & MEMFL_NOBASIC))
 	memcpy(rom, master_rom, K(24));
