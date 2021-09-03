@@ -404,9 +404,10 @@ put_screen(struct surface *s, unsigned int tx, unsigned int ty, bool blink)
         }
     }
 
-    gx = tx*FONT_XSIZE;
-
     /* ABC800C/M "fine graphics" */
+
+    /* tx >> 1 needed because tx is in 80-char units */
+    gx = (tx*FONT_XSIZE) >> 1;
 
     fgoffs = (((vdu.fgstart + ty*FONT_YSIZE) << 6) +
 	      (gx >> 2)) & FGRAM_MASK;
