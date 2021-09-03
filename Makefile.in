@@ -12,6 +12,7 @@ mandir          = @mandir@
 datarootdir     = @datarootdir@
 
 CC		= @CC@
+AUTODEPS        = @AUTODEPS@
 CPPFLAGS	= @CPPFLAGS@ @DEFS@ -I.
 CFLAGS		= $(CPPFLAGS) @CFLAGS@
 LDFLAGS		= $(CFLAGS) @LDFLAGS@
@@ -40,9 +41,6 @@ SRCS = abc80.c clock.c sdlscrn.c fgcolor.c screenshot.c \
 	trace.c sysload.c \
 	abcprintd.c serial.c \
 	clib/asprintf.c clib/localtime.c $(GENC)
-HDRS = clock.h screen.h z80.h z80irq.h patchlevel.h screenshot.h abcio.h \
-       abcprintd.h rom.h nstime.h hostfile.h trace.h \
-       compiler.h console.h config/config.h
 
 OBJS = $(patsubst %.c,%.$(O),$(SRCS))
 
@@ -66,13 +64,13 @@ abc80win$(X): winwrap.c
 	$(PERL) bin2c.pl $< > $@ || ( rm -f $@ ; false )
 
 %.$(O): %.c $(HDRS)
-	$(CC) $(CFLAGS) -DMODULE='$(*F)' -c -o $@ $<
+	$(CC) $(AUTODEPS) $(CFLAGS) -DMODULE='$(*F)' -c -o $@ $<
 
 %.i: %.c $(HDRS)
-	$(CC) $(CFLAGS) -DMODULE='$(*F)' -E -o $@ $<
+	$(CC) $(AUTODEPS) $(CFLAGS) -DMODULE='$(*F)' -E -o $@ $<
 
 %.s: %.c $(HDRS)
-	$(CC) $(CFLAGS) -DMODULE='$(*F)' -S -o $@ $<
+	$(CC) $(AUTODEPS) $(CFLAGS) -DMODULE='$(*F)' -S -o $@ $<
 
 helptxt.c: HELP.txt txt2c.sed
 	$(SED) -f txt2c.sed $< > $@
@@ -96,10 +94,12 @@ asmsrc:
 	$(MAKE) -C asmsrc
 
 clean:
-	$(RM_F) $(TARGETS) *.$(O) *~ core *.lst *.i *.s
-	$(RM_F) roms/*.$(O) roms/*.c
+	$(RM_F) $(TARGETS) *.$(O) .*.d *~ core *.lst *.i *.s
+	$(RM_F) roms/*.$(O) roms/*.c roms/.*.d baudtospeed.c
 
 spotless: clean
 	$(RM_F)  *~ .\#* \#* *.bak
 	$(RM_F) configure config.status config.log Makefile config/config.h
 	$(RM_F) autoconf/aclocal.m4 autom4te.cache
+
+-include .*.d roms/.*.d

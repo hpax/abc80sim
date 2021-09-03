@@ -30,6 +30,7 @@ AC_PROG_CC_C99
 AC_PROG_LN_S
 AC_PROG_MAKE_SET
 AC_PROG_INSTALL
+PA_CC_AUTODEPS
 
 dnl Checks for typedefs, structures, and compiler characteristics.
 AC_C_CONST
