@@ -14,16 +14,6 @@ static inline enum host_file_mode mode_type(enum host_file_mode mode)
     return mode & HF_TYPE_MASK;
 }
 
-#define PRIV_MODE	(S_IRUSR|S_IWUSR)
-#define FILE_MODE	(S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP|S_IROTH|S_IWOTH)
-#define DIR_MODE	(FILE_MODE|S_IXUSR|S_IXGRP|S_IXOTH)
-
-#ifdef HAVE__MKDIR
-#define make_dir(x) _mkdir(x)
-#else
-#define make_dir(x) mkdir((x), DIR_MODE)
-#endif
-
 #ifndef O_BINARY
 #define O_BINARY 0
 #endif
@@ -182,24 +172,37 @@ struct host_file *open_host_file(enum host_file_mode mode, const char *dir,
 /*
  * Create a numbered dump file for writing (only)
  */
-struct host_file *dump_file(enum host_file_mode mode, const char *dir,
-                            const char *prefix, const char *suffix)
+struct host_file *dump_file(enum host_file_mode mode, const char *path,
+			    const char *dir, const char *prefix,
+			    const char *suffix)
 {
     int err;
     unsigned int n;
     struct host_file *hf;
     char *filename;
     const int openflags = O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW;
+    int start;
 
-    if (!dir)
-        dir = "";
+    if (path) {
+	start = 0;		/* Try first without sequence number */
+	dir = path;
+    } else {
+	start = 1;		/* Always sequence number */
 
-    /* If it is a directory name, try to create it if it doesn't exist */
-    if (dir[0])
-        make_dir(dir);
+	if (!dir)
+	    dir = "";
 
-    for (n = 1; n <= 9999; n++) {
-        asprintf(&filename, "%s%04u%s", prefix, n, suffix);
+	/* We got a directory name, try to create it if it doesn't exist */
+	if (dir[0])
+	    make_dir(dir);
+    }
+
+    for (n = start; n <= 9999; n++) {
+	if (!n)
+	    asprintf(&filename, "%s%s", prefix, suffix);
+	else
+	    asprintf(&filename, "%s%04u%s", prefix, n, suffix);
+
         if (!filename)
             return NULL;
         hf = open_host_file(mode, dir, filename, openflags);

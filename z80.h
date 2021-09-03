@@ -94,7 +94,8 @@ enum uncond {
     UCEV_DUMP_MEM    =  4,
     UCEV_DUMP_RAM    =  8,
     UCEV_DUMP_XMEM   = 16,
-    UCEV_ALL_DUMPS   = UCEV_DUMP_MEM|UCEV_DUMP_RAM|UCEV_DUMP_XMEM
+    UCEV_DUMP_ALL    = 32,
+    UCEV_DUMP_MASK   = UCEV_DUMP_MEM|UCEV_DUMP_RAM|UCEV_DUMP_XMEM|UCEV_DUMP_ALL
 };
 
 /*
@@ -246,5 +247,7 @@ extern int DAsm(uint16_t pc, char *T, int *target);
 
 /* Main loop */
 extern enum z80_cond z80_run(enum z80_cond);
+
+extern void z80_dumpregs(FILE *f, const char *prefix);
 
 #endif /* Z80_H */

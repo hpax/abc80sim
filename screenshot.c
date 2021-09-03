@@ -277,7 +277,7 @@ struct allocable {
     struct host_file *hf;       /* Host file structure */
 };
 
-static int do_screenshot(SDL_Surface * surf, struct allocable *a)
+static int do_screenshot(SDL_Surface * surf, struct allocable *a, const char *path)
 {
     uint8_t *row;
     size_t bytes_per_row;
@@ -348,7 +348,7 @@ static int do_screenshot(SDL_Surface * surf, struct allocable *a)
         return -1;
 
     /* Open screenshot file */
-    a->hf = dump_file(HF_BINARY, screen_path, "scrn", ".png");
+    a->hf = dump_file(HF_BINARY, path, screen_path, "scrn", ".png");
     if (!a->hf)
         return -1;
     png_init_io(a->png, a->hf->f);
@@ -387,13 +387,13 @@ static int do_screenshot(SDL_Surface * surf, struct allocable *a)
     return 0;
 }
 
-int screenshot(SDL_Surface * surf)
+int screenshot(SDL_Surface * surf, const char *path)
 {
     struct allocable a;
     int rv, err;
 
     memset(&a, 0, sizeof a);
-    rv = do_screenshot(surf, &a);
+    rv = do_screenshot(surf, &a, path);
     err = errno;
 
     if (a.rgbsurf) {

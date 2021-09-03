@@ -201,6 +201,11 @@ extern struct as *null_as;
 extern struct as *cpu_as;
 
 /*
+ * List of all address spaces
+ */
+extern struct as *addrspaces;
+
+/*
  * Canned as_ops and as_ops members
  */
 struct as_data mem_as_dump(struct as *as, size_t offs);

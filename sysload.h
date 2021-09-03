@@ -10,5 +10,6 @@
 
 int load_sysfile(const char *name);
 void dump_memory(const char *name);
+void dump_all(void);
 
 #endif /* SYSLOAD_H */

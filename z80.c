@@ -28,6 +28,7 @@
 #include "z80.h"
 #include "z80irq.h"
 #include "sysload.h"
+#include "clock.h"
 #include "debug.h"
 
 /*
@@ -55,7 +56,6 @@ static void add_cputrace(const char *fmt, ...)
 }
 
 static void diffstate(void);
-static void traceregs(void);
 
 /*
  * T-states (clock cycles) for various instructions.
@@ -1290,13 +1290,17 @@ static enum z80_cond check_cpu_events(void)
     ucevent = atomic_load(&z80_state.uncond);
 
     if (unlikely(ucevent)) {
-	if (unlikely(ucevent & UCEV_ALL_DUMPS)) {
+	if (unlikely(ucevent & UCEV_DUMP_MASK)) {
 	    size_t i;
-	    atomic_fetch_and(&z80_state.uncond, ~(ucevent & UCEV_ALL_DUMPS));
+	    atomic_fetch_and(&z80_state.uncond, ~(ucevent & UCEV_DUMP_MASK));
 	    for (i = 0; i < ARRAY_SIZE(memdumps); i++) {
 		if (ucevent & memdumps[i].event)
 		    dump_memory(memdumps[i].memspace);
 	    }
+
+	    if (ucevent & UCEV_DUMP_ALL)
+		dump_all();
+
 	    ucevent = atomic_load(&z80_state.uncond);
 	}
 
@@ -3657,7 +3661,7 @@ enum z80_cond z80_run(enum z80_cond condrq)
 	    tracelinelen = 0;
 	    z80_state.was_call_ret = call_ret;
 	    if (call_ret)
-		traceregs();
+		z80_dumpregs(tracef, "               - ");
         }
     } while (!(cond & condrq));
 
@@ -3678,7 +3682,6 @@ static const char *flagdis(uint8_t f)
 	    *bp++ = flags[i];
 	fx <<= 1;
     }
-    bp += snprintf(bp, 4, ",%02X", f);
 
     return buf;
 }
@@ -3695,7 +3698,8 @@ static const char *flagdis(uint8_t f)
     }
 #define FREG(U,L)							\
     if (z80_state.reg.r.L != old_state.reg.r.L) {			\
-	add_cputrace(" %s=%s", U, flagdis(z80_state.reg.r.L));	\
+	add_cputrace(" %s=%02x,%s", U, z80_state.reg.r.L,		\
+		     flagdis(z80_state.reg.r.L));			\
 	old_state.reg.r.L = z80_state.reg.r.L;				\
     }
 
@@ -3719,11 +3723,50 @@ static void diffstate(void)
     BREG("I", ir.b.h);
 }
 
-static void traceregs(void)
+void z80_dumpregs(FILE *f, const char *prefix)
 {
-    fprintf(tracef, "               - BC=%04X DE=%04X HL=%04X IX=%04X IY=%04X SP=%04X\n"
-	    "               - A=%02X F=%s I=%02X R=%02X BC\'=%04X DE\'=%04X HL\'=%04X AF\'=%04X\n",
-	    REG_BC, REG_DE, REG_HL, REG_IX, REG_IY, REG_SP,
-	    REG_A, flagdis(REG_F), REG_I, z80_get_r(),
-	    REG_BCx, REG_DEx, REG_HLx, REG_AFx);
+    if (prefix) {
+	/* Compact form */
+	fprintf(f, "%sBC=%04X DE=%04X HL=%04X IX=%04X IY=%04X SP=%04X\n"
+		"%sA=%02X F=%02X,%s I=%02X R=%02X BC\'=%04X DE\'=%04X HL\'=%04X AF\'=%04X\n",
+		prefix, REG_BC, REG_DE, REG_HL, REG_IX, REG_IY, REG_SP,
+		prefix, REG_A, REG_F, flagdis(REG_F), REG_I, z80_get_r(),
+		REG_BCx, REG_DEx, REG_HLx, REG_AFx);
+    } else {
+	/* Extended form */
+	fprintf(f,
+		"PC  = 0x%04x   %5u   %3u:%3u\n"
+		"SP  = 0x%04x   %5u   %3u:%3u\n"
+		"BC  = 0x%04x   %5u   %3u:%3u\n"
+		"DE  = 0x%04x   %5u   %3u:%3u\n"
+		"HL  = 0x%04x   %5u   %3u:%3u\n"
+		"AF  = 0x%04x           %3u:%3u  %s\n"
+		"IX  = 0x%04x   %5u   %3u:%3u\n"
+		"IY  = 0x%04x   %5u   %3u:%3u\n"
+		"IR  = 0x%02x%02x           %3u:%3u\n",
+		REG_PC, REG_PC, z80_state.reg.r.pc.b.h, z80_state.reg.r.pc.b.l,
+		REG_SP, REG_SP, z80_state.reg.r.sp.b.h, z80_state.reg.r.sp.b.l,
+		REG_BC, REG_BC, REG_B, REG_C,
+		REG_DE, REG_DE, REG_D, REG_E,
+		REG_HL, REG_HL, REG_H, REG_L,
+		REG_AF, REG_A, REG_F, flagdis(REG_F),
+		REG_IX, REG_IX, REG_IXH, REG_IXL,
+		REG_IY, REG_IY, REG_IYH, REG_IYL,
+		REG_I, z80_get_r(), REG_I, z80_get_r());
+	fprintf(f,
+		"BC' = 0x%04x   %5u   %3u:%3u\n"
+		"DE' = 0x%04x   %5u   %3u:%3u\n"
+		"HL' = 0x%04x   %5u   %3u:%3u\n"
+		"AF' = 0x%04x           %3u:%3u  %s\n",
+		REG_BCx, REG_BCx, z80_state.reg.r.bcx.b.h, z80_state.reg.r.bcx.b.l,
+		REG_DEx, REG_DEx, z80_state.reg.r.dex.b.h, z80_state.reg.r.dex.b.l,
+		REG_HLx, REG_HLx, z80_state.reg.r.hlx.b.h, z80_state.reg.r.hlx.b.l,
+		REG_AFx, z80_state.reg.r.afx.b.h, z80_state.reg.r.afx.b.l, flagdis(z80_state.reg.r.afx.b.l));
+	fprintf(f,
+		"\n"
+		"Tstate = %" PRIu64 "\n"
+		"Clock  = %0.6f s\n",
+		TSTATE,
+		TSTATE*ns_per_tstate*1.0e-9);
+    }
 }

@@ -89,5 +89,5 @@ triggered by outputting the equivalent character to "magic" I/O port 184:
   Alt-m    dump memory as currently seen from the CPU
   Alt-p    dump primary RAM (64K, even nonexistent)
   Alt-x    dump extended/graphics RAM (if any)
-  Alt-d    dump all memory spaces (atomically)
+  Alt-d    dump everything available into a directory, atomically
   Alt-f    turn faketype on or off

@@ -8,7 +8,7 @@
  *  List of all registered address spaces
  * ------------------------------------------------------------------------- */
 struct as *null_as;
-static struct as *addrspaces;
+struct as *addrspaces;
 
 /* -------------------------------------------------------------------------
  *  Generic address space constructors and tools

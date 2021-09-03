@@ -521,7 +521,7 @@ static struct surface *init_surface(struct surface *s)
 /*
  * Screenshot setup
  */
-static void abc_screenshot(void)
+void abc_screenshot(const char *path)
 {
     struct surface s;
 
@@ -531,7 +531,7 @@ static void abc_screenshot(void)
         return;
     refresh_screen(&s, true);   /* Always snapshot with blink on */
 
-    screenshot(s.surf);
+    screenshot(s.surf, path);
     SDL_FreeSurface(s.surf);
 }
 
@@ -802,7 +802,7 @@ static void do_magic_from_event_loop(int abcsym)
 	push_quit_event();
 	break;
     case 's':
-	abc_screenshot();
+	abc_screenshot(NULL);
 	break;
     case 'r':
 	z80_reset();
@@ -821,7 +821,7 @@ static void do_magic_from_event_loop(int abcsym)
 	z80_trigger_uncond(UCEV_DUMP_XMEM);
 	break;
     case 'd':
-	z80_trigger_uncond(UCEV_ALL_DUMPS);
+	z80_trigger_uncond(UCEV_DUMP_ALL);
 	break;
     case 'f':
 	opts.faketype = !opts.faketype;

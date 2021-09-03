@@ -26,6 +26,8 @@ extern void do_magic(int);
 extern void do_quit(void);
 extern void enable_real_keyboard(void);
 
+extern void abc_screenshot(const char *path);
+
 /* Pointer to video RAM (text and graphics, respectively) */
 extern uint8_t *const video_ram;
 extern uint8_t *const fgram;

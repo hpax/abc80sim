@@ -26,6 +26,8 @@
 #include "compiler.h"
 #include "sysload.h"
 #include "hostfile.h"
+#include "screen.h"
+#include "z80.h"
 
 static size_t load_data(struct as *as, size_t offs,
 			const uint8_t *data, size_t len)
@@ -490,19 +492,14 @@ static void dump_memory_one_map(struct host_file *hf, struct as *as)
     dump_memory_xlt(hf, &xlt);
 }
 
-void dump_memory(const char *namespace)
+static void dump_as(struct as *as, const char *path)
 {
-    struct as *as;
     struct host_file *hf;
-
-    as = get_addrspace(namespace, strlen(namespace));
-    if (!as)
-	return;			/* Nothing to dump */
 
     if ((as->flags & AS_NODUMP) || !as->len)
 	return;			/* Empty namespace */
 
-    hf = dump_file(HF_BINARY, memdump_path, as->dump_name, ".bin");
+    hf = dump_file(HF_BINARY, path, memdump_path, as->dump_name, ".bin");
     if (!hf)
         return;
 
@@ -524,4 +521,62 @@ void dump_memory(const char *namespace)
         keep_file(hf);          /* It's good */
 
     close_file(&hf);
+}
+
+void dump_memory(const char *namespace)
+{
+    struct as *as;
+
+    as = get_addrspace(namespace, strlen(namespace));
+    if (!as)
+	return;			/* Nothing to dump */
+
+    dump_as(as, NULL);
+}
+
+/* Dump all memory spaces and other dumpables into a separate directory */
+void dump_all(void)
+{
+    struct as *as;
+    char *dirpath = NULL;
+    struct host_file *hf;
+    int i;
+
+    /* Create a dump directory */
+    for (i = 1; i <= 9999; i++) {
+	char dirname[16];
+	int err;
+
+	snprintf(dirname, sizeof dirname, "dump%04d", i);
+	dirpath = concat_path(memdump_path, dirname);
+	if (!make_dir(dirpath)) {
+	    err = 0;
+	    break;
+	}
+
+	err = errno;
+	free(dirpath);
+	dirpath = NULL;
+
+	if (err != EEXIST)
+	    break;
+    }
+    if (!dirpath)
+	return;
+
+    for (as = addrspaces; as; as = as->next)
+	dump_as(as, dirpath);
+
+    abc_screenshot(dirpath);
+
+    hf = dump_file(HF_TEXT, dirpath, NULL, "regs", ".txt");
+    if (hf) {
+	z80_dumpregs(hf->f, NULL);
+	if (!ferror(hf->f))
+	    keep_file(hf);
+
+	close_file(&hf);
+    }
+
+    free(dirpath);
 }

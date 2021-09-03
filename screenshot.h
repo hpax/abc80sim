@@ -4,6 +4,6 @@
 #include "compiler.h"
 #include <SDL.h>
 
-int screenshot(SDL_Surface *);
+int screenshot(SDL_Surface *, const char *);
 
 #endif

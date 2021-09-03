@@ -88,7 +88,7 @@ extern void *map_file(struct host_file *file, size_t len);
 
 /* Create a numbered dump file */
 extern struct host_file *
-dump_file(enum host_file_mode mode, const char *dir,
+dump_file(enum host_file_mode mode, const char *path, const char *dir,
 	  const char *prefix, const char *suffix);
 
 /* Create a temporary file */
@@ -139,5 +139,15 @@ extern void filelist_add_list(struct file_list *, const char *, int);
 extern void filelist_free(struct file_list *);
 extern char *filelist_peek(struct file_list *, int *);
 extern char *filelist_pop(struct file_list *, int *);
+
+#define PRIV_MODE	(S_IRUSR|S_IWUSR)
+#define FILE_MODE	(S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP|S_IROTH|S_IWOTH)
+#define DIR_MODE	(FILE_MODE|S_IXUSR|S_IXGRP|S_IXOTH)
+
+#ifdef HAVE__MKDIR
+#define make_dir(x) _mkdir(x)
+#else
+#define make_dir(x) mkdir((x), DIR_MODE)
+#endif
 
 #endif /* HOSTFILE_H */
