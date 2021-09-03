@@ -94,8 +94,8 @@ asmsrc:
 	$(MAKE) -C asmsrc
 
 clean:
-	$(RM_F) $(TARGETS) *.$(O) .*.d *~ core *.lst *.i *.s
-	$(RM_F) roms/*.$(O) roms/*.c roms/.*.d baudtospeed.c
+	$(RM_F) $(TARGETS) *.$(O) .*.d core *.lst *.i *.s $(GENC)
+	$(RM_F) roms/*.$(O) roms/*.c roms/.*.d
 
 spotless: clean
 	$(RM_F)  *~ .\#* \#* *.bak
