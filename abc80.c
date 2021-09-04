@@ -162,6 +162,7 @@ static const struct path_option path_options[] = {
     {{"Cs", "-scriptcmd"}, &script_files, add_command_to_list},
     {{"Fs", "-scriptfile"}, &script_files, add_file_to_list},
     {{"Ls", "-scriptlist"}, &script_files, add_list_to_list},
+    {{"Fo", "-outputfile"}, &opts.outputfile, NULL},
 };
 
 static int set_path(const char *opt, const char *what)
@@ -375,6 +376,8 @@ int main(int argc, char **argv)
 		opts.headless = enable;
 	    } else if (!strcmp(optstr, "batch")) {
 		opts.batch = enable;
+	    } else if (!strcmp(optstr, "output")) {
+		opts.output = enable;
 	    } else if (!strcmp(optstr, "server")) {
 		server_port = LONG_ARG();
 	    } else if (!strcmp(optstr, "baud")) {
@@ -439,6 +442,9 @@ int main(int argc, char **argv)
 		    break;
 		case 'B':
 		    opts.batch = true;
+		    break;
+		case 'o':
+		    opts.output = true;
 		    break;
                 case 'v':
                     show_version();
@@ -572,6 +578,9 @@ int main(int argc, char **argv)
     event_loop();               /* Handling external events and screen */
     atomic_store(&z80_quit, true);
     SDL_WaitThread(cpu_thread, NULL);
+
+    if (opts.output)
+	dump_txt_screen(NULL, opts.outputfile);
 
     screen_reset();
     exit(0);

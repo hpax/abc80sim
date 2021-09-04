@@ -43,6 +43,8 @@ Options (defaults in brackets):
   -Ls, --scriptlist file   read list of script files
   -e,  --console           enable console output device (PRC:)
   -Fe, --consolefile file  enable console output device to a file
+  -o,  --output            print text screen on exit
+  -Fo, --outputfile        print text screen on exit to a file
        --detach            detach from console (default for --server)
        --mo# file          mount file as drive MO#: (0-7)
        --mf# file          mount file as drive MF#: (0-7)

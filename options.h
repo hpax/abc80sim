@@ -62,6 +62,8 @@ struct opts {
     const char *meg80_config;	/* MEG80 card per-socket configuration */
     enum autobool faketype;	/* ABC80 keyboard fake for high speeds */
     enum memflags memflags;	/* Memory configuration */
+    bool output;		/* Dump text screen on process exit */
+    char *outputfile;		/* File to dump text screen to */
     double hz;			/* Frequency in Hz (HUGE_VAL if unlimited) */
 };
 extern struct opts opts;

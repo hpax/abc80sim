@@ -145,6 +145,7 @@ static inline unsigned int screenoffs(uint8_t y, uint8_t x, bool m40)
     default:			/* ABC800M, ABC802, ABC806 */
         offs = (y * 80) + (x << m40);
         break;
+
     }
 
     return offs;
@@ -534,6 +535,55 @@ void abc_screenshot(const char *path)
 
     screenshot(s.surf, path);
     SDL_FreeSurface(s.surf);
+}
+
+/*
+ * Produce a text screenshot
+ */
+void dump_txt_screen(const char *path, const char *file)
+{
+    unsigned int tx, ty;
+    struct host_file *hf = NULL;
+    FILE *f = NULL;
+
+    if (path)
+	hf = dump_file(HF_TEXT, path, NULL, "scrn", ".txt");
+    else if (is_stdio(file))
+	f = stdout;
+    else
+	hf = open_host_file(HF_TEXT, NULL, file, O_WRONLY|O_CREAT|O_TRUNC);
+
+    if (!f) {
+	if (!hf)
+	    return;
+	f = hf->f;
+    }
+
+    SDL_mutexP(screen_mutex);
+    vdu = xfr;
+    SDL_mutexV(screen_mutex);
+
+    make_attributes();
+    for (ty = 0; ty < TS_HEIGHT; ty++) {
+        for (tx = 0; tx < TS_WIDTH; tx++) {
+	    unsigned char ch;
+	    struct vid_attrib va;
+
+	    va = attrib[ty+1][tx];
+	    ch = va.ch & 0x7f;
+	    if (ch < ' ' || (va.flags & GMODE_DBL2))
+		ch = ' ';
+	    if (!(va.flags & GMODE_EL2))
+		putc(ch, f);
+	}
+	putc('\n', f);
+    }
+
+    if (hf) {
+	if (!ferror(f))
+	    keep_file(hf);
+	close_file(&hf);
+    }
 }
 
 /* SDL_USEREVENT <= type < SDL_NUMEVENTS */

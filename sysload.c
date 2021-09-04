@@ -571,6 +571,7 @@ void dump_all(void)
     }
 
     abc_screenshot(dirpath);
+    dump_txt_screen(dirpath, NULL);
 
     hf = dump_file(HF_TEXT, dirpath, NULL, "regs", ".txt");
     if (hf) {

@@ -27,6 +27,7 @@ extern void do_quit(void);
 extern void enable_real_keyboard(void);
 
 extern void abc_screenshot(const char *path);
+extern void dump_txt_screen(const char *path, const char *file);
 
 /* Pointer to video RAM (text and graphics, respectively) */
 extern uint8_t *const video_ram;
