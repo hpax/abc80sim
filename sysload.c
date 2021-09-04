@@ -570,6 +570,7 @@ void dump_all(void)
 	    dump_as(as, dirpath);
     }
 
+    trigger_screen_refresh();
     abc_screenshot(dirpath);
     dump_txt_screen(dirpath, NULL);
 

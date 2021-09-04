@@ -9,6 +9,7 @@ extern void screen_init(bool, bool);
 extern void screen_reset(void);
 extern void screen_write(int, int);
 extern void screen_flush(void);
+extern void trigger_screen_refresh(void);
 extern void setmode40(bool);
 
 extern void event_loop(void);

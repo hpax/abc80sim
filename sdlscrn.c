@@ -32,8 +32,6 @@
 
 extern const unsigned char abc_font[512][FONT_YSIZE];
 
-static void trigger_refresh(void);
-
 #define NCOLORS 8
 
 static struct argb {
@@ -538,7 +536,7 @@ void abc_screenshot(const char *path)
 }
 
 /*
- * Produce a text screenshot
+ * Produce a text screenshot; this must be called from the CPU context!
  */
 void dump_txt_screen(const char *path, const char *file)
 {
@@ -560,7 +558,7 @@ void dump_txt_screen(const char *path, const char *file)
     }
 
     SDL_mutexP(screen_mutex);
-    vdu = xfr;
+    vdu = cpu;
     SDL_mutexV(screen_mutex);
 
     make_attributes();
@@ -956,10 +954,7 @@ void vsync_screen(void)
         cpu.blink_on = !cpu.blink_on;
     }
 
-    trigger_refresh();
-
-    if (traceflags)
-        fflush(tracef);         /* So we don't buffer indefinitely */
+    trigger_screen_refresh();
 }
 
 /*
@@ -988,7 +983,7 @@ void do_quit(void)
 }
 
 /* Used from the CPU thread context to cause a screen redraw */
-static void trigger_refresh(void)
+void trigger_screen_refresh(void)
 {
     SDL_mutexP(screen_mutex);
     xfr = cpu;
@@ -996,6 +991,9 @@ static void trigger_refresh(void)
 
     if (!opts.headless)
 	push_user_event(UEV_REFRESH_SCREEN, 0, NULL);
+
+    if (traceflags)
+        fflush(tracef);         /* So we don't buffer indefinitely */
 }
 
 /* Called by the CPU thread once any script file is fully consumed */
