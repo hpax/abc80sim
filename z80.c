@@ -1324,7 +1324,7 @@ static enum z80_cond check_cpu_events(void)
 
 static uint16_t get_hl_addr(regpair * ix)
 {
-    if (ix == &z80_state.reg.r.hl) {
+    if (ix == &z80_state.hl) {
         return ix->w;
     } else {
         TSTATE += 8;            /* Ouch! */
@@ -1342,7 +1342,7 @@ static void do_CB_instruction(regpair * ix)
     uint16_t addr;
     uint8_t data;
 
-    if (ix == &z80_state.reg.r.hl) {
+    if (ix == &z80_state.hl) {
         /*
          * Normal operation sans DD/FD prefix
          */
@@ -2557,7 +2557,7 @@ enum z80_cond z80_run(enum z80_cond condrq)
 	    traceline[tracelinelen++] = ' ';
         }
 
-        ix = &z80_state.reg.r.hl;     /* Not an index instruction */
+        ix = &z80_state.hl;     /* Not an index instruction */
 	call_ret = false;	      /* Not a CALL, RET, or RST */
 
         instruction = mem_fetch_m1(REG_PC);
@@ -2587,14 +2587,14 @@ enum z80_cond z80_run(enum z80_cond condrq)
             do_CB_instruction(ix);
             break;
         case 0xDD:             /* DD.. extended instruction */
-            ix = &z80_state.reg.r.ix;
+            ix = &z80_state.ix;
             instruction = mem_fetch(REG_PC++);
             goto indexed;
         case 0xED:             /* ED.. extended instruction */
             do_ED_instruction(ix);
             break;
         case 0xFD:             /* FD.. extended instruction */
-            ix = &z80_state.reg.r.iy;
+            ix = &z80_state.iy;
             instruction = mem_fetch(REG_PC++);
             goto indexed;
 
@@ -3687,20 +3687,20 @@ static const char *flagdis(uint8_t f)
 }
 
 #define WREG(U,L)						\
-    if (z80_state.reg.r.L.w != old_state.reg.r.L.w) {		\
-	add_cputrace(" %s=%04X", U, z80_state.reg.r.L.w);	\
-	old_state.reg.r.L.w = z80_state.reg.r.L.w;		\
+    if (z80_state.L.w != old_state.L.w) {		\
+	add_cputrace(" %s=%04X", U, z80_state.L.w);	\
+	old_state.L.w = z80_state.L.w;		\
     }
 #define BREG(U,L)						\
-    if (z80_state.reg.r.L != old_state.reg.r.L) {		\
-	add_cputrace(" %s=%02X", U, z80_state.reg.r.L);		\
-	old_state.reg.r.L = z80_state.reg.r.L;			\
+    if (z80_state.L != old_state.L) {		\
+	add_cputrace(" %s=%02X", U, z80_state.L);		\
+	old_state.L = z80_state.L;			\
     }
 #define FREG(U,L)							\
-    if (z80_state.reg.r.L != old_state.reg.r.L) {			\
-	add_cputrace(" %s=%02x,%s", U, z80_state.reg.r.L,		\
-		     flagdis(z80_state.reg.r.L));			\
-	old_state.reg.r.L = z80_state.reg.r.L;				\
+    if (z80_state.L != old_state.L) {			\
+	add_cputrace(" %s=%02x,%s", U, z80_state.L,		\
+		     flagdis(z80_state.L));			\
+	old_state.L = z80_state.L;				\
     }
 
 static void diffstate(void)
@@ -3744,8 +3744,8 @@ void z80_dumpregs(FILE *f, const char *prefix)
 		"IX  = 0x%04x   %5u   %3u:%3u\n"
 		"IY  = 0x%04x   %5u   %3u:%3u\n"
 		"IR  = 0x%02x%02x           %3u:%3u\n",
-		REG_PC, REG_PC, z80_state.reg.r.pc.b.h, z80_state.reg.r.pc.b.l,
-		REG_SP, REG_SP, z80_state.reg.r.sp.b.h, z80_state.reg.r.sp.b.l,
+		REG_PC, REG_PC, z80_state.pc.b.h, z80_state.pc.b.l,
+		REG_SP, REG_SP, z80_state.sp.b.h, z80_state.sp.b.l,
 		REG_BC, REG_BC, REG_B, REG_C,
 		REG_DE, REG_DE, REG_D, REG_E,
 		REG_HL, REG_HL, REG_H, REG_L,
@@ -3758,10 +3758,10 @@ void z80_dumpregs(FILE *f, const char *prefix)
 		"DE' = 0x%04x   %5u   %3u:%3u\n"
 		"HL' = 0x%04x   %5u   %3u:%3u\n"
 		"AF' = 0x%04x           %3u:%3u  %s\n",
-		REG_BCx, REG_BCx, z80_state.reg.r.bcx.b.h, z80_state.reg.r.bcx.b.l,
-		REG_DEx, REG_DEx, z80_state.reg.r.dex.b.h, z80_state.reg.r.dex.b.l,
-		REG_HLx, REG_HLx, z80_state.reg.r.hlx.b.h, z80_state.reg.r.hlx.b.l,
-		REG_AFx, z80_state.reg.r.afx.b.h, z80_state.reg.r.afx.b.l, flagdis(z80_state.reg.r.afx.b.l));
+		REG_BCx, REG_BCx, z80_state.bcx.b.h, z80_state.bcx.b.l,
+		REG_DEx, REG_DEx, z80_state.dex.b.h, z80_state.dex.b.l,
+		REG_HLx, REG_HLx, z80_state.hlx.b.h, z80_state.hlx.b.l,
+		REG_AFx, z80_state.afx.b.h, z80_state.afx.b.l, flagdis(z80_state.afx.b.l));
 	fprintf(f,
 		"\n"
 		"Tstate = %" PRIu64 "\n"

@@ -44,34 +44,26 @@ enum z80_regnums {
     Z80_IX,  Z80_IY,
     Z80_AFx, Z80_BCx, Z80_DEx, Z80_HLx, /* AF' BC' DE' HL' */
     Z80_IR,
-    Z80_LAST_PC,		/* PC of last started instruction */
     Z80_REG_NUM
 };
 struct z80_state_struct {
-    union {
-	struct {
-	    regpair af;
-	    regpair bc;
-	    regpair de;
-	    regpair hl;
-	    regpair sp;
-	    regpair pc;
-	    regpair ix;
-	    regpair iy;
+    regpair af;
+    regpair bc;
+    regpair de;
+    regpair hl;
+    regpair sp;
+    regpair pc;
+    regpair ix;
+    regpair iy;
 
-	    regpair afx;
-	    regpair bcx;
-	    regpair dex;
-	    regpair hlx;
+    regpair afx;
+    regpair bcx;
+    regpair dex;
+    regpair hlx;
 
-	    regpair ir;
+    regpair ir;
 
-	    regpair last_pc;
-	} r;
-	uint16_t dbg[Z80_REG_NUM];
-    } reg;
-
-
+    regpair last_pc;		/* PC of last started instruction */
 
     uint8_t rctr;		/* counter part of REG_R */
 
@@ -102,41 +94,41 @@ enum uncond {
  * Register accessors:
  */
 
-#define REG_A		z80_state.reg.r.af.b.h
-#define REG_F		z80_state.reg.r.af.b.l
-#define REG_B		z80_state.reg.r.bc.b.h
-#define REG_C		z80_state.reg.r.bc.b.l
-#define REG_D		z80_state.reg.r.de.b.h
-#define REG_E		z80_state.reg.r.de.b.l
-#define REG_H		z80_state.reg.r.hl.b.h
-#define REG_L		z80_state.reg.r.hl.b.l
+#define REG_A		z80_state.af.b.h
+#define REG_F		z80_state.af.b.l
+#define REG_B		z80_state.bc.b.h
+#define REG_C		z80_state.bc.b.l
+#define REG_D		z80_state.de.b.h
+#define REG_E		z80_state.de.b.l
+#define REG_H		z80_state.hl.b.h
+#define REG_L		z80_state.hl.b.l
 
-#define REG_IXH		z80_state.reg.r.ix.b.h
-#define REG_IXL		z80_state.reg.r.ix.b.l
-#define REG_IYH		z80_state.reg.r.iy.b.h
-#define REG_IYL		z80_state.reg.r.iy.b.l
+#define REG_IXH		z80_state.ix.b.h
+#define REG_IXL		z80_state.ix.b.l
+#define REG_IYH		z80_state.iy.b.h
+#define REG_IYL		z80_state.iy.b.l
 
-#define REG_SP		z80_state.reg.r.sp.w
-#define REG_PC		z80_state.reg.r.pc.w
-#define REG_LAST_PC	z80_state.reg.r.last_pc.w
+#define REG_SP		z80_state.sp.w
+#define REG_PC		z80_state.pc.w
+#define REG_LAST_PC	z80_state.last_pc.w
 
-#define REG_AF		z80_state.reg.r.af.w
-#define REG_BC		z80_state.reg.r.bc.w
-#define REG_DE		z80_state.reg.r.de.w
-#define REG_HL		z80_state.reg.r.hl.w
+#define REG_AF		z80_state.af.w
+#define REG_BC		z80_state.bc.w
+#define REG_DE		z80_state.de.w
+#define REG_HL		z80_state.hl.w
 
-#define REG_AFx		z80_state.reg.r.afx.w
-#define REG_BCx		z80_state.reg.r.bcx.w
-#define REG_DEx		z80_state.reg.r.dex.w
-#define REG_HLx		z80_state.reg.r.hlx.w
+#define REG_AFx		z80_state.afx.w
+#define REG_BCx		z80_state.bcx.w
+#define REG_DEx		z80_state.dex.w
+#define REG_HLx		z80_state.hlx.w
 
-#define REG_IX		z80_state.reg.r.ix.w
-#define REG_IY		z80_state.reg.r.iy.w
+#define REG_IX		z80_state.ix.w
+#define REG_IY		z80_state.iy.w
 
-#define REG_IR		z80_state.reg.r.ir.w
+#define REG_IR		z80_state.ir.w
 
-#define REG_I		z80_state.reg.r.ir.b.h
-#define REG_R		z80_state.reg.r.ir.b.l
+#define REG_I		z80_state.ir.b.h
+#define REG_R		z80_state.ir.b.l
 
 #define TSTATE	z80_state.tc
 
@@ -154,23 +146,6 @@ static inline uint8_t z80_get_r(void)
 static inline uint8_t z80_set_r(uint8_t val)
 {
     return z80_state.rctr = REG_R = val;
-}
-
-/* Debugger register accessors */
-static inline int z80_get_reg(unsigned int reg)
-{
-    REG_IR = z80_get_ir();	/* Update REG_R */
-    return (reg >= Z80_REG_NUM) ? -1 : z80_state.reg.dbg[reg];
-}
-
-static inline int z80_set_reg(unsigned int reg, uint16_t val)
-{
-    if (reg >= Z80_REG_NUM)
-	return -1;
-
-    z80_state.reg.dbg[reg] = val;
-    z80_set_r(REG_R);		/* We might have changed REG_R */
-    return 0;
 }
 
 /*
