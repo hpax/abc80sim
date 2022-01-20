@@ -66,6 +66,8 @@ static int config_port(int fd, unsigned long baud, enum flowctrl flowctrl)
 	return -1;
     }
 
+    /* There doesn't seem to be any equivalent to HUPCL? */
+
     dcb.BaudRate = baud;
     dcb.fBinary = TRUE;
     dcb.fParity = FALSE;
@@ -90,6 +92,10 @@ static int config_port(int fd, unsigned long baud, enum flowctrl flowctrl)
     dcb.fRtsControl = RTS_CONTROL_ENABLE;
 
     switch (flowctrl) {
+    case FLOW_NONE:
+	/* Already set up */
+	break;
+
     case FLOW_DTR:
 	dcb.fDtrControl = DTR_CONTROL_HANDSHAKE;
 	dcb.fOutxDsrFlow = TRUE;
@@ -98,10 +104,6 @@ static int config_port(int fd, unsigned long baud, enum flowctrl flowctrl)
     case FLOW_RTS:
 	dcb.fRtsControl = RTS_CONTROL_HANDSHAKE;
 	dcb.fOutxCtsFlow = TRUE;
-	break;
-
-    default:
-	/* Already set up */
 	break;
     }
 
@@ -242,18 +244,22 @@ static int config_port(int fd, unsigned long baud, enum flowctrl flowctrl)
 		     | INLCR | IGNCR | ICRNL | IXON);
     tio.c_lflag &= ~(ECHO | ECHONL | ICANON | ISIG | IEXTEN);
     tio.c_oflag &= ~OPOST;
-    tio.c_cflag &= ~(CSIZE | CSTOPB | PARENB | CRTSCTS);
-    tio.c_cflag |= CREAD | CS8 | CLOCAL;
+    tio.c_cflag &= ~(CSIZE | CSTOPB | PARENB | CRTSCTS | CLOCAL);
+    tio.c_cflag |= HUPCL | CREAD | CS8;
     tio.c_cc[VMIN]  = 1;
     tio.c_cc[VTIME] = 0;
 
     switch (flowctrl) {
-    default:
-	/* Do nothing */
+    case FLOW_NONE:
+	tio.c_cflag |= CLOCAL;
 	break;
 
     case FLOW_RTS:
 	tio.c_cflag |= CRTSCTS;
+	break;
+
+    case FLOW_DTR:
+	/* Not clear how to support on Unix */
 	break;
     }
 
