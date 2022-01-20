@@ -678,7 +678,10 @@ static void mem_init_abc800cm(unsigned int flags, const uint8_t *master_rom)
 
     /*
      * Map 1: execution in option ROM - FGRAM open, but
-     *        16-32K is ROM. Can FGRAM be "opened" like on 802/806?
+     *        16-32K is ROM.
+     *
+     * Can FGRAM be "opened" like on 802/806? Looks like it, but
+     * it *also* looks like it might be possible to do write-under-mask?
      */
     if (!opts.hr)
 	return;
@@ -699,6 +702,34 @@ static inline void set_vram_1k(void)
     vram_as->mask   = 1023;
     vram_as->grain  = 10;
     vram_as->base   = 1024;	/* Second half of "actual" vram */
+}
+
+/*
+ * On ABC800C, need to catch a vram write to detect cursor on;
+ * this is needed for scripting since simply hooking the interrupt
+ * IRQ will drain the input immediately, with all data lost due
+ * to buffer overrun.
+ */
+static void abc800c_vram_as_write(struct as *as, size_t faddr, uint8_t v)
+{
+    as->p.data[faddr] = v;
+
+    if (v & 0x80)
+	cursor_enable_hook();
+}
+
+static const struct as_ops abc800c_vram_ops = {
+    .read  = NULL,
+    .write = abc800c_vram_as_write,
+    .dump  = mem_as_dump,
+    .load  = NULL,
+    .sync  = NULL
+};
+
+static inline void init_vram_abc800c(void)
+{
+    set_vram_1k();
+    vram_as->ops    = &abc800c_vram_ops;
 }
 
 /*
@@ -866,7 +897,7 @@ void mem_init(unsigned int flags, const char *memfile)
     }
 
     case MODEL_ABC800C:
-	set_vram_1k();
+	init_vram_abc800c();
 	mem_init_abc800cm(flags, abc800crom);
         break;
 
