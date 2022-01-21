@@ -246,7 +246,6 @@ int main(int argc, char **argv)
     const char *optstr;
     char optchr;
     enum autobool detach = A_AUTO; /* Default to true for --server */
-    bool console = false;
     SDL_Thread *cpu_thread;
     const char *server_port = NULL;
     unsigned int server_baud = 0;
@@ -318,6 +317,8 @@ int main(int argc, char **argv)
 	    } else if (!strcmp(optstr, "pr")) {
 		opts.memflags &= ~MEMFL_NOPR;
 		opts.memflags |= enable ? 0 : MEMFL_NOPR;
+		if (optarg)
+		    opts.praddr = strtoul(optarg, NULL, 0);
             } else if (!strcmp(optstr, "kb")) {
                 opts.kb = strtoul(LONG_ARG(), NULL, 0);
             } else if (!strcmp(optstr, "help")) {
@@ -372,6 +373,8 @@ int main(int argc, char **argv)
 		opts.meg80 = enable;
 		if (optarg)
 		    opts.meg80_config = optarg;
+	    } else if (!strcmp(optstr, "console")) {
+		opts.console = enable;
 	    } else if (!strcmp(optstr, "headless")) {
 		opts.headless = enable;
 	    } else if (!strcmp(optstr, "batch")) {
@@ -402,7 +405,7 @@ int main(int argc, char **argv)
                     opts.memflags |= MEMFL_NOBASIC;
                     break;
                 case 'e':
-                    console = true;
+                    opts.console = true;
                     break;
                 case 'd':
                     opts.memflags |= MEMFL_NODEV;
@@ -490,7 +493,7 @@ int main(int argc, char **argv)
         }
     }
 
-    if (console) {
+    if (opts.console) {
         if (is_stdio(console_filename)) {
             console_file = stdout;
 	    if (detach == A_AUTO)

@@ -39,7 +39,7 @@
 38*#	Recordnummer utanför filen
 39*#	Filen skrivskyddad
 40*#	Filen raderingsskyddad
-41*#	Skivan fill
+41*#	Skivan full
 42*#	Skivan ej klar
 43*#	Skivan skrivskyddad
 44#	Logisk fil ej öppen

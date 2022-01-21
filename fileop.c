@@ -842,10 +842,23 @@ fail:
     return send_reply(me, err);
 }
 
+/* Generic command, basically ioctl but with a string */
+static unsigned int fop_cmd(struct abcprint *me)
+{
+    int err = 128 + 37;		/* Felaktigt recordformat = unsupported cmd */
+    
+    if (me->ix && !file_open(me->ff))
+	err = 128 + 45;		/* File specified but does not exist */
+    else if (me->datalen == 0)
+	err = 0;		/* Null command */
+
+    return send_reply(me, err);
+}
+
 /* Invalid file operation */
 static unsigned int fop_invalid(struct abcprint *me)
 {
-    return send_reply(me, 128 + 11); /* Förstår ej */
+    return send_reply(me, 128 + 52); /* Ej till denna enhet */
 }
 
 /* Revert the state machine to its initial state (no command in progress) */
@@ -944,6 +957,7 @@ static const struct fop fops[] = {
     {  8, "SEEK8", { fop_seek, NULL } },   /* B8: SEEK8 */
     {  2, "PUT", { arg_len, fop_put } },     /* B9: PUT */
     {  0, "LISTVOL", { fop_listvol, NULL } }, /* BA: LIST VOLUMES */
+    {  2, "CMD", { arg_len, fop_cmd } },      /* BB: GENERIC COMMAND */
     {  0, "invalid", { fop_invalid, NULL } }  /* invalid command opcode */
 };
 

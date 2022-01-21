@@ -3,5 +3,6 @@
 ;;; (which occupies the normal printer ROM slot at 0x7800)
 ;;;
 
-	org 0x7400
+	defc ROMSTART=0x7400
+	defc ROMSIZE=1024
 	include "print80.inc"

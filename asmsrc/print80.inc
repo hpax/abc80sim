@@ -12,6 +12,7 @@
 ;;;                  bit 2 - USB suspended (not ready)
 ;;;                  bit 3 - USB configured (host ready)
 ;;;   OUT 2 - (C1)   flush Tx buffer immediately
+;;;   OUT 3 - (C2)   discard all input - only supported in some hw versions
 ;;;
 
 ;;;
@@ -26,30 +27,51 @@
 ;;; To auto-initialize this, we need a modified DOS that looks for
 ;;; additional ROM entry points (ABC800 has this, but not ABC80.)
 
+	org ROMSTART
+
 	include "abc80.inc"
 	include "auxram.inc"
 
 	defc selcode=60			; ABC-bus select code (parallel port)
+
+	defc LARGE=(ROMSIZE >= 2048)
+
 	;; Maximum number of remote volumes
 	defc MAX_VOLS = 32
 
 	;; Console device, probably doesn't fit anymore
-	defc console_dev = 0
+	defc console_dev = LARGE
 
 	;; Support strict text file access
 	defc pra_dev = 0
 
+	;; ABC800-style CON: and NUL: devices
+	defc connul = LARGE
+
 	;; Quicklib routine
 	defc quicklib = 1
 
-	;; ABC800-style CON: and NUL: devices
-	defc connul = 0
+	;; CMD routine if in IEC area?
+	defc have_cmd = LARGE && (ROMSTART == 0x7000)
+	if !have_cmd
+	defc c_cmd = ERR_8
+	defc e_cmd = ERR_8
+	defc e_iec = ERR_8
+	endif
 
 	;; Device timeout
 	defc timeout = 100		; 100/50 Hz = 2 s
 
 __begin:
-	; jp table for PR:
+	;; In the IEC area, add the IEC area entry points
+	;; IEC: jump table follows; simply treat it as PR:
+	if ROMSTART == 0x7000
+	jp c_cmd
+	jp e_cmd
+	jp e_iec
+	endif
+
+	; jp table for PR: (if in printer area, should be first)
 pr_jptable:
 	jp trivial			; OPEN
 	jp trivial			; PREPARE
@@ -77,9 +99,11 @@ prb_jptable:
 
 	;; Fixed entry points, reserved for future use
 fixfunc:
+	if ROMSTART != 0x7000
 	jp notforme			; Reserved
 	jp notforme			; Reserved
 	jp notforme			; Reserved
+	endif
 	jp notforme			; Reserved
 	jp notforme			; Reserved
 	jp notforme			; Reserved
@@ -291,6 +315,7 @@ pra_print:
 
 output_common:
 	ld a,0xA6
+prx_length_command:
 	call send_cmd
 	ld a,c
 	call send_byte
@@ -812,13 +837,14 @@ flush_rx:
 	and 0Dh
 	sub 09h
 	ret nz
+	out (3),a		; Fast flush if supported by the hardware
 	in a,(0)		; Consume byte
 	jr flush_rx
 
 	if console_dev
 prc_jptable:
-	jp pr_open			; OPEN
-	jp pr_open			; PREPARE
+	jp trivial			; OPEN
+	jp trivial			; PREPARE
 	jp trivial			; CLOSE
 	jp notforme			; INPUT
 	jp prc_print			; PRINT
@@ -850,7 +876,21 @@ prc_skip:
 	endif			; console_dev
 
 start:
-	call init		; Unwind to here on error
+	if have_cmd
+	
+	ld hl,new_basic_jumps
+	ld bc,old_basic_jumps - new_basic_jumps
+	ld a,(65h)		; First byte different between old and new
+	and a
+	jr z,is_new_basic
+	add hl,bc
+is_new_basic:
+	ld de,basic_jumps
+	ldir
+
+	endif
+	
+	call init		; Unwind to here on error or return
 	ld hl,__end + INIT_OFFS	; Where to search next
 	ret
 
@@ -926,7 +966,6 @@ link_volumes:
 	ld hl,device_list
 	ld (DEVLIST),hl
 
-	ld hl,__end
 	jp done
 
 notforme:
@@ -983,21 +1022,167 @@ nul_jptable:
 
 	endif
 
+;;;
+;;; Support for CMD (via the IEC area)
+;;;
+;;; CMD [#device,] expr [,expr] ...
+;;;
+;;; Similar to PRINT except that each argument is terminated by
+;;; a null byte before sending
+;;;
+	if have_cmd
+	defc CMD_BUF     = RADBUF
+	defc CMD_BUF_LEN = RADBUF_LEN
+	;; Need 16 bytes of overflow space for numbers
+	defc CMD_BUF_END = CMD_BUF + CMD_BUF_LEN - 16
+	
+	defc e_iec = ERR_8	; Not implemented
+
+e_cmd:
+	ld l,0			; No file number
+
+	ld a,(de)		; Next byte code
+	cp '#'
+	jr nz,e_cmd_find_file
+	inc de
+	rst 56			; Compute expression
+
+e_cmd_find_file:
+	ld (iy+13),l
+	ld ix,0			; No file map
+	ld a,l
+	and a
+	jr z,e_cmd_start	; Device 0
+
+	;; L = file number to find
+	ld ix,FILELIST
+
+e_cmd_find_file_next:
+	ld c,(ix+0)		; Link
+	ld b,(ix+1)
+	ld a,c
+	or b
+	jp z,ERR_32		; File not open
+	push bc
+	pop ix
+	ld a,(ix+2)		; File number
+	cp l
+	jr nz,e_cmd_find_file_next
+	;; IX -> file map
+	
+e_cmd_start:
+	push ix
+
+	ld hl,CMD_BUF
+	ld (e_cmd_buf_ptr),hl
+
+	ld (errsp),sp		; SAve stack pointer for reset
+
+e_cmd_start_expr:
+	ld a,(de)
+	inc de
+	cp ','
+	jr z,e_cmd_start_expr
+	cp ';'
+	jr z,e_cmd_start_expr
+	dec de
+	cp 192			; Byte code for expression
+	jr c,e_cmd_done		; Not an expression?
+	
+	rst 56			; Compute expression
+	push de			; Save P-code pointer
+	ld de,(e_cmd_buf_ptr)
+	dec b			; Integer?
+	jr nz,e_cmd_not_integer
+e_cmd_integer:
+	call INT_TO_STR
+	jr e_cmd_finish_num
+
+e_cmd_not_integer:
+	dec b			; String?
+	jr z,e_cmd_string
+
+e_cmd_float:			;; Floating point
+	ld hl,2
+	add hl,sp		; -> exponent on stack
+	call FLOAT_TO_STR
+
+e_cmd_finish_num:
+	call e_cmd_check_overflow
+e_cmd_finish:
+	ld (de),a
+	inc de
+	ld (e_cmd_buf_ptr),de
+	pop de			; P-code pointer
+	ld sp,(errsp)		; Reset stack
+	jr e_cmd_start_expr
+
+e_cmd_string:
+	pop hl			; P-code pointer
+	pop bc			; Stack adjustment (not used)
+	pop bc			; String address
+	ex (sp),hl		; String length in HL, P-code pointer on stack
+	push bc			; String address
+	push hl			; String length
+	push de			; Output pointer
+	add hl,de		; End of string
+	ex de,hl
+	call e_cmd_check_overflow
+	pop de			; Output pointer
+	pop bc			; String length
+	pop hl			; String pointer
+	ldir
+	jr e_cmd_finish
+
+e_cmd_done:
+	;; Output generated, now send it
+	pop ix			; Restore IX map pointer
+
+	push de			; P-code pointer
+	ld hl,(e_cmd_buf_ptr)
+	ld de,CMD_BUF
+	xor a
+	sbc hl,de
+	ex de,hl
+	ld c,e
+	ld b,d
+	pop de
+
+	call select
+	ld a,0BBh		; GENERIC COMMAND
+	call prx_length_command
+	jp done
+	
+e_cmd_check_overflow:
+	;; DE -> end of string data
+	push hl
+	ld hl,CMD_BUF_END-1	; -1 for terminal null
+	xor a
+	sbc hl,de
+	pop hl
+	ret nc			; All good
+	
+e_cmd_space_overflow:
+	rst 10h
+	defb 128 + 20		; "För lång rad"
+
+	endif			; have_cmd
+	
 device_list:
 	if console_dev
 prc_device:
-	defw prc_device+7
+	defw ASMPC + 7		; Next entry follows
 	defm "PRC"
 	defw prc_jptable
 	endif
 
 	if connul
 con_device:
-	defw nul_device
+	defw ASMPC + 7		; Next entry follows
 	defm "CON"
 	defw con_jptable
 nul_device:
-	defw pr_device
+	defw ASMPC + 7		; Next entry follows
 	defm "NUL"
 	defw nul_jptable
 	endif
@@ -1007,10 +1192,28 @@ pr_device:
 	defm "PR "
 	defw pr_jptable
 
-	;; Check for overflow and pad to 1024 bytes
-	defs 1024 - ASMPC
+	;; Jump table for BASIC functions that are inconsistent
+new_basic_jumps:		; Checksum 9913, 10042
+	if have_cmd
+	jp 3392h		; Check space on stack
+	jp 1853h		; Integer to string
+	jp 1675h		; Float to string
+	jp 2152h		; Compile PRINT
+	endif
+	
+old_basic_jumps:		; Checksum 11273
+	if have_cmd
+	jp 339Bh		; Check space on stack
+	jp 1855h		; Integer to string
+	jp 1679h		; Float to string
+	jp 2154h		; Compile PRINT
+	endif
+
+	;; Check for overflow and pad to desired ROM size
+	defs ROMSIZE - ASMPC
 __end:
 
+	
 ;;
 ;; In RAM; this is assuming external SRAM or equivalent at 20-22K.
 ;; The top 64 bytes are used by UFD-DOS.
@@ -1025,6 +1228,8 @@ voldevs:
 	defs 7*MAX_VOLS		; Up to 32 volume device entries
 errsp:
 	defs 2			; SP rollback on error return
+e_cmd_buf_ptr:
+	defs 2			; Current data buffer pointer
 ram_select:
 	defs 1			; Previous select code
 ram_cmd:
@@ -1033,6 +1238,14 @@ ram_serial:
 	defs 1			; Latest serial number
 ram_dummy:
 	defs 1			; Scratch byte
+basic_jumps:
+	if have_cmd
+CHECK_STACK_SPACE:	defs 3	; Check space on stack
+INT_TO_STR:		defs 3	; Integer to string
+FLOAT_TO_STR:		defs 3	; Float to string
+c_cmd:				; Compile CMD = same as PRINT
+C_PRINT:		defs 3	; Compile PRINT
+	endif
 
 ;;; Check for overflow
 	defs (ram_end - ram_start) - ASMPC

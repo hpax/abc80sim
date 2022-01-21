@@ -15,6 +15,8 @@
 	defc STACK=65063
 	defc SELECT=64831		; Current select code
 	defc DEVLIST=65034		; BASIC device list
+	defc FILELIST=65074		; BASIC file list
+	defc PRINTTMP=64981		; Temporary buffer for PRINT
 	defc RADBUF=65088		; BASIC line buffer
 	defc RADBUF_LEN=120
 	defc CRAD=65208			; P-code buf during compile
@@ -45,6 +47,35 @@
 	defc E_CMD=7003h		; Execute CMD byte code
 	defc E_IEC=7006h		; Evaluate IEC$(x)
 	defc IECDEVJP=7009h		; IEC: device jump table
+
+	;; Error generation stubs
+	defc ERR_53=06F7h		; Felaktig rad
+	defc ERR_0=06F9h		; Ej tillåtet öka DIM
+	defc ERR_1=06FBh		; Fel antal index
+	defc ERR_2=06FDh		; Ej tillåtet som kommand
+	defc ERR_3=06FFh		; Minnet fullt
+	defc ERR_4=0701h		; För stort flyttal
+	defc ERR_5=0703h		; För stort index
+	defc ERR_6=0705h		; Hittar ej detta radnummber
+	defc ERR_7=0707h		; För stort heltal
+	defc ERR_8=0709h		; Finns ej i detta system
+	defc ERR_9=070Bh		; Index utanför strängen
+	defc ERR_10=070Dh		; Texten får ej plats i strängen
+	defc ERR_21=070Fh		; Hittar ej filen
+	defc ERR_22=0711h		; Otillåten sats
+	defc ERR_12=0713h		; Felaktigt tal
+	defc ERR_24=0715h		; NEXT saknas
+	defc ERR_28=0717h		; Felaktig variabel efter NEXT
+	defc ERR_27=0719h		; NEXT utan FOR
+	defc ERR_29=071Bh		; RETURN utan GOSUB
+	defc ERR_26=071Dh		; Fel i ON-uttryck
+	defc ERR_30=071Fh		; DATA slut
+	defc ERR_31=0721h		; Fel data till kommando
+	defc ERR_32=0723h		; Filen ej öppnad
+	defc ERR_50=0725h		; Kvadratrot ur negativt tal
+	defc ERR_52=0727h		; Ej till denna enhet
+	defc ERR_57=0729h		; Funktionen ej definierad
+	defc ERR_60=072Bh		; Bit address > 16 bitar
 
 	;; File I/O jump table calls (indirects via IX)
 	defc IX_OPEN	= 0x088a + 3*0

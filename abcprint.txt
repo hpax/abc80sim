@@ -125,6 +125,17 @@ FF BA ss xxxx				LISTVOL
 
 	... and VOL is a 3-letter volume name.
 
+FF BB ss ixix len2 data...		GENERIC COMMAND
+
+	Generic command string (basically an ioctl with a string
+	instead of a number and structure), typically issued via the
+	CMD BASIC instruction (hijacked from the IEC option). ixix is
+	zero if no file is specified.
+
+	Returnerar ERR 37 (felaktigt recordformat) om kommandot ej
+	förstås; det är så att det kan hanteras via ON ERROR GOTO till
+	skillnad från ERR 11.
+
 Debug console
 -------------
 

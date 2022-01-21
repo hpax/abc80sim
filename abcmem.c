@@ -755,8 +755,7 @@ void mem_init(unsigned int flags, const char *memfile)
 	const uint8_t *dos = ufddos80;
 	const uint8_t *pr  = print80_30;
 	uint8_t * const rom = rom_as->p.data;
-	size_t prlen  = K(1);
-	size_t praddr = K(30);
+	size_t prlen, praddr;
 	unsigned int m;
 
 	if (flags & MEMFL_NOBASIC)
@@ -802,10 +801,45 @@ void mem_init(unsigned int flags, const char *memfile)
 	 * case... assume a user with such a modded machine will have
 	 * modded this too.
 	 */
-	if (opts.tkn80 == TKN80_GEJO ||
-	    (opts.tkn80 != TKN80_NONE && opts.kb == 64)) {
+
+	praddr = 0;
+
+	if (opts.praddr) {
+	    if (opts.praddr < 28 || opts.praddr > 30) {
+		fprintf(stderr, "%s: invalid printer ROM address: %uK\n",
+			program_name, opts.praddr);
+		praddr = 0;
+	    } else {
+		praddr = opts.praddr << 10;
+	    }
+	}
+
+	if (!praddr) {
+	    if (opts.tkn80 == TKN80_GEJO ||
+		(opts.tkn80 != TKN80_NONE && opts.kb == 64)) {
+		praddr = K(29);
+	    } else {
+		praddr = K(30);
+	    }
+	}
+
+	switch (praddr) {
+	case K(28):
+	    pr = print80_28;
+	    prlen = K(2);
+	    break;
+	case K(29):
 	    pr = print80_29;
-	    praddr = K(29);
+	    prlen = K(1);
+	    break;
+	case K(30):
+	    pr = print80_30;
+	    prlen = K(1);
+	    break;
+	default:
+	    pr = NULL;
+	    prlen = 0;
+	    break;
 	}
 
 	switch (opts.basic) {
@@ -835,7 +869,7 @@ void mem_init(unsigned int flags, const char *memfile)
 
 	if (!(flags & MEMFL_NODOS))
 	    memcpy(rom+K(24), dos, K(4));
-	if (!(flags & MEMFL_NOPR))
+	if (!(flags & MEMFL_NOPR) && prlen)
 	    memcpy(rom+praddr, pr, prlen);
 
 	/*

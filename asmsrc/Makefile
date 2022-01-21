@@ -1,17 +1,28 @@
+# This now assumes GNU make or equivalent
+
+MAKEFLAGS += -R -r
+
 Z80ASM = z80asm
 PERL   = perl
 
 UFDDOS = ../roms/ufddos80.rom
-PRINT  = ../roms/print80_29.rom ../roms/print80_30.rom
+PRINT  = ../roms/print80_29.rom ../roms/print80_30.rom ../roms/print80_28.rom
 ROMS   = $(PRINT) $(UFDDOS)
 BAS    = printnet.bas printnet.bac
+HDRS   = print80.inc abc80.inc auxram.inc
+
+.SUFFIXES:
+
+.SECONDARY:
+
+.DELETE_ON_ERROR:
 
 all: $(ROMS) $(BAS)
 
-%.map: %.asm $(HDRS)
+%.bin: %.asm $(HDRS)
 	$(Z80ASM) -b -l -m -s -g $<
 
-%.bin: %.map
+%.map: %.bin
 	@: Generated as "side effect"
 
 # Default rule
@@ -28,8 +39,6 @@ clean:
 spotless: clean
 	rm -f $(ROMS) $(BAS)
 
-print80_30.map: print80_30.asm print80.inc abc80.inc auxram.inc
-print80_29.map: print80_29.asm print80.inc abc80.inc auxram.inc
 printnet.bac:   print80_30.bin
 	bin2abc --bac80 --driver --new -s 0x7800 -e 0x784b -o $@ $<
 printnet.bas:   print80_30.bin

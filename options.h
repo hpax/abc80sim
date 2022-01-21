@@ -53,12 +53,14 @@ struct opts {
     enum tkn80 tkn80;		/* ABC80 form of 80 characters */
     bool startup_width40;	/* Start in 40-char mode (if applicable) */
     enum abc80_basic basic;	/* BASIC version (ABC80 only) */
+    unsigned int praddr;	/* Printer ROM base address */
     bool headless;		/* Headless, no screen output */
     bool batch;			/* Quit after end of script */
     bool color;			/* Color screen */
     bool hr;			/* High resolution graphics (ABC800C/M) */
     bool magic;			/* Allow magic I/O port */
     bool meg80;			/* ABC80 MEG80 card */
+    bool console;		/* Console device (PRC:) */
     const char *meg80_config;	/* MEG80 card per-socket configuration */
     enum autobool faketype;	/* ABC80 keyboard fake for high speeds */
     enum memflags memflags;	/* Memory configuration */

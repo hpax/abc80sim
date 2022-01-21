@@ -71,6 +71,8 @@ Options for ABC80 only:
                =ram          slot 3 contains SRAM
                =rom          slot 3 is write protected (ROM)
                =#,#...       amount of memory (K) in each slot (8-512) [512]
+       --pr=addr           set printer ROM base address in (28k, 29k, 30k)
+                           28K is a 2K ROM with additional features
 
 Options for ABC800C/M only:
   --hr                     enable high resolution graphics (default)
