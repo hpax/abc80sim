@@ -46,11 +46,15 @@
 ;;;  Sätt DROFF att motsvara den typ av
 ;;;  diskdrives som du har i ditt system
 ;;;
+;;;  Sätt till MO_: per default, eftersom det är den drive
+;;;  som skulle finnas i ett legacy system.
+;;;
         defc hdoff=4              ; Winchester
         defc mfoff=8              ; ABC832
         defc mooff=12             ; ABC830
         defc sfoff=16             ; ABC838
-        defc droff=mfoff          ; DR_: = MF_:
+        defc droff=mooff          ; DR_: = MO_:
+
 ;;;
 ;;; ---------------------------------------------------------------------------
 ;;;  - Fix no: 2 -
@@ -278,19 +282,6 @@ bpos:		ld   b,(ix+12)
 ;;; ----- FOLLOWING PATCHES ARE BY HPA ------
 
 ;;; --------------------------------------------------------------------------
-;;; Allow DOS to always be installed regardless of if there are any
-;;; disk drives detected. This is useful e.g. for loading a RAM/ROM-disk
-;;; driver on a cassette-only system.
-;;;
-	defc always_load_dos = 1
-
-	if always_load_dos
-	section always_load
-	org 6590h
-	nop
-	endif
-
-;;; --------------------------------------------------------------------------
 ;;; Make it possible to drop the stack further than DOSBUF0
 ;;;
 
@@ -332,11 +323,11 @@ setup_dosbuf0:
 	;; increment H by one and return (used by init below)
 try_init_rom:
 	ld a,(hl)
+	inc h			; Try the next page
 	cp 0C3h			; JP
-	jr z,doit
-	inc h
-	ret
-doit:	jp (hl)
+	ret nz			; Not JP
+	dec h			; Revert to the original address
+	jp (hl)
 
 _ofkn_pad:
 	defs (6829h-6812h)-(_ofkn_pad - _ofkn), 0xff
@@ -392,19 +383,21 @@ setup_autostart_cmd:
 
 autostart:
 	call SCRATCH		; Initialize BASIC program area (empty)
-	call CHECKCTRLC		; Clear Ctrl-C flag
+	call CHECKCTRLC		; Clear Ctrl-C flag, returns with A = 0
 	ld (iy+14),1		; Set command mode
-	ld sp,(STACK)		; Set user stack
+	;ld sp,(STACK)		; Set user stack - NOT NEEDED ALREADY THERE
 	ei
-	ld hl,RADBUF		; Pointer to command string (only CR = empty)
-	jp RUNCMD
+	ld hl,RADBUF
+	cp (hl)			; A = 0
+	jp z,CMD		; Regular command prompt ("ABC80")
+	jp RUNCMD		; Run autostart command
 
 	;; Initialize DOS proper, then scan for ROMs in the range
 	;; 0x4000..0x5fff and 0x7000..0x7bff for JP instructions at
 	;; page offset 0x4b (same as DOS)
 init:
-	ld (iy+RADBUF-IYBASE),13	; No autostart command set up
-	call DOSINIT			; Initialize DOS proper
+	ld (iy+RADBUF-IYBASE),0 ; No autostart
+	call DOSINIT		; Initialize DOS proper
 	ld h,40h		; Scan 0x5000..0x7c00 except DOS itself
 
 init_next:
