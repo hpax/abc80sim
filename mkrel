@@ -29,10 +29,15 @@ get_dlls () {
     local x
     local f
     for x; do
-	for f in $("$target"-strings $x | grep -i '\.dll$'); do
-	    if [ ! -f "$f" -a -f "$dlldir"/"$f" ]; then
-		cp "$dlldir"/"$f" .
-		get_dlls "$f"
+	for f in $("$target"-strings $x | egrep -i '^[^[:space:]]+\.dll$'); do
+	    if [ ! -f "$f" ]; then
+		# -maxdepth 4 is just a safety valve...
+		dllfile=$(find -L "$sysroot" -maxdepth 4 \
+			       -type f -iname "$f" -print -quit)
+		if [ -f "$dllfile" ]; then
+		    cp "$dllfile" "$f"
+		    get_dlls "$f"
+		fi
 	    fi
 	done
     done
@@ -54,11 +59,6 @@ for target in $native $targets; do
 	    cc=$(sed -ne 's/^CC[[:space:]]*=[[:space:]]*//p' "$pv"/Makefile)
 	    sysroot=$("$cc" -print-sysroot)
 	    if [ -d "$sysroot" ]; then
-		# -maxdepth 4 is just a safety valve...
-		dlldir=$(find -L "$sysroot" -maxdepth 4 \
-			      -type f -iname '*.dll' -printf '%h' -quit)
-	    fi
-	    if [ -d "$dlldir" ]; then
 		( cd "$pv" && get_dlls *.exe )
 	    fi
 	    mv "$pv" _build
