@@ -10,12 +10,15 @@
 #ifdef _WIN32
 
 #ifndef _WIN32_WINNT
-# define _WIN32_WINNT 0x0501	/* Windows XP */
+# define _WIN32_WINNT 0x0501	/* Windows XP minimum (enough?) */
 #endif
 
 #include <winsock2.h>
 #include <windows.h>
 #include <ws2tcpip.h>
+#ifdef HAVE_AFUNIX_H
+# include <afunix.h>
+#endif
 
 #define setsockerr(x)	WSASetLastError(x)
 static inline int sock_errno(void)
