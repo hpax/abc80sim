@@ -55,7 +55,7 @@ static int redirect_stdio(const char *in, const char *out)
     return err;
 }
 
-#ifdef __WIN32__
+#ifdef _WIN32
 
 void detach_console(void)
 {
@@ -63,7 +63,7 @@ void detach_console(void)
     FreeConsole();
 }
 
-#else /* not __WIN32__ */
+#else /* not _WIN32 */
 
 #ifndef _PATH_DEVNULL
 #define _PATH_DEVNULL "/dev/null"

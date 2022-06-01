@@ -8,7 +8,8 @@ Options (defaults in brackets):
        --abc800c           simulate an ABC800C
        --abc800m           simulate an ABC800C
        --abc802            simulate an ABC802
-       --server port       act as a fileserver
+  -FS, --server port       run as a PUN80 file/print server
+  -LS, --serverlist file   read server ports from a file
   -4,  --40                start in 40-column mode
   -8,  --80                start in 80-column mode (default)
   -b,  --no-basic          no BASIC ROM (uninitialized ROM instead)
@@ -82,7 +83,22 @@ Options for ABC802 only:
   -Fm, --memfile file      load a file into the ABC802 MEM: device
 
 Option for fileserver only:
-       --baud baudrate     set serial port speed
+       --baud baudrate     set serial port speed (default 19200)
+
+Fileserver ports can be specified as:
+
+	--server tcp[46][:[hostname][:[port]]
+	                   listen on a TCP/IP network socket, optionally
+			   restricted to a specific local host name and
+			   IPv4 or IPv6 only. The port defaults to 4680.
+	--server serial:device[:[baud]]
+	                   read from a specific serial port device, optionally
+			   with a baud rate specified
+	--server device
+		           legacy alias for --server serial:device:
+
+	The --server and --serverlist options can be given multiple
+	times.
 
 The simulator supports the following hotkeys; the same events can also be
 triggered by outputting the equivalent character to "magic" I/O port 184:

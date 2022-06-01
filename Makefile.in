@@ -39,7 +39,7 @@ SRCS = abc80.c clock.c sdlscrn.c fgcolor.c screenshot.c \
 	abcfont.c disk.c rtc.c simprint.c print.c fileop.c z80dis.c \
 	nstime.c hostfile.c console.c cas.c abcfile.c filelist.c \
 	trace.c sysload.c \
-	abcprintd.c serial.c \
+	abcprintd.c serial.c netopen.c \
 	clib/asprintf.c clib/localtime.c $(GENC)
 
 OBJS = $(patsubst %.c,%.$(O),$(SRCS))

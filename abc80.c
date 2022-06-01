@@ -31,6 +31,9 @@ static const char *tracefile = NULL;
 static const char *memfile = NULL;
 static const char *console_filename = NULL;
 
+static struct file_list server_ports;
+static unsigned long server_baud;
+
 enum tracing traceflags;
 FILE *tracef;
 
@@ -163,6 +166,8 @@ static const struct path_option path_options[] = {
     {{"Fs", "-scriptfile"}, &script_files, add_file_to_list},
     {{"Ls", "-scriptlist"}, &script_files, add_list_to_list},
     {{"Fo", "-outputfile"}, &opts.outputfile, NULL},
+    {{"FS", "-server"}, &server_ports, add_file_to_list},
+    {{"LS", "-serverlist"}, &server_ports, add_file_to_list}
 };
 
 static int set_path(const char *opt, const char *what)
@@ -247,9 +252,7 @@ int main(int argc, char **argv)
     char optchr;
     enum autobool detach = A_AUTO; /* Default to true for --server */
     SDL_Thread *cpu_thread;
-    const char *server_port = NULL;
-    unsigned int server_baud = 0;
-    int server_fd = -1;
+    bool server_mode;
 
     setlocale(LC_ALL, "");
 
@@ -381,8 +384,6 @@ int main(int argc, char **argv)
 		opts.batch = enable;
 	    } else if (!strcmp(optstr, "output")) {
 		opts.output = enable;
-	    } else if (!strcmp(optstr, "server")) {
-		server_port = LONG_ARG();
 	    } else if (!strcmp(optstr, "baud")) {
 		server_baud = strtoul(LONG_ARG(), NULL, 0);
 	    } else if (valid_drive_name(optstr)) {
@@ -507,35 +508,22 @@ int main(int argc, char **argv)
         }
     }
 
-    if (server_port) {
-	server_fd = abcprint_daemon_open(server_port, server_baud);
-	if (server_fd < 0) {
-	    fprintf(stderr, "%s: %s: %s\n",
-		    program_name, server_port, strerror(errno));
-	    exit(1);
-	}
-    }
+    server_mode = !!filelist_peek(&server_ports, NULL);
 
     if (detach == A_AUTO)
-	detach = !!server_port;
+	detach = server_mode;
 
     if (detach)
         detach_console();
 
-    /*
-     * ---------------------------------------------------------------------
+    /* ---------------------------------------------------------------------
      *  Initialization that affect file server mode should be executed
      *  before this code; anything that is not applicable to server mode
      *  should be run after this.
-     * ---------------------------------------------------------------------
-     */
-    if (server_fd >= 0) {
-	if (abcprint_daemon_thread(server_fd)) {
-	    fprintf(stderr, "%s: %s: %s\n",
-		    program_name, server_port, strerror(errno));
-	    exit(1);
-	}
-	exit(0);
+     * --------------------------------------------------------------------- */
+
+    if (server_mode) {
+	return abcprint_run_servers(&server_ports, server_baud);
     }
 
     /*

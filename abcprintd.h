@@ -2,6 +2,7 @@
 #define ABCPRINTD_H
 
 #include "compiler.h"
+#include "hostfile.h"
 
 /* abcprint instance */
 struct abcprint;
@@ -15,7 +16,6 @@ extern const char *fileop_path, *lpr_command;
 extern FILE *console_file;
 
 /* abcprintd daemon */
-extern int abcprint_daemon_open(const char *port, unsigned long baud);
-extern int abcprint_daemon_thread(int fd);
+extern int abcprint_run_servers(struct file_list *ports, unsigned long baud);
 
 #endif

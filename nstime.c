@@ -14,7 +14,7 @@
 
 #include <SDL.h>
 
-#ifdef __WIN32__
+#ifdef _WIN32
 
 #include <synchapi.h>
 #include <mmsystem.h>

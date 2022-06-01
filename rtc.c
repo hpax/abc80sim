@@ -17,7 +17,7 @@ struct rtc_time {
 
 static struct rtc_time rt;
 
-#ifdef __WIN32__
+#ifdef _WIN32
 
 #include <windows.h>
 

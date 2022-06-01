@@ -20,7 +20,7 @@ static inline enum host_file_mode mode_type(enum host_file_mode mode)
 #ifndef O_TEXT
 #define O_TEXT 0
 #endif
-#if defined(__WIN32__) && defined(_O_U16TEXT)
+#if defined(_WIN32) && defined(_O_U16TEXT)
 #define UNICODE_O_FLAGS _O_U16TEXT
 #else
 #define UNICODE_O_FLAGS O_TEXT
@@ -67,7 +67,7 @@ static inline bool filename_is_absolute(const char *name)
     if (*name == '/')
         return true;
 
-#ifdef __WIN32__
+#ifdef _WIN32
     if (*name == '\\' || strchr(name, ':'))
         return true;
 #endif
@@ -288,7 +288,7 @@ static bool plain_filename(const char *filename)
  */
 static const char *temp_path;
 
-#ifdef __WIN32__
+#ifdef _WIN32
 
 static const char *os_get_temp_path(void)
 {
@@ -510,7 +510,7 @@ static size_t page_mask;
 
 static inline size_t page_size(void)
 {
-#ifdef __WIN32__
+#ifdef _WIN32
     SYSTEM_INFO si;
     GetSystemInfo(&si);
     return si.dwPageSize;
@@ -602,7 +602,7 @@ static void do_msync_file(struct host_file *hf)
 #endif
 }
 
-#elif defined(__WIN32__)
+#elif defined(_WIN32)
 
 static void *do_map_file(struct host_file *hf)
 {
@@ -785,7 +785,7 @@ static void hostfile_cleanup(void)
 /*
  * Rename function with POSIX overwrite semantics
  */
-#ifdef __WIN32__
+#ifdef _WIN32
 static int my_rename(const char *old, const char *new)
 {
     if (MoveFileEx(old, new, MOVEFILE_REPLACE_EXISTING))

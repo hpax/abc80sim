@@ -14,6 +14,8 @@
 /* On Microsoft platforms we support multibyte character sets in filenames */
 #define _MBCS 1
 
+#define PLAIN_WIN32 defined(_WIN32) && !defined(__CYGWIN__)
+
 /* These header files should pretty much always be included... */
 #include <assert.h>
 #include <stddef.h>
@@ -110,13 +112,20 @@ struct tm *localtime_r(const time_t *, struct tm *);
 #endif
 
 /*
- * mode_t, speed_t
+ * mode_t, speed_t, socklen_t
  */
 #ifndef HAVE_MODE_T
 typedef int mode_t;
 #endif
 #ifndef HAVE_SSIZE_T
+# ifdef HAVE_PTRDIFF_T
+typedef ptrdiff_t ssize_t;
+# else
 typedef int ssize_t;
+# endif
+#endif
+#ifndef HAVE_SOCKLEN_T
+typedef int socklen_t;
 #endif
 
 /*

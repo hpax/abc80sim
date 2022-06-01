@@ -33,7 +33,7 @@ struct host_file {
     uint8_t *map;               /* Memory-mapped contents */
     size_t mlen;                /* Length of memory map */
     size_t flen;                /* Length of true file in memory map */
-#ifdef __WIN32__
+#ifdef _WIN32
     HANDLE maphandle;           /* Special Windows drain bramage */
 #endif
 };
@@ -54,7 +54,7 @@ static inline bool is_path_separator(char c)
 {
     switch (c) {
     case '/':
-#ifdef __WIN32__
+#ifdef _WIN32
     case ':':
     case '\\':
 #endif

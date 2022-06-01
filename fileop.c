@@ -670,7 +670,7 @@ static unsigned int do_write(struct abcprint *me, bool eolcvt)
     struct host_file *hf;
     int err;
 
-#ifdef __WIN32__
+#ifdef _WIN32
     /* ABC sends CR LF as line endings, which matches Windows */
     eolcvt = false;
 #endif
@@ -846,7 +846,7 @@ fail:
 static unsigned int fop_cmd(struct abcprint *me)
 {
     int err = 128 + 37;		/* Felaktigt recordformat = unsupported cmd */
-    
+
     if (me->ix && !file_open(me->ff))
 	err = 128 + 45;		/* File specified but does not exist */
     else if (me->datalen == 0)

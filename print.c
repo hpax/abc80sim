@@ -26,7 +26,7 @@
 #include <wchar.h>
 #include <locale.h>
 
-#ifdef __WIN32__
+#ifdef _WIN32
 const char *lpr_command = "notepad /p \"*\"";
 #else
 const char *lpr_command = "lpr '*'";
