@@ -16,6 +16,22 @@
 
 #define PLAIN_WIN32 defined(_WIN32) && !defined(__CYGWIN__)
 
+#ifdef _WIN32
+
+#ifndef _WIN32_WINNT
+# define _WIN32_WINNT 0x0600	/* Windows Vista (needed for WSAPoll) */
+#endif
+
+#ifdef HAVE_WINSOCK2_H
+/* Must be included before windows.h */
+# include <winsock2.h>
+#endif
+#ifdef HAVE_WINDOWS_H
+# include <windows.h>
+#endif
+
+#endif /* _WIN32 */
+
 /* These header files should pretty much always be included... */
 #include <assert.h>
 #include <stddef.h>
@@ -54,9 +70,6 @@
 
 #ifdef HAVE_IO_H
 #include <io.h>
-#endif
-#ifdef HAVE_WINDOWS_H
-#include <windows.h>
 #endif
 #ifdef HAVE_DIRECT_H
 #include <direct.h>

@@ -9,12 +9,6 @@
 
 #ifdef _WIN32
 
-#ifndef _WIN32_WINNT
-# define _WIN32_WINNT 0x0501	/* Windows XP minimum (enough?) */
-#endif
-
-#include <winsock2.h>
-#include <windows.h>
 #include <ws2tcpip.h>
 #ifdef HAVE_AFUNIX_H
 # include <afunix.h>
@@ -26,11 +20,14 @@ static inline int sock_errno(void)
     return WSAGetLastError();
 }
 #define socke(x)        (WSA ## x)
-
-#define poll(x,y,z) WSAPoll(x,y,z)
+#define sockerr(x)      (sock_errno() == (WSA ## x))
 
 extern int socket_to_fd(SOCKET sock);
-extern SOCKET fd_to_socket(int fd);
+static inline SOCKET fd_to_socket(int fd)
+{
+    return (SOCKET)_get_osfhandle(fd);
+}
+
 extern void socket_init(void);
 
 #else
@@ -64,15 +61,15 @@ static inline int sock_errno(void)
     return errno;
 }
 #define socke(x)	(x)
-#define socket_init() ((void)0)
-#define closesocket(x) close(x)
+#define sockerr(x)      (errno == (x))
+#define socket_init()   ((void)0)
+#define closesocket(x)  close(x)
 
 #define socket_to_fd(sock) (sock)
 #define fd_to_socket(sock) (sock)
 
 #endif
 
-#define sockerr(x) (sock_errno() == socke(x))
 
 #ifndef HAVE_SA_FAMILY_T
 typedef unsigned short int sa_family_t;

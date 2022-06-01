@@ -35,7 +35,7 @@ void socket_init(void)
  * few filehandle. Thus, socket_to_fd(fd_to_socket(sockfd)) is roughly
  * equivalent to dup(sockfd).
  */
-static int socket_to_fd(SOCKET sock)
+int socket_to_fd(SOCKET sock)
 {
     int fd;
 
@@ -48,18 +48,9 @@ static int socket_to_fd(SOCKET sock)
     return fd;
 }
 
-/*
- * This is an idempotent operation: fd_to_socket(sockfd) will always
- * return the same value and will not modify any state.
- */
-static SOCKET fd_to_socket(int fd)
-{
-    return (SOCKET)_get_osfhandle(fd);
-}
-
 static int socket_nonblock(SOCKET sock)
 {
-    int on = 1;
+    unsigned long on = 1;
     return ioctlsocket(sock, FIONBIO, &on);
 }
 
@@ -134,7 +125,7 @@ static int split_service(const char *spec, char **name, char **serv)
 
 static int setsockopt_int(SOCKET sock, int level, int optname, int val)
 {
-    return setsockopt(sock, level, optname, &val, sizeof val);
+    return setsockopt(sock, level, optname, (const void *)&val, sizeof val);
 }
 
 static SOCKET
@@ -394,12 +385,19 @@ static int sock_accept(SOCKET sock)
  * Listen for a connection to a set of listening sockets.
  * Returns a file descriptor, even on Windows, or a negative error value.
  */
+#ifdef _WIN32
+#define poll WSAPoll
+#define poll_retry() (0)
+#else
+# define poll_retry() (errno == EAGAIN || errno == EINTR)
+#endif
+
 int sockset_accept(struct sockset *set)
 {
     while (set->nsock) {
 	int pv = poll(set->psock, set->nsock, -1);
 	if (pv < 0) {
-	    if (sockerr(EAGAIN) || sockerr(EWOULDBLOCK) || sockerr(ENOMEM))
+	    if (poll_retry())
 		continue;
 	    return -sock_errno();
 	}

@@ -44,6 +44,8 @@ SRCS = abc80.c clock.c sdlscrn.c fgcolor.c screenshot.c \
 
 OBJS = $(patsubst %.c,%.$(O),$(SRCS))
 
+SRCDIRS = . clib roms
+
 TARGETS = @TARGETS@
 
 all: $(TARGETS)
@@ -94,12 +96,17 @@ asmsrc:
 	$(MAKE) -C asmsrc
 
 clean:
-	$(RM_F) $(TARGETS) *.$(O) .*.d core *.lst *.i *.s $(GENC)
-	$(RM_F) roms/*.$(O) roms/*.c roms/.*.d
+	for d in $(SRCDIRS); do \
+		$(RM_F) $$d/*.$(O) $$d/.*.d $$d/*.lst $$d/*.i $$d/*.s \
+			$$d/*.lst ; \
+	done
+	$(RM_F) $(TARGETS) core $(GENC) roms/*.c
 
 spotless: clean
-	$(RM_F)  *~ .\#* \#* *.bak
+	for d in $(SRCDIRS); do \
+		$(RM_F) $$d/*~ $$d/'.#'* $$d/'#'* $$d/*.bak $$d/*.$$$$$$ ; \
+	done
 	$(RM_F) configure config.status config.log Makefile config/config.h
 	$(RM_F) autoconf/aclocal.m4 autom4te.cache
 
--include .*.d roms/.*.d
+-include .*.d clib/.*.d roms/.*.d

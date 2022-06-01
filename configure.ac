@@ -199,6 +199,7 @@ AC_SEARCH_LIBS([deflate], [z])
 AC_SEARCH_LIBS([png_write_png], [png])
 AC_SEARCH_LIBS([clock_gettime], [rt])
 AC_SEARCH_LIBS([timeBeginPeriod], [winmm])
+AC_SEARCH_LIBS([WSAStartup], [ws2_32])
 
 dnl
 dnl Some rather useful gcc extensions...
