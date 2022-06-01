@@ -109,6 +109,7 @@ AC_CHECK_HEADERS(direct.h)
 AC_CHECK_HEADERS(synchapi.h)
 AC_CHECK_HEADERS(mmsystem.h)
 AC_CHECK_HEADERS(timeapi.h)
+AC_CHECK_HEADERS(process.h)
 
 AC_CHECK_TYPES(ssize_t)
 AC_CHECK_TYPES(ptrdiff_t)
@@ -191,10 +192,9 @@ AC_CHECK_FUNCS(gettimeofday)
 
 dnl Process and console handling
 AC_FUNC_FORK
-AC_CHECK_FUNCS(getpid)
+AC_CHECK_FUNCS([getpid _getpid GetCurrentProcessId])
 AC_CHECK_FUNCS(setsid)
 PA_HAVE_FUNC(AllocConsole, ())
-AC_CHECK_FUNCS(GetCurrentProcessId)
 
 dnl Checks for library functions.
 AC_SEARCH_LIBS([deflate], [z])

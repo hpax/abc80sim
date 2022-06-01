@@ -249,6 +249,8 @@ static unsigned long long get_process_id(void)
 {
 #ifdef HAVE_GETPID
     return getpid();
+#elif defined(HAVE__GETPID)
+    return _getpid();
 #elif defined(HAVE_GETCURRENTPROCESSID)
     return GetCurrentProcessId();
 #else
