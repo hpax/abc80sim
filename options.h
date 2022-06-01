@@ -67,6 +67,7 @@ struct opts {
     bool output;		/* Dump text screen on process exit */
     char *outputfile;		/* File to dump text screen to */
     double hz;			/* Frequency in Hz (HUGE_VAL if unlimited) */
+    const char *pidfile;	/* Process ID file if detached */
 };
 extern struct opts opts;
 

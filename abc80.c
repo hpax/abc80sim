@@ -245,6 +245,17 @@ static char *long_arg(bool enable, const char *opt, char *arg)
 #define SHORT_ARG()	short_arg(optchr, *option++)
 #define LONG_ARG()	long_arg(enable, optstr,  optarg ? optarg : *option++)
 
+static unsigned long long get_process_id(void)
+{
+#ifdef HAVE_GETPID
+    return getpid();
+#elif defined(HAVE_GETCURRENTPROCESSID)
+    return GetCurrentProcessId();
+#else
+    return 0;			/* No idea what to do here */
+#endif
+}
+
 int main(int argc, char **argv)
 {
     char **option;
@@ -334,6 +345,8 @@ int main(int argc, char **argv)
                 parse_trace(LONG_ARG());
             } else if (!strcmp(optstr, "detach")) {
                 detach = enable;
+	    } else if (!strcmp(optstr, "pidfile")) {
+		opts.pidfile = optstr;
             } else if (!strcmp(optstr, "color") || !strcmp(optstr, "colour")) {
                 opts.color = enable;
             } else if (!strcmp(optstr, "MHz") ||
@@ -515,6 +528,17 @@ int main(int argc, char **argv)
 
     if (detach)
         detach_console();
+
+    if (opts.pidfile) {
+	struct host_file *pidfile;
+
+	pidfile = open_host_file(HF_TEXT, NULL, opts.pidfile,
+				 O_WRONLY|O_CREAT|O_TRUNC);
+	if (pidfile && pidfile->f) {
+	    fprintf(pidfile->f, "%llu\n", get_process_id());
+	    fflush(pidfile->f);
+	}
+    }
 
     /* ---------------------------------------------------------------------
      *  Initialization that affect file server mode should be executed

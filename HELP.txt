@@ -83,7 +83,8 @@ Options for ABC802 only:
   -Fm, --memfile file      load a file into the ABC802 MEM: device
 
 Option for fileserver only:
-       --baud baudrate     set serial port speed (default 19200)
+       --baud baudrate     set serial port speed [19200]
+       --pidfile file	   write daemon process ID to a file
 
 Fileserver ports can be specified as:
 
@@ -94,6 +95,10 @@ Fileserver ports can be specified as:
 	--server serial:device[:[baud]]
 	                   read from a specific serial port device, optionally
 			   with a baud rate specified
+	--server fd:rfd[,wfd]
+			   read and write from specific file descriptors
+			   prepared by the calling process (generally best
+			   used with --no-detach.)
 	--server device
 		           legacy alias for --server serial:device:
 

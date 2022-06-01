@@ -27,7 +27,8 @@ struct client_thread {
     SDL_Thread *tp;		/* Thread pointer */
     struct client_thread *reap;	/* Reaper chain */
     int rv;			/* Return value */
-    int fd;			/* Worker file descriptor */
+    int rfd;			/* Read file descriptor */
+    int wfd;			/* Write file descriptor */
     client_func task;		/* Thread function */
 };
 
@@ -35,7 +36,7 @@ static ssize_t abcprint_daemon_send(void *pvt, const void *data, size_t len)
 {
     struct client_thread *self = pvt;
     /* The generic code handles partial writes, so this is easy on our part */
-    return write(self->fd, data, len);
+    return write(self->wfd, data, len);
 }
 
 static bool errno_is_resume(int err)
@@ -74,18 +75,18 @@ static int abcprint_client_task(struct client_thread *self)
     if (!ibuf)
 	goto quit;
 
-    if (self->fd < 0) {
+    if (self->rfd < 0 || self->wfd < 0) {
 	errno = EBADF;
 	goto quit;
     }
 
-    abcprint = abcprint_init(abcprint_daemon_send, &self->fd);
+    abcprint = abcprint_init(abcprint_daemon_send, &self->wfd);
     if (!abcprint)
 	goto quit;
 
     while (1) {
 	errno = 0;
-	b = read(self->fd, ibuf, sizeof ibuf);
+	b = read(self->rfd, ibuf, sizeof ibuf);
 	if (b < 0 && errno_is_resume(errno))
 	    continue;
 	if (b <= 0)
@@ -122,13 +123,15 @@ static int abcprint_thread(void *selfp)
     return rv;			/* Reaper will unlock client.m_quitting */
 }
 
-static struct client_thread *abcprint_start_thread(int fd, client_func task)
+static struct client_thread *
+abcprint_start_thread(client_func task, int rfd, int wfd)
 {
     struct client_thread *ct = calloc(1, sizeof *ct);
     if (!ct)
 	return NULL;
 
-    ct->fd   = fd;
+    ct->rfd  = rfd;
+    ct->wfd  = wfd;
     ct->task = task;
 
     SDL_LockMutex(client.m_launch);
@@ -169,7 +172,7 @@ abcprint_serial_start(char *port, unsigned long baud, bool legacy)
 	return NULL;
     }
 
-    return abcprint_start_thread(fd, abcprint_client_task);
+    return abcprint_start_thread(abcprint_client_task, fd, fd);
 }
 
 static struct sockset servsocks = { .psock = NULL, .nsock = 0 };
@@ -182,7 +185,7 @@ static int abcprint_listen_task(struct client_thread *self)
 	if (fd < 0)
 	    break;
 
-	abcprint_start_thread(fd, abcprint_client_task);
+	abcprint_start_thread(abcprint_client_task, fd, fd);
     }
     return 0;
 }
@@ -206,6 +209,22 @@ int abcprint_run_servers(struct file_list *ports, unsigned long baud)
 	int af = AF_UNSPEC;
 	char *c1 = NULL;
 	size_t netpfx = 0;
+
+	if (!strcmp(filename, "-") || !strcasecmp(filename, "stdio")) {
+	    abcprint_start_thread(abcprint_client_task,
+				  fileno(stdin), fileno(stdout));
+	    continue;
+	}
+
+	if (!strncasecmp(filename, "fd:", 3)) {
+	    int rfd, wfd, nfd;
+	    nfd = sscanf(filename, "%d,%d", &rfd, &wfd);
+	    if (nfd >= 1) {
+		if (nfd < 2) wfd = rfd;
+		abcprint_start_thread(abcprint_client_task, rfd, wfd);
+	    }
+	    continue;
+	}
 
 	if (!strncasecmp(filename, "ip", 2))
 	    netpfx = 2;
@@ -245,7 +264,7 @@ int abcprint_run_servers(struct file_list *ports, unsigned long baud)
     }
 
     if (servsocks.nsock)
-	abcprint_start_thread(0, abcprint_listen_task);
+	abcprint_start_thread(abcprint_listen_task, 0, 0);
 
     if (!client.count)
 	return 1;		/* Nothing ever started... */

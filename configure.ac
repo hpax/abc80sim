@@ -189,10 +189,12 @@ AC_CHECK_FUNCS(clock_nanosleep)
 AC_CHECK_FUNCS(nanosleep)
 AC_CHECK_FUNCS(gettimeofday)
 
-dnl Console handling
+dnl Process and console handling
+AC_FUNC_FORK
+AC_CHECK_FUNCS(getpid)
 AC_CHECK_FUNCS(setsid)
 PA_HAVE_FUNC(AllocConsole, ())
-AC_FUNC_FORK
+AC_CHECK_FUNCS(GetCurrentProcessId)
 
 dnl Checks for library functions.
 AC_SEARCH_LIBS([deflate], [z])
