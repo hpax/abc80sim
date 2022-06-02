@@ -402,7 +402,7 @@ void abc80_piob_out(uint16_t port, uint8_t v)
     pio_check_interrupt(&portb);
 }
 
-uint8_t abc80_piob_in(uint16_t port)
+pure_func uint8_t abc80_piob_in(uint16_t port)
 {
     if (port & 1)
 	return 0xff;

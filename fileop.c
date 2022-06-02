@@ -14,7 +14,8 @@ const char *fileop_path = "abcdir";
  * to matter since the list is fairly short and the ABC will do a
  * linear search on its end.
  */
-static struct volume *get_volume(struct abcprint *me, const char *name)
+static pure_func struct volume *
+get_volume(struct abcprint *me, const char *name)
 {
     int i;
 

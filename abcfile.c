@@ -297,7 +297,7 @@ bool get_abc_block(void *block, struct abcdata *abc)
  * Comparison function for strings in ABC format; this is simply an
  * ASCII sort except that [ \ ] and { | } are permuted to match å, ä, ö
  */
-int strcmp_abc(const char *s1, const char *s2)
+pure_func int strcmp_abc(const char *s1, const char *s2)
 {
     int rv = 0;
 

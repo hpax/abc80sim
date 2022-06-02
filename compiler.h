@@ -220,6 +220,17 @@ typedef int socklen_t;
 #define pure_func
 #endif
 
+/*
+ * This is a printf()-type function
+ */
+#ifdef HAVE_FUNC_ATTRIBUTE3_FORMAT
+#define printf_func(fi,ai) __attribute__((__format__ (__printf__,fi,ai)))
+#define vprintf_func(fi)   __attribute__((__format__ (__printf__,fi,0)))
+#else
+#define printf_func(fi,ai)
+#define vprintf_func(fi)
+#endif
+
 /* Determine probabilistically if something is a compile-time constant */
 #ifdef HAVE___BUILTIN_CONSTANT_P
 #define is_constant(x) __builtin_constant_p(x)

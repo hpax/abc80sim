@@ -54,7 +54,7 @@ check_watchpoint_word(uint16_t address, enum z80_cond type)
 }
 
 /* Return the first breakpoint with a pending hit */
-extern struct breakpoint *breakpoint_get_hit(void);
+extern pure_func struct breakpoint *breakpoint_get_hit(void);
 
 /* Acknowledge a breakpoint hit */
 static inline void breakpoint_clear_hit(struct breakpoint *brk)
@@ -68,9 +68,9 @@ breakpoint_add(struct breakpoint *brk, unsigned int num,
 	       enum z80_cond type, uint16_t addr, unsigned int len);
 
 /* Remove all breakpoints */
-void breakpoint_clear_all(void);
+extern void breakpoint_clear_all(void);
 
 /* Find a breakpoint by number */
-struct breakpoint *breakpoint_find(unsigned int num);
+extern pure_func struct breakpoint *breakpoint_find(unsigned int num);
 
 #endif /* DEBUG_H */

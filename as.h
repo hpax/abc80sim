@@ -211,7 +211,7 @@ extern struct as *addrspaces;
 /*
  * Canned as_ops and as_ops members
  */
-struct as_data mem_as_dump(struct as *as, size_t offs);
+pure_func struct as_data mem_as_dump(struct as *as, size_t offs);
 void rom_as_write(struct as *as, size_t offs, uint8_t v);
 
 extern const struct as_ops rom_as_ops;
@@ -221,7 +221,7 @@ extern const struct as_ops null_as_ops;
 /*
  * Find an address space by name
  */
-struct as *get_addrspace(const char *name, size_t len);
+pure_func struct as *get_addrspace(const char *name, size_t len);
 
 /*
  * Choose a specific map/bank in an address space

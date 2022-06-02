@@ -48,13 +48,13 @@ extern void abc80_meg80_rwctl_out(uint16_t addr, uint8_t val);
 extern void abc800_set_mem(bool);
 
 extern void disk_register_devices(void);
-extern bool valid_drive_name(const char *drive);
+extern pure_func bool valid_drive_name(const char *drive);
 extern int disk_mount(const char *drive, const char *filename);
 
 extern void rtc_init(void);
 
 /* ABC806 RTC */
-extern uint8_t abc806_rtc_in(uint16_t port);
+extern pure_func uint8_t abc806_rtc_in(uint16_t port);
 extern void abc806_rtc_out(uint16_t port, uint8_t value);
 
 extern void abc800_ctc_out(uint16_t, uint8_t);
@@ -73,7 +73,7 @@ extern void cursor_enable_hook(void);
 extern void abc800_vsync(void);
 
 extern void abc80_piob_out(uint16_t port, uint8_t v);
-extern uint8_t abc80_piob_in(uint16_t port);
+extern pure_func uint8_t abc80_piob_in(uint16_t port);
 extern void abc80_cas_init(void);
 
 extern void abc800_sio_cas_out(uint16_t port, uint8_t v);

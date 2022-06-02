@@ -214,7 +214,7 @@ name_to_drive(const char *drive)
     return NULL;		/* No such disk */
 }
 
-bool valid_drive_name(const char *drive)
+pure_func bool valid_drive_name(const char *drive)
 {
     return name_to_drive(drive) != NULL;
 }

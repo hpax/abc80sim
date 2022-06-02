@@ -38,7 +38,7 @@ struct as *as_new_space(const char *name, const struct as_ops *ops,
 /*
  * The name, len pair allows for a separator other than \0.
  */
-struct as *get_addrspace(const char *name, size_t len)
+pure_func struct as *get_addrspace(const char *name, size_t len)
 {
     struct as *as;
 
@@ -71,7 +71,7 @@ struct as *new_mem(const char *name, size_t len, unsigned int nmaps,
     return as;
 }
 
-struct as_data mem_as_dump(struct as *as, size_t offs)
+pure_func struct as_data mem_as_dump(struct as *as, size_t offs)
 {
     struct as_data asd;
 

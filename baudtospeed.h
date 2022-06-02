@@ -10,6 +10,6 @@
 typedef unsigned long speed_t;
 #endif
 
-speed_t baudtospeed(unsigned long baud);
+extern const_func speed_t baudtospeed(unsigned long baud);
 
 #endif /* BAUDTOSPEED_H */

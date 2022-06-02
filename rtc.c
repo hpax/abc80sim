@@ -250,7 +250,7 @@ void abc806_rtc_out(uint16_t port, uint8_t val)
     }
 }
 
-uint8_t abc806_rtc_in(uint16_t port)
+pure_func uint8_t abc806_rtc_in(uint16_t port)
 {
     uint8_t v;
 

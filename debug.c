@@ -29,7 +29,7 @@ void breakpoint_hit(uint16_t address, uint16_t len, enum z80_cond type)
 }
 
 /* Return the first pending hit. */
-struct breakpoint *breakpoint_get_hit(void)
+pure_func struct breakpoint *breakpoint_get_hit(void)
 {
     struct breakpoint *brk;
 
@@ -60,7 +60,7 @@ static void brkpt_recalc_map(void)
 }
 
 /* Find a breakpoint by number */
-struct breakpoint *breakpoint_find(unsigned int num)
+pure_func struct breakpoint *breakpoint_find(unsigned int num)
 {
     struct breakpoint *brk;
 

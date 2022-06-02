@@ -221,7 +221,7 @@ struct host_file *dump_file(enum host_file_mode mode, const char *path,
  * Special filenames that should be avoided
  * XXX: add the weird Windows special cases here?
  */
-bool special_filename(const char *filename)
+bool pure_func special_filename(const char *filename)
 {
     if (!filename || !filename[0])
 	return true;
@@ -271,7 +271,7 @@ struct dirent *read_dir(struct host_file *hf)
 /*
  * Plain filename (no path)?
  */
-static bool plain_filename(const char *filename)
+static pure_func bool plain_filename(const char *filename)
 {
     char c;
 
@@ -861,7 +861,7 @@ void hostfile_init(void)
  * Returns a pointer to the first character of the filename part
  * in the original path buffer.
  */
-const char *host_strip_path(const char *path)
+pure_func const char *host_strip_path(const char *path)
 {
     const char *p;
 

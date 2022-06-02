@@ -19,7 +19,7 @@ extern volatile int event_pending;
 Uint32 post_periodic(Uint32 interval, void *param);
 
 extern void crtc_out(uint16_t, uint8_t);
-extern uint8_t crtc_in(uint16_t);
+extern pure_func uint8_t crtc_in(uint16_t);
 
 extern void fg_out(uint16_t, uint8_t);
 

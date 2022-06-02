@@ -1032,7 +1032,7 @@ void crtc_out(uint16_t port, uint8_t data)
     }
 }
 
-uint8_t crtc_in(uint16_t port)
+pure_func uint8_t crtc_in(uint16_t port)
 {
     if (!(port & 1))
 	return 0xff;		/* Address register is wo per datasheet */

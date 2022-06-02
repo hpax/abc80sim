@@ -39,7 +39,7 @@ struct z80_state_struct z80_state;
 static char traceline[1024];
 static size_t tracelinelen;
 
-static void add_cputrace(const char *fmt, ...)
+static printf_func(1,2) void add_cputrace(const char *fmt, ...)
 {
     va_list ap;
     size_t left = sizeof traceline - 1 - tracelinelen;

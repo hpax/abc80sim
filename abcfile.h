@@ -17,6 +17,6 @@ int mangle_for_readdir(char *dst, const char *src);
 int mangle_volname(char *dst, const char *src);
 unsigned int init_abcdata(struct abcdata *abc, const void *data, size_t len);
 bool get_abc_block(void *block, struct abcdata *abc);
-int strcmp_abc(const char *s1, const char *s2);
+pure_func int strcmp_abc(const char *s1, const char *s2);
 
 #endif /* ABCFILE_H */
