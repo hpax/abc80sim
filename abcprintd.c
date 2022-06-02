@@ -80,7 +80,7 @@ static int abcprint_client_task(struct client_thread *self)
 	goto quit;
     }
 
-    abcprint = abcprint_init(abcprint_daemon_send, &self->wfd);
+    abcprint = abcprint_init(abcprint_daemon_send, self);
     if (!abcprint)
 	goto quit;
 
