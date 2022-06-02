@@ -210,8 +210,6 @@ int open_socket(int af, const char *spec, const char *defsvc,
     if (split_service(spec, &name, &serv))
 	return -1;
 
-    printf("spec %s name %s serv %s passive %u\n", spec, name, serv, !!passive);
-
     while (1) {
 	const char *n = *name ? name : NULL;
 	const char *s = *serv ? serv : (defsvc && *defsvc) ? defsvc : NULL;
@@ -223,10 +221,8 @@ int open_socket(int af, const char *spec, const char *defsvc,
 	if (passive)
 	    hints.ai_flags |= AI_PASSIVE;
 
-	printf("getaddrinfo %s %s", n, s);
 	ai = NULL;
 	err = getaddrinfo(n, s, &hints, &ai);
-	printf(" : %s\n", err ? gai_strerror(err) : "ok");
 	if (err && serv != port_buf) {
 	    /* May have to fall back to the default port number */
 	    snprintf(port_buf, sizeof port_buf, "%u", defport);
