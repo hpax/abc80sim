@@ -36,7 +36,7 @@ X		= @EXEEXT@
 GENC = $(patsubst %.rom,%.c,$(wildcard roms/*.rom)) baudtospeed.c helptxt.c
 SRCS = abc80.c clock.c sdlscrn.c fgcolor.c screenshot.c \
 	z80.c z80irq.c as.c mem.c abcmem.c abcio.c debug.c \
-	abcfont.c disk.c rtc.c simprint.c print.c fileop.c z80dis.c \
+	abcfont.c disk.c rtc.c simprint.c print.c fileop.c z80dasm.c \
 	nstime.c hostfile.c console.c cas.c abcfile.c filelist.c \
 	trace.c sysload.c \
 	abcprintd.c serial.c netopen.c \
@@ -61,6 +61,9 @@ abc80$(X): $(OBJS)
 
 abc80win$(X): winwrap.c
 	$(CC) $(LDFLAGS) -mwindows -municode -D_UNICODE -o abc80win$(X) $^
+
+z80dis$(X): z80dis.$(O) z80dasm.$(O)
+	$(CC) $(LDFLAGS) -o z80dis$(X) $^
 
 %.c: %.rom bin2c.pl
 	$(PERL) bin2c.pl $< > $@ || ( rm -f $@ ; false )

@@ -33,6 +33,7 @@ abc*/
 /autoconf/m4.old/
 /autoconf/helpers/
 /abc80
+/z80dis
 /config/config.h
 /config/config.h.in
 /config.log
