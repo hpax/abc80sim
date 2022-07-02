@@ -3682,6 +3682,7 @@ static const char *flagdis(uint8_t f)
 	    *bp++ = flags[i];
 	fx <<= 1;
     }
+    *bp = '\0';
 
     return buf;
 }
