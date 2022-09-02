@@ -3,6 +3,7 @@
 ; Constants for ABC80 assembly programs
 ;
 
+	;; System variables
 	defc CLOCK=65008		; LSB of clock
 	defc CURX=65011			; Cursor column
 	defc CURY=65012			; Cursor row
@@ -21,6 +22,17 @@
 	defc RADBUF_LEN=120
 	defc CRAD=65208			; P-code buf during compile
 	defc CRAD_LEN=200
+
+	;; System variables offsets from IY
+	defc IY_CLOCK=CLOCK-IYBASE
+	defc IY_CURX=CURX-IYBASE
+	defc IY_CURY=CURY-IYBASE
+	defc IY_CRTLC=CTRLC-IYBASE
+	defc IY_BOFA=BOFA-IYBASE
+	defc IY_EOFA=EOFA-IYBASE
+	defc IY_HEAP=HEAP-IYBASE
+	defc IY_STACK=STACK-IYBASE
+	defc IY_DEVLIST=DEVLIST-IYBASE
 
 	;;  BASIC routines common to both old and new BASIC
 	defc ERROR=0012h		; BASIC entry point for error A=<err>
