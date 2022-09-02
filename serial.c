@@ -68,7 +68,9 @@ static int config_port(int fd, unsigned long baud, enum flowctrl flowctrl)
 
     /* There doesn't seem to be any equivalent to HUPCL? */
 
-    dcb.BaudRate = baud;
+    if (baud) {
+	dcb.BaudRate = baud;
+    }
     dcb.fBinary = TRUE;
     dcb.fParity = FALSE;
     dcb.fTXContinueOnXoff = FALSE;
@@ -230,11 +232,6 @@ static int config_port(int fd, unsigned long baud, enum flowctrl flowctrl)
 {
     my_termios tio;
 
-    if (!baud) {
-	errno = EINVAL;
-	return -1;
-    }
-
     mytcsetup(fd);		/* Ignore failures here */
 
     if (mytcgetattr(fd, &tio))
@@ -263,8 +260,10 @@ static int config_port(int fd, unsigned long baud, enum flowctrl flowctrl)
 	break;
     }
 
-    if (mycfsetbaud(&tio, baud))
-	return -1;
+    if (baud) {
+	if (mycfsetbaud(&tio, baud))
+	  return -1;
+    }
 
     if (mytcsetattr(fd, &tio))
 	return -1;
