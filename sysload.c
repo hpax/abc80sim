@@ -6,21 +6,7 @@
  * If "format" is unspecified, this code will automatically try to detect
  * one of Intel Hex, S-records, or binary.
  *
- * The memory spaces supported are:
- *
- * null  - discard
- * rom	 - BASIC, DOS, option ROM, printer ROM, etc.
- *         loads into both rom40 and rom80 space for the first 16K (ABC80 only)
- * rom40 - 40-character BASIC ROM
- * rom80 - 80-character BASIC ROM
- * ram   - regular working memory; includes paged-out memory
- *         (ABC80 > 32K, ABC802 etc.)
- * vram  - text video memory
- * cpu   - memory as seen by CPU
- *
- * Not yet implemented:
- *    sram  - auxiliary SRAM for ABC80 128K+
- *    fg/hr - high res graphics memory
+ * See HELP.txt for a list of memspaces.
  */
 
 #include "compiler.h"

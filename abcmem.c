@@ -617,18 +617,12 @@ static int init_meg80(void)
     /*
      * Address spaces for load/dump convenince
      */
-    sram_as = as_new_aliasspace("sram", K(1536));
-    as_point_alias(sram_as, meg80p_as, 0);
-
-    xmem_as = as_new_aliasspace("xmem", K(1536));
-    as_point_alias(xmem_as, meg80p_as, 0);
+    sram_as = as_alias("sram", K(1536), meg80p_as, 0, 0);
+    xmem_as = as_alias("xmem", K(1536), meg80p_as, 0, AS_NODUMP_ALL);
 
     if (ic3_ops != &ram_as_ops) {
 	sram_as->len = K(1024);
-	flash_as = as_new_aliasspace("flash", K(1024));
-	as_point_alias(flash_as, meg80p_as, K(1024));
-    } else {
-	xmem_as->flags |= AS_NODUMP_ALL;
+	flash_as = as_alias("flash", K(512), meg80p_as, K(1024), 0);
     }
 
     return 0;
@@ -691,9 +685,7 @@ static void mem_init_abc800cm(unsigned int flags, const uint8_t *master_rom)
     for (m = 1; m < 3; m++)
 	as_set_pages(sys_as, 0, m, fgram_as, 0, K(16));
 
-    xmem_as = as_new_aliasspace("xmem", K(16));
-    xmem_as->flags |= AS_NODUMP_ALL;
-    as_point_alias(xmem_as, fgram_as, 0);
+    xmem_as = as_alias("xmem", K(16), fgram_as, 0, AS_NODUMP_ALL);
 }
 
 static inline void set_vram_1k(void)
@@ -942,9 +934,9 @@ void mem_init(unsigned int flags, const char *memfile)
     case MODEL_ABC802:
 	mem_init_abc800(flags, abc802rom);
 
-	/* For convenience in loading, mostly */
-	mem_as = as_new_aliasspace("mem", K(32));
-	as_point_alias(mem_as, ram_as, 0);
+	/* For convenience in loading, mostly, but allow dumping */
+	mem_as = as_alias("mem", K(32), ram_as, 0, 0);
+	xmem_as = as_alias("xmem", K(32), ram_as, 0, AS_NODUMP_ALL);
 
         /* Map 1: execution in option ROM - RAM other than the ROM itself */
 	as_set_pages(sys_as, 0, 1, ram_as, 0, K(30));

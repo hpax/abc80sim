@@ -270,6 +270,8 @@ as_point_alias(struct as *alias_as, struct as *parent_as, size_t offs)
     alias_as->p.parent_as = parent_as;
     alias_as->base = offs;
 }
+struct as *as_alias(const char *name, size_t len, struct as *parent_as,
+		    size_t offs, enum as_flags flags);
 
 /*
  * Initialization

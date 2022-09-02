@@ -190,7 +190,6 @@ struct as *as_new_pagespace(const char *name, size_t len,
 /* -------------------------------------------------------------------------
  *  Alias address space; basically an optimized single repointable page
  * ------------------------------------------------------------------------- */
-
 struct as *as_new_aliasspace(const char *name, size_t len)
 {
     struct as *as = as_new_space(name, NULL, len, 1);
@@ -198,6 +197,22 @@ struct as *as_new_aliasspace(const char *name, size_t len)
 	return NULL;
 
     as->flags |= AS_ALIAS;
+
+    return as;
+}
+
+/* -------------------------------------------------------------------------
+ *  Create and initialize a new alias space (convenience function).
+ * ------------------------------------------------------------------------- */
+struct as *as_alias(const char *name, size_t len,
+		    struct as *parent_as, size_t offs, enum as_flags flags)
+{
+    struct as *as = as_new_aliasspace(name, len);
+    if (!as)
+	return NULL;
+
+    as_point_alias(as, parent_as, offs);
+    as->flags |= flags;
 
     return as;
 }
