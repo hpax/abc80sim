@@ -1,11 +1,12 @@
 dnl Process this file with autoconf 2.69 or later to produce
 dnl a configure script.
-AC_PREREQ([2.69])
+AC_PREREQ([2.71])
 
 AC_CONFIG_MACRO_DIR(autoconf)
 AC_CONFIG_MACRO_DIRS(autoconf)
 
-AC_INIT(abc80.c)
+AC_INIT
+AC_CONFIG_SRCDIR([abc80.c])
 AC_CONFIG_HEADERS(config/config.h)
 
 AC_CONFIG_AUX_DIR(autoconf/helpers)
@@ -25,8 +26,7 @@ AC_CANONICAL_HOST
 
 dnl Checks for programs.
 AC_USE_SYSTEM_EXTENSIONS
-PA_PROG_CC_STDC
-AC_PROG_CC_C99
+PA_PROG_CC
 AC_PROG_LN_S
 AC_PROG_MAKE_SET
 AC_PROG_INSTALL
@@ -38,8 +38,6 @@ AC_C_INLINE
 AC_C_RESTRICT
 AC_TYPE_SIZE_T
 
-dnl Checks for standard header files.
-AC_HEADER_STDC
 AC_HEADER_STDBOOL
 AC_CHECK_HEADERS(inttypes.h)
 AC_CHECK_HEADERS(stdnoreturn.h)
