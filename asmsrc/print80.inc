@@ -135,21 +135,36 @@ pr_print:
 	ld d,0FFh
 
 pr_print_loop:
-select:
-	ld (errsp),sp			; Save stack pointer for unwind
-	push hl
-	push bc
-	push af
-	ld hl,SELECT
+	ld a,b
+	or c
+	jr z,done
 	ld a,(hl)
-	ld bc,+(selcode << 8)+1
-	out (c),b
-	ld (hl),b
-	ld h,a
-	ld l,c
+	cp d
+	jr nz,pr_print_not_ff
+	call send_byte			; FF
+	dec a				; FE
+pr_print_not_ff:
+	call send_byte
+
+	dec bc
+	inc hl
+	jr pr_print_loop
+
+	;; Select the current device, and save the stack pointer
+	;; to allow for an error unwind. This should be called from the
+	;; topmost stack so that a RET on error returns to BASIC;
+	;; if called in a nested context that context will be returned
+	;; to on error. After an error the carry flag is set and only
+	;; A is defined.
+select:
+	ld (errsp),sp
+	push af
+	ld a,(SELECT)			; Old select code
+	ld (ram_select),a		; Save old select code
+	ld a,selcode			; Select code
+	ld (SELECT),a			; Is this correct?
+	out (1),a
 	pop af
-	pop bc
-	ex (sp),hl		       ; Save old select code on stack
 	ret
 
 pr_close:
@@ -164,13 +179,12 @@ send_byte_done:
 done_ok:
 	xor a
 done:
-	ld sp,(errsp)			; Restore stack
-	ex (sp),hl			; HL <- old select code
-	ld l,a
-	ld a,h
+	push af
+	ld a,(ram_select)
+	ld (SELECT),a
 	out (1),a
-	ld a,l
-	pop hl
+	pop af
+	ld sp,(errsp)			; Restore stack
 	inc sp				; Drop return address from select
 	inc sp
 	add a				; Carry = negative number?
@@ -184,7 +198,6 @@ done:
 pra_open:
 	ld c,0xA0
 	jr prx_open
-
 pra_prepare:
 	ld c,0xA2
 	jr prx_prepare
