@@ -14,6 +14,7 @@
 #include "trace.h"
 #include "clock.h"
 #include "sysload.h"
+#include "random.h"
 
 #include <SDL_main.h>
 #include <SDL_thread.h>
@@ -267,10 +268,11 @@ int main(int argc, char **argv)
     SDL_Thread *cpu_thread;
     bool server_mode;
 
-    setlocale(LC_ALL, "");
-
     (void)argc;
     program_name = argv[0];
+
+    setlocale(LC_ALL, "");
+    randomize();
 
     option = &argv[1];
     while ((optstr = *option) != NULL) {
@@ -401,6 +403,8 @@ int main(int argc, char **argv)
 		opts.output = enable;
 	    } else if (!strcmp(optstr, "baud")) {
 		server_baud = strtoul(LONG_ARG(), NULL, 0);
+	    } else if (!strcmp(optstr, "initram")) {
+		config_init_ram(enable ? LONG_ARG() : NULL);
 	    } else if (valid_drive_name(optstr)) {
 		disk_mount(optstr, enable ? LONG_ARG() : NULL);
             } else {

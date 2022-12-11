@@ -52,8 +52,10 @@ dnl function declarations
 PA_ADD_CPPFLAGS([-U__STRICT_ANSI__])
 
 dnl Add -O3 unless disabled; seems to help this program quite a bit
-PA_ARG_DISABLED([O3], [don't compile with -O3 optimization],
- [], [PA_ADD_CFLAGS(-O3)])
+PA_ARG_ENABLED([debug], [compile for debugging],
+[PA_ADD_CFLAGS(-Og,,,PA_ADD_CFLAGS(-O0))],
+[PA_ARG_DISABLED([O3], [don't compile with -O3 optimization],
+ [], [PA_ADD_CFLAGS(-O3)])])
 
 dnl Can we be selective about libraries?
 PA_ADD_LDFLAGS([-Wl,--as-needed])

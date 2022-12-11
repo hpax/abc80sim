@@ -178,7 +178,7 @@ struct host_file *dump_file(enum host_file_mode mode, const char *path,
 {
     int err;
     unsigned int n;
-    struct host_file *hf;
+    struct host_file *hf = NULL;
     char *filename;
     const int openflags = O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW;
     int start;

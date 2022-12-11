@@ -14,6 +14,7 @@
 #include "hostfile.h"
 #include "screen.h"
 #include "z80.h"
+#include "chartype.h"
 
 static size_t load_data(struct as *as, size_t offs,
 			const uint8_t *data, size_t len)
@@ -28,39 +29,8 @@ static size_t load_data(struct as *as, size_t offs,
     }
 }
 
-/*
- * Return the hex value of a single character, or negative if invalid.
- * The hex digit must be upper case or considered invalid.
- */
-static inline int hexval(int c)
-{
-    if (c <= '9')
-	return c - '0';
-    if (c < 'A')
-	return -1;
-    if (c <= 'F')
-	return c - 'A' + 10;
-    return -1;
-}
-
-static inline bool is_eoln(int c)
-{
-    return c == '\n' || c == '\r';
-}
-
-static inline bool is_eof(int c)
-{
-    return c == EOF || c == ('Z' & 0x1f);
-}
-
-static inline bool is_white(int c)
-{
-    return (c >= '\a' && c <= '\r') || c == 0x7f || c == 0xff;
-}
-
 static int load_ihex(FILE *file, struct as *as, size_t offset)
 {
-
     int c;
     int hval = 0;
     int bytes = 0;

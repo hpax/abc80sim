@@ -302,7 +302,8 @@ static const struct as_ops meg80_flash_ops = {
     .write = flash_as_write,
     .dump = mem_as_dump,
     .load = NULL,
-    .sync = NULL
+    .sync = NULL,
+    .init = 0xff
 };
 
 static void flash_as_write(struct as *as, size_t faddr, uint8_t v)
@@ -471,7 +472,7 @@ void abc80_meg80_rwctl_out(uint16_t addr, uint8_t val)
  */
 static int init_meg80(void)
 {
-    static const struct as_ops *ic3_ops;
+    const struct as_ops *ic_ops[3];
     unsigned int kb[3];
     struct as *as[4];
     int bootmap;
@@ -482,8 +483,9 @@ static int init_meg80(void)
 
     /* Defaults */
     kb[0] = kb[1] = kb[2] = 512; /* 3x512K */
-    ic3_ops = &meg80_flash_ops;	 /* IC3 is flash */
-    bootmap = -1;		 /* System boot */
+    ic_ops[0] = ic_ops[1] = &ram_as_ops;
+    ic_ops[2] = &meg80_flash_ops; /* IC3 is flash */
+    bootmap = -1;		  /* System boot */
 
     srp = opts.meg80_config;
     if (!srp)
@@ -521,13 +523,13 @@ static int init_meg80(void)
 		       isstr("noboot", srp, olen)) {
 		bootmap = -1; /* System boot */
 	    } else if (isstr("we", srp, olen)) {
-		ic3_ops = &meg80_flash_ops;
+		ic_ops[2] = &meg80_flash_ops;
 	    } else if (isstr("rom", srp, olen) ||
 		       isstr("wp", srp, olen)) {
-		ic3_ops = &rom_as_ops;
+		ic_ops[2] = &rom_as_ops;
 	    } else if (isstr("ram", srp, olen) ||
 		       isstr("meg80", srp, olen)) {
-		ic3_ops = &ram_as_ops;
+		ic_ops[2] = &ram_as_ops;
 	    } else {
 		err = true;
 	    }
@@ -554,7 +556,6 @@ static int init_meg80(void)
 
     /* Allocate buffer, so there is always a linear buffer */
     xmem = malloc(3*K(512));
-    memset(xmem, 0xff, 3*K(512)); /* As good initialization as anything... */
 
     /* Create address spaces */
     for (i = 0; i < 3; i++) {
@@ -563,19 +564,19 @@ static int init_meg80(void)
 	} else {
 	    static const char * const as_names[3]
 		= { "meg80-ic1", "meg80-ic2", "meg80-ic3" };
-	    as[i] = new_ram(as_names[i], kb[i] << 10, 1, xmem + K(512)*i);
+	    as[i] = new_mem(as_names[i], kb[i] << 10, 1,
+			    xmem + K(512)*i, ic_ops[i]);
 	    as[i]->flags |= AS_NODUMP_ALL;
 	}
     }
-    if (kb[2])
-	as[2]->ops = ic3_ops;
     as[3] = sys_as;
 
     meg80p_as = as_new_pagespace("meg80p", 4*K(512), 1, 19);
     meg80p_as->flags |= AS_NODUMP_ALL;
 
-    for (i = 0; i < 4; i++)
+    for (i = 0; i < 4; i++) {
 	as_set_pages(meg80p_as, i*K(512), 0, as[i], 0, 1 << 19);
+    }
 
     meg80v_as = as_new_space("meg80v", NULL, Z80_ADDRESS_LIMIT, 32);
     meg80v_as->grain = 9;
@@ -620,7 +621,7 @@ static int init_meg80(void)
     sram_as = as_alias("sram", K(1536), meg80p_as, 0, 0);
     xmem_as = as_alias("xmem", K(1536), meg80p_as, 0, AS_NODUMP_ALL);
 
-    if (ic3_ops != &ram_as_ops) {
+    if (ic_ops[2] != &ram_as_ops) {
 	sram_as->len = K(1024);
 	flash_as = as_alias("flash", K(512), meg80p_as, K(1024), 0);
     }
@@ -715,7 +716,8 @@ static const struct as_ops abc800c_vram_ops = {
     .write = abc800c_vram_as_write,
     .dump  = mem_as_dump,
     .load  = NULL,
-    .sync  = NULL
+    .sync  = NULL,
+    .init  = -1
 };
 
 static inline void init_vram_abc800c(void)

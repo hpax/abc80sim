@@ -199,7 +199,7 @@ make_socket(const addrinfo_t *ai, struct sockset *passive, bool strict)
 int open_socket(int af, const char *spec, const char *defsvc,
 		unsigned int defport, struct sockset *passive)
 {
-    SOCKET sock;
+    SOCKET sock = INVALID_SOCKET;
     struct addrinfo *ai, *ap;
     struct addrinfo hints;
     int err;

@@ -24,7 +24,7 @@ int z80_intack(void)
     unsigned int prio;
     int vector = -1;
     unsigned int irqpend, irqmasked, thisirq;
-    struct z80_irq *irq;
+    struct z80_irq *irq = NULL;
 
     do {
         /* Find the highest priority (lowest numeric) interrupt pending */

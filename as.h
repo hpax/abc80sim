@@ -45,6 +45,7 @@ struct as_ops {
     as_dump_op dump;
     as_write_op load;
     as_sync_op sync;
+    int init;
 };
 
 /* (address space, offset) pair */
@@ -253,6 +254,11 @@ struct as *new_ram(const char *name, size_t len, unsigned int nmaps, void *buf);
 struct as *new_rom(const char *name, size_t len, unsigned int nmaps, void *buf);
 
 /*
+ * Buffer initialization (without attaching to an as)
+ */
+void mem_buf_init(void *buf, size_t bytes, int init);
+
+/*
  * Page tables
  */
 struct as *as_new_pagespace(const char *name, size_t len,
@@ -277,5 +283,6 @@ struct as *as_alias(const char *name, size_t len, struct as *parent_as,
  * Initialization
  */
 void as_init(void);
+void config_init_ram(const char *arg);
 
 #endif /* AS_H */

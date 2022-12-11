@@ -47,6 +47,8 @@ Options (defaults in brackets):
   -o,  --output            print text screen on exit
   -Fo, --outputfile        print text screen on exit to a file
        --detach            detach from console (default for --server)
+       --initram hex...    initialize RAM areas to a specific value
+       --initram random    initialize RAM areas to random content
        --mo# file          mount file as drive MO#: (0-7)
        --mf# file          mount file as drive MF#: (0-7)
        --sf# file          mount file as drive SF#: (0-7)

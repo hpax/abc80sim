@@ -362,7 +362,8 @@ void cursor_enable_hook(void)
 
 static uint8_t dart_keyb_in(uint16_t port)
 {
-    uint8_t v, reg;
+    uint8_t v = 0xff;
+    uint8_t reg;
 
     switch (port & 1) {
     case 0:                    /* Data register */

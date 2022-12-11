@@ -3,12 +3,93 @@
 #include "as.h"
 #include "debug.h"
 #include "ilog2.h"
+#include "random.h"
+#include "chartype.h"
 
 /* -------------------------------------------------------------------------
  *  List of all registered address spaces
  * ------------------------------------------------------------------------- */
 struct as *null_as;
 struct as *addrspaces;
+
+/* -------------------------------------------------------------------------
+ *  Fill RAM area with (user-specified) random junk
+ * ------------------------------------------------------------------------- */
+static size_t ram_junk_len;
+static void *ram_junk;
+
+static void ram_init_junk(void *buf, size_t len)
+{
+    if (!ram_junk_len) {
+	/* Default: initialize to zero */
+	memset(buf, 0, len);
+    } else if (!ram_junk) {
+	/* Random content */
+	genrand_data(buf, len);
+    } else {
+	/* Fixed content */
+	uint8_t *p = buf;
+	while (len) {
+	    size_t bytes = min(len, ram_junk_len);
+	    p = mempcpy(p, ram_junk, bytes);
+	    len -= bytes;
+	}
+    }
+}
+
+/* Configure said junk */
+void config_init_ram(const char *str)
+{
+    if (ram_junk) {
+	free(ram_junk);
+	ram_junk = NULL;
+    }
+
+    if (!str || !*str) {
+	ram_junk_len = 0;
+    } else if (str[0] == 'r') {
+	ram_junk_len = 1;	/* Initialize to random */
+    } else {
+	unsigned int ndig = 0;
+	const unsigned char *p = (const unsigned char *)str;
+	uint8_t *q;
+
+	while (*p) {
+	    ndig += hexval((unsigned char)*p++) >= 0;
+	}
+
+	ndig &= ~1;
+	if (!ndig)
+	    return;
+
+	ram_junk_len = ndig >> 1;
+	ram_junk = q = malloc(ndig >> 1);
+	if (!q)
+	    return;
+
+	p = (const unsigned char *)str;
+	while (ndig) {
+	    int v = hexval(*p++);
+	    if (v < 0)
+		continue;
+	    if (--ndig & 1)
+		*q = v << 4;
+	    else
+		*q++ |= v;
+	}
+    }
+}
+
+/* -------------------------------------------------------------------------
+ *  Initialize a memory area according to the init value from ops
+ * ------------------------------------------------------------------------- */
+void mem_buf_init(void *buf, size_t bytes, int init)
+{
+    if (init < 0)
+	ram_init_junk(buf, bytes);
+    else
+	memset(buf, init, bytes);
+}
 
 /* -------------------------------------------------------------------------
  *  Generic address space constructors and tools
@@ -49,19 +130,22 @@ pure_func struct as *get_addrspace(const char *name, size_t len)
     return NULL;
 }
 
-/* -------------------------------------------------------------------------
- *  Address space backed by a memory buffer
+/* ------------------------------------------------------------------------
+ * Address space backed by a memory buffer (which may be pre-allocated
+ * or not); initialize the memory buffer according to the ops.
  * ------------------------------------------------------------------------- */
 struct as *new_mem(const char *name, size_t len, unsigned int nmaps,
 		   void *buf, const struct as_ops *ops)
 {
+    const size_t bytes = nmaps*len;
     struct as *as = as_new_space(name, ops, len, nmaps);
 
     if (!buf) {
-	buf = calloc(nmaps, len);
+	buf = malloc(bytes);
 	if (!buf)
 	    return NULL;
     }
+    mem_buf_init(buf, bytes, ops->init);
 
     as->p.data = buf;
     if (is_power2(len)) {
@@ -96,7 +180,8 @@ const struct as_ops ram_as_ops = {
     .write = NULL,		/* Just write it */
     .dump  = mem_as_dump,
     .load  = NULL,		/* Just load it */
-    .sync  = NULL		/* No syncing */
+    .sync  = NULL,		/* No syncing */
+    .init  = -1			/* Powers up to junk */
 };
 
 const struct as_ops rom_as_ops = {
@@ -104,7 +189,8 @@ const struct as_ops rom_as_ops = {
     .write = rom_as_write,	/* Drop write on floor */
     .dump  = mem_as_dump,
     .load  = NULL,		/* Just load it */
-    .sync  = NULL		/* No syncing */
+    .sync  = NULL,		/* No syncing */
+    .init  = 0xff		/* Powers up to FF */
 };
 
 struct as *new_ram(const char *name, size_t len, unsigned int nmaps, void *buf)
@@ -113,10 +199,7 @@ struct as *new_ram(const char *name, size_t len, unsigned int nmaps, void *buf)
 }
 struct as *new_rom(const char *name, size_t len, unsigned int nmaps, void *buf)
 {
-    struct as *as = new_mem(name, len, nmaps, buf, &rom_as_ops);
-    if (!buf)
-	memset(as->p.data, 0xff, len * nmaps);
-    return as;
+    return new_mem(name, len, nmaps, buf, &rom_as_ops);
 }
 
 /* -------------------------------------------------------------------------
@@ -225,7 +308,8 @@ const struct as_ops null_as_ops = {
     .write = rom_as_write,	/* Drop write on floor */
     .dump  = mem_as_dump,
     .load  = rom_as_write,	/* Drop attempts at loading on the floor */
-    .sync  = NULL		/* No syncing */
+    .sync  = NULL,		/* No syncing */
+    .init  = 0xff
 };
 
 #define NULL_BUF_SIZE	4096	/* Must be a power of 2 */
@@ -233,7 +317,6 @@ const struct as_ops null_as_ops = {
 static void null_as_init(void)
 {
     null_as = new_mem("null", NULL_BUF_SIZE, 1, NULL, &null_as_ops);
-    memset(null_as->p.data, 0xff, NULL_BUF_SIZE);
     null_as->mask = NULL_BUF_SIZE-1;
     null_as->flags |= AS_NOLOAD | AS_NODUMP;
 }
