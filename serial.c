@@ -134,13 +134,15 @@ static int config_port(int fd, unsigned long baud, enum flowctrl flowctrl)
 /*
  * POSIX systems
  */
+# ifdef HAVE_SYS_IOCTL_H
+#  include <sys/ioctl.h>
+# endif
 
 # ifdef __linux__
 /*
  * Linux has been able to set arbitrary speeds for ages, but glibc never
  * caught up.  Our own mini-implementation of termios...
  */
-#include <sys/ioctl.h>
 #include <asm/termbits.h>	/* struct termios2 */
 #include <linux/serial.h>	/* struct serial_struct */
 
@@ -289,6 +291,40 @@ static int config_port(int fd, unsigned long baud, enum flowctrl flowctrl)
 
 #endif
 
+static int lock_port(int fd)
+{
+#ifdef HAVE_FLOCK
+    if (flock(fd, LOCK_EX|LOCK_NB))
+	return -1;
+#endif
+
+#ifdef TIOCEXCL
+    ioctl(fd, TIOCEXCL, 0);
+#endif
+
+    return 0;
+}
+
+static int open_lock_port(const char *path)
+{
+    int fd;
+
+#ifdef HAVE__SOPEN
+    fd = _sopen(path, O_RDWR|O_CLOEXEC, _SH_DENYRW);
+#else
+    fd = open(path, O_RDWR|O_CLOEXEC);
+
+    if (fd >= 0 && lock_port(fd)) {
+	/* Lock failure */
+	close(fd);
+	errno = EBUSY;
+	fd = -1;
+    }
+#endif
+
+    return fd;
+}
+
 int open_serial(const char *port, unsigned long baud, enum flowctrl flowctrl)
 {
     char *path = port_path(port);
@@ -297,7 +333,7 @@ int open_serial(const char *port, unsigned long baud, enum flowctrl flowctrl)
     if (!path)
 	goto fail;
 
-    fd = open(path, O_RDWR);
+    fd = open_lock_port(path);
     free(path);
     if (fd < 0)
 	goto fail;

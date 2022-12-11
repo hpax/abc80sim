@@ -51,7 +51,9 @@
 #ifdef HAVE_SYS_STAT_H
 #include <sys/stat.h>
 #endif
-
+#ifdef HAVE_SYS_FILE_H
+#include <sys/file.h>
+#endif
 #ifdef HAVE_UNISTD_H
 #include <unistd.h>
 #endif
@@ -70,6 +72,9 @@
 
 #ifdef HAVE_IO_H
 #include <io.h>
+#endif
+#ifdef HAVE_SHARE_H
+#include <share.h>
 #endif
 #ifdef HAVE_PROCESS_H
 #include <process.h>
@@ -142,6 +147,17 @@ typedef int ssize_t;
 #endif
 #ifndef HAVE_SOCKLEN_T
 typedef int socklen_t;
+#endif
+
+/*
+ * O_CLOEXEC (if available)
+ */
+#ifndef O_CLOEXEC
+# ifdef _O_NOINHERIT
+#  define O_CLOEXEC _O_NOINHERIT
+# else
+#  define O_CLOEXEC 0
+# endif
 #endif
 
 /*

@@ -99,7 +99,9 @@ PA_ADD_HEADERS(windows.h)
 AC_CHECK_HEADERS(dirent.h)
 AC_CHECK_HEADERS(sys/types.h)
 AC_CHECK_HEADERS(sys/stat.h)
+AC_CHECK_HEADERS(sys/file.h)
 AC_CHECK_HEADERS(sys/time.h)
+AC_CHECK_HEADERS(sys/ioctl.h)
 AC_CHECK_HEADERS(unistd.h)
 AC_CHECK_HEADERS(fcntl.h)
 AC_CHECK_HEADERS(paths.h)
@@ -110,6 +112,7 @@ AC_CHECK_HEADERS(synchapi.h)
 AC_CHECK_HEADERS(mmsystem.h)
 AC_CHECK_HEADERS(timeapi.h)
 AC_CHECK_HEADERS(process.h)
+AC_CHECK_HEADERS(share.h)
 
 AC_CHECK_TYPES(ssize_t)
 AC_CHECK_TYPES(ptrdiff_t)
@@ -161,18 +164,18 @@ AC_SEARCH_LIBS([__strcpy_chk], [ssp])
 AC_CHECK_FUNCS(localtime_r)
 PA_HAVE_FUNC([localtime_s], [(NULL, NULL)])
 
-dnl Newer versions of POSIX have this
+dnl POSIX file handling
 AC_CHECK_TYPES(mode_t)
+AC_CHECK_FUNCS(flock)
 
-dnl Windows directory handling
+dnl Windows file/directory handling
 AC_CHECK_FUNCS(_mkdir)
 AC_CHECK_FUNCS([_findfirst _findfirst64])
+AC_CHECK_FUNCS(_sopen)
+AC_CHECK_FUNCS([_setmode])
 
 dnl Temporary file functions
 AC_CHECK_FUNCS([mkstemp tempnam])
-
-dnl Windows file attributes
-AC_CHECK_FUNCS([_setmode])
 
 dnl How to set file size
 AC_CHECK_FUNCS([ftruncate _chsize_s _chsize])
