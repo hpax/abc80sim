@@ -48,8 +48,6 @@ static unsigned int poll_tstate_period;
 
 void timer_init(void)
 {
-    nstime_init();
-
     /* Limit polling to once every μs simulated time */
     poll_tstate_period = 1000 * ns_per_tstate;
     if (!limit_speed || poll_tstate_period > MAX_TSTATE_PERIOD)

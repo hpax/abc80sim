@@ -15,6 +15,7 @@
 #include "clock.h"
 #include "sysload.h"
 #include "random.h"
+#include "nstime.h"
 
 #include <SDL_main.h>
 #include <SDL_thread.h>
@@ -272,6 +273,7 @@ int main(int argc, char **argv)
     program_name = argv[0];
 
     setlocale(LC_ALL, "");
+    nstime_init();
     randomize();
 
     option = &argv[1];
