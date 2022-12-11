@@ -13,12 +13,30 @@
 #include "hostfile.h"
 #include "serial.h"
 #include "network.h"
+#include <signal.h>
+#include <setjmp.h>
 
 extern const char *program_name;
 
 #define DEFAULT_PORT	4680
 #define DEFAULT_SERVICE	"pun80"
 #define DEFAULT_BAUD	19200
+
+static jmp_buf terminate_buf;
+
+static void sigint(int sig)
+{
+    (void)sig;
+    longjmp(terminate_buf, 1);
+}
+static void sigint_init(void)
+{
+    if (setjmp(terminate_buf)) {
+	fflush(NULL);
+	exit(0);		/* Termination signal */
+    }
+    signal(SIGINT, sigint);
+}
 
 struct client_thread;
 typedef int (*client_func)(struct client_thread *);
@@ -194,6 +212,7 @@ int abcprint_run_servers(struct file_list *ports, unsigned long baud)
 {
     char *filename;
 
+    sigint_init();
     socket_init();
 
     if (!baud)
