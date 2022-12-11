@@ -43,6 +43,9 @@
 
 #include "random.h"
 
+#include <float.h>
+#include <math.h>
+
 /* Period parameters */
 #define N 624
 #define M 397
@@ -135,6 +138,12 @@ uint32_t genrand_int32(void)
     return y;
 }
 
+/* 64-bit random number */
+uint64_t genrand_int64(void)
+{
+    return ((uint64_t)genrand_int32() << 32) + genrand_int32();
+}
+
 /* Fills a data buffer */
 void genrand_data(void *buf, size_t len)
 {
@@ -150,38 +159,14 @@ void genrand_data(void *buf, size_t len)
     }
 }
 
-#if 0
-/* generates a random number on [0,0x7fffffff]-interval */
-int32_t genrand_int31(void)
-{
-    return (long)(genrand_int32()>>1);
-}
-
-/* generates a random number on [0,1]-real-interval */
-double genrand_real1(void)
-{
-    return genrand_int32()*(1.0/4294967295.0);
-    /* divided by 2^32-1 */
-}
-
-/* generates a random number on [0,1)-real-interval */
-double genrand_real2(void)
-{
-    return genrand_int32()*(1.0/4294967296.0);
-    /* divided by 2^32 */
-}
-
-/* generates a random number on (0,1)-real-interval */
-double genrand_real3(void)
-{
-    return (((double)genrand_int32()) + 0.5)*(1.0/4294967296.0);
-    /* divided by 2^32 */
-}
+#if FLT_RADIX != 2
+#error "Non-binary floating point, in modern day?"
 #endif
 
-/* generates a random number on [0,1) with 53-bit resolution */
-double genrand_res53(void)
+/* generates a random double number on [0,1) */
+double genrand_double(void)
 {
-    uint32_t a=genrand_int32()>>5, b=genrand_int32()>>6;
-    return(a*67108864.0+b)*(1.0/9007199254740992.0);
+    uint64_t v = genrand_int64();
+    v &= ((uint64_t)1 << DBL_MANT_DIG) - 1;
+    return v * scalbn(1.0, -DBL_MANT_DIG); /* Multiply better here...?  */
 }

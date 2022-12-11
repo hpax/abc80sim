@@ -86,12 +86,23 @@ dnl SDL headers
 AC_CHECK_HEADERS(SDL.h)
 AC_CHECK_HEADERS(png.h)
 
-dnl Compiler intrinsics
+dnl x86 compiler intrinsics
+PA_ADD_CPPFLAGS(-mrdrnd)
+PA_ADD_CPPFLAGS(-mrdseed)
+
 PA_ADD_HEADERS(intrin.h)
-PA_ADD_HEADERS(x86intrin.h)
+PA_ADD_HEADERS(immintrin.h)
+PA_ADD_HEADERS(cpuid.h)
 PA_HAVE_FUNC(__builtin_expect, (1,1))
 PA_HAVE_FUNC(__builtin_constant_p, (0))
 PA_HAVE_FUNC(__rdtsc, ())
+PA_HAVE_FUNC(__readeflags, ())
+PA_HAVE_FUNC(__writeeflags, (0))
+PA_HAVE_FUNC(__cpuidex, (NULL,0,0))
+PA_HAVE_FUNC(_rdrand32_step, (NULL))
+PA_HAVE_FUNC(_rdrand64_step, (NULL))
+PA_HAVE_FUNC(_rdseed32_step, (NULL))
+PA_HAVE_FUNC(_rdseed64_step, (NULL))
 
 dnl System headers
 PA_ADD_HEADERS(windows.h)

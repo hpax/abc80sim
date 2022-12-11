@@ -82,8 +82,15 @@
 #ifdef HAVE_DIRECT_H
 #include <direct.h>
 #endif
+
 #ifdef HAVE_INTRIN_H
 #include <intrin.h>
+#endif
+#ifdef HAVE_IMMINTRIN_H
+#include <immintrin.h>
+#endif
+#ifdef HAVE_CPUID_H
+#include <cpuid.h>
 #endif
 
 #ifndef NOT_USING_SDL
