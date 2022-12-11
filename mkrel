@@ -8,6 +8,9 @@ if [ -z "$pv" ]; then
     pv="$(git describe --abbrev=4)"
 fi
 
+# Prevent trying to run WINE
+export WINEPREFIX=/dev/null
+
 dir="$dir/$pv"
 
 mkdir -p "$dir"

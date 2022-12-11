@@ -291,8 +291,10 @@ static int config_port(int fd, unsigned long baud, enum flowctrl flowctrl)
 
 #endif
 
-static int lock_port(int fd)
+static inline int lock_port(int fd)
 {
+    (void)fd;			/* If it compiles to nothing */
+
 #ifdef HAVE_FLOCK
     if (flock(fd, LOCK_EX|LOCK_NB))
 	return -1;
