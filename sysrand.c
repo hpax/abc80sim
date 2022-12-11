@@ -1,4 +1,5 @@
 #include "compiler.h"
+#include "nstime.h"
 #include "random.h"
 
 static int cpu_init_get_random_bytes(void *, int);
@@ -19,8 +20,6 @@ static int fail_get_random_bytes(void *ptr, int len)
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <poll.h>
-
-#include "nstime.h"		/* nstime() */
 
 /* read() with retry and timeout */
 #define READ_TIMEOUT 50	/* unit: ms */
@@ -107,7 +106,6 @@ static HCRYPTPROV hProv;
 static void close_provider(void)
 {
     CryptReleaseContext(hProv, 0);
-    provider_open = 0;
 }
 
 static int win_get_random_bytes(void *ptr, int len)
