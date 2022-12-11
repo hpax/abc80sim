@@ -289,6 +289,8 @@ dnl LLVM doesn't error out on invalid -W options unless this option is
 dnl specified first.  Enable this so this script can actually discover
 dnl which -W options are possible for this compiler.
 PA_ADD_CPPFLAGS([-Werror=unknown-warning-option])
+dnl Suppress warning for unknown pragmas
+PA_ADD_CPPFLAGS([-Wunknown-pragmas],[-Wno-unknown-pragmas])
 dnl Suppress format warning on Windows targets due to their <inttypes.h>
 PA_ADD_CPPFLAGS([-Wpedantic-ms-format],[-Wno-pedantic-ms-format])
 dnl This is needed because we intentionally expect strncpy() to fill

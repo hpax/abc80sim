@@ -313,4 +313,9 @@ typedef int socklen_t;
 #define isstr(str,ptr,len) \
   ((size_t)(len) == sizeof(str)-1 && !memcmp(str, (ptr), sizeof(str)-1))
 
+/* Flagging that a loop should not be unrolled */
+#define NO_UNROLL				\
+  _Pragma("GCC unroll 0")			\
+  _Pragma("clang loop unroll(disable)")
+
 #endif /* COMPILER_H */

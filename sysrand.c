@@ -2,6 +2,8 @@
 #include "nstime.h"
 #include "random.h"
 
+#pragma GCC optimize("no-unroll-loops")
+
 static size_t cpu_init_get_random_bytes(void *, size_t);
 static size_t os_init_get_random_bytes(void *, size_t);
 
@@ -179,7 +181,7 @@ static inline bool x86_has_cpuid(void)
 #define RDRAND_LOOPS 16
 
 #define x86_make_random_func(instr,bits)				\
-static size_t x86_ ## instr ## _get_random_bytes(void *ptr, size_t len) \
+static size_t x86_ ## instr ## _get_random_bytes(void *ptr, size_t len)	\
 {									\
     uint8_t *p = ptr;							\
     size_t left = len;							\
@@ -189,6 +191,7 @@ static size_t x86_ ## instr ## _get_random_bytes(void *ptr, size_t len) \
 	return 0;							\
     while (left) {							\
 	ctr = RDRAND_LOOPS;						\
+	NO_UNROLL							\
 	while (unlikely(! _ ## instr ## bits ## _step(&r))) {		\
 	    if (!--ctr)							\
 		return len - left;					\
