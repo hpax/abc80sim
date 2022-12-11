@@ -1237,7 +1237,7 @@ static void do_int(void)
         do_di();
         REG_SP -= 2;
         mem_write_word(REG_SP, REG_PC);
-        REG_PC = mem_read_word((REG_IR & 0xff00) | (i_vector & ~1));
+        REG_PC = mem_read_word((REG_IR & 0xff00) + i_vector);
         TSTATE += 19;
         break;
 
