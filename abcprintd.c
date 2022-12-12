@@ -106,7 +106,7 @@ static int abcprint_client_task(struct client_thread *self)
 
     while (1) {
 	errno = 0;
-	b = read(self->rfd, ibuf, sizeof ibuf);
+	b = read(self->rfd, ibuf, BUF_SIZE);
 	if (b < 0 && errno_is_resume(errno))
 	    continue;
 	if (b <= 0)
