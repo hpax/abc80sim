@@ -3,6 +3,7 @@
 #include "abcfile.h"
 #include "trace.h"
 #include "print.h"
+#include "ilog2.h"
 
 const char *fileop_path = "abcdir";
 
@@ -38,18 +39,23 @@ static void add_volume(struct abcprint *me, const char *name,
     vol->path = strdup(path);
 }
 
+/* Clean up volume information */
+static void cleanup_volumes(struct abcprint *me)
+{
+    for (size_t i = 0; i < (size_t)me->vols; i++) {
+	if (me->volumes[i].path)
+	    free((void *)me->volumes[i].path);
+    }
+    memset(me->volumes, 0, sizeof me->volumes);
+}
+
 /* Scan for volumes */
 static void init_volumes(struct abcprint *me)
 {
     struct host_file *hf;
     struct volume *vol;
-    int i;
 
-    for (i = 0; i < me->vols; i++) {
-	if (me->volumes[i].path)
-	    free((void *)me->volumes[i].path);
-    }
-    memset(me->volumes, 0, sizeof me->volumes);
+    cleanup_volumes(me);	/* In case this is being re-executed */
 
     if (!fileop_path || !*fileop_path)
 	return;
@@ -104,9 +110,18 @@ static void init_volumes(struct abcprint *me)
     }
 }
 
-static inline struct fileop_file *getfile(struct abcprint *me, uint16_t ix)
+static struct fileop_file *getfile(struct abcprint *me, uint16_t ix)
 {
-    return &me->filemap[ix];
+    files_mask_t mask = me->open_mask;
+    struct fileop_file *ff = &me->files[0];
+
+    while (mask) {
+	if ((mask & 1) && (ff->ix == ix))
+	    return ff;
+	ff++;
+	mask >>= 1;
+    }
+    return NULL;		/* File not found */
 }
 
 static inline bool file_open(const struct fileop_file *ff)
@@ -114,18 +129,25 @@ static inline bool file_open(const struct fileop_file *ff)
     return ff && ff->hf;
 }
 
-/* Allocate a new file structure for a new open */
-static struct fileop_file *getfile_alloc(struct abcprint *me, uint16_t ix)
+static inline files_mask_t OPEN_MASK(unsigned int i)
 {
-    struct fileop_file * const ff = getfile(me, ix);
-    assert(!file_open(ff));
-    me->open_cnt++;
-    return ff;
+    return ((files_mask_t)1) << i;
+}
+
+/* Allocate a new file structure */
+static struct fileop_file *alloc_file(struct abcprint *me)
+{
+    unsigned int i = tzcount_files_mask(~me->open_mask);
+    if (i >= MAX_FILES)
+	return NULL;
+
+    me->open_mask |= OPEN_MASK(i);
+    return &me->files[i];
 }
 
 static inline bool file_binary(const struct fileop_file *ff)
 {
-    return !!(ff->open & FF_BINARY);
+    return !!(ff->opencmd & FF_BINARY);
 }
 
 static inline enum host_file_mode file_mode(const struct fileop_file *ff)
@@ -228,8 +250,16 @@ static unsigned int send_reply(struct abcprint *me, int status)
 /* Returns error code */
 static int do_blksize(struct abcprint *me, unsigned int arg)
 {
+    unsigned int datasize;
+
     if (arg < 1 || arg > 65535)
 	return 128 + 11;
+
+    datasize = (arg + 2 + 255) & ~255;
+    if (datasize != me->datasize) {
+	me->data = realloc(me->data, datasize);
+	me->datasize = datasize;
+    }
 
     me->blksize = arg;
     return 0;
@@ -243,22 +273,28 @@ static unsigned int fop_blksize(struct abcprint *me)
 /* Returns the error code if applicable */
 static int do_close(struct abcprint *me, struct fileop_file *ff)
 {
-    if (file_open(ff)) {
-	assert(me->open_cnt > 0);
-	me->open_cnt--;
+    files_mask_t mask;
+
+    if (!ff)
+        return 128 + 49;        /* "Fel fysiskt filnummer" */
+
+    assert(ff->i < MAX_FILES);
+    mask = OPEN_MASK(ff->i);
+    assert(me->open_mask & mask);
+
+    if (ff->hf)
 	close_file(&ff->hf);
 
-	if (ff->abc) {
-	    if (ff->abc->buf)
-		free((void *)ff->abc->buf);
-	    free(ff->abc);
-	}
-	memset(ff, 0, sizeof *ff);
-        return 0;
-    } else {
-	assert(!ff->abc);
-        return 128 + 45;        /* "Fel logiskt filnummer" */
+    if (ff->abc) {
+	if (ff->abc->buf)
+	    free((void *)ff->abc->buf);
+	free(ff->abc);
+	ff->abc = NULL;
     }
+
+    ff->ix = ff->opencmd = 0;
+    me->open_mask &= ~mask;
+    return 0;
 }
 
 static unsigned int fop_close(struct abcprint *me)
@@ -269,13 +305,17 @@ static unsigned int fop_close(struct abcprint *me)
 /* Close all files without sending a reply */
 static int do_close_all(struct abcprint *me)
 {
-    size_t ix;
+    files_mask_t mask = me->open_mask;
+    struct fileop_file *ff = &me->files[0];
 
-    for (ix = 0; ix <= 65535; ix++)
-	do_close(me, getfile(me, ix));
+    while (mask) {
+	if (mask & 1)
+	    do_close(me, ff);
+	ff++;
+	mask >>= 1;
+    }
 
-    assert(me->open_cnt == 0);
-
+    assert(!me->open_mask);
     return 0;
 }
 
@@ -314,7 +354,7 @@ static unsigned int read_dir_entry(struct abcprint *me, char *buf)
     struct stat st;
     unsigned int dlen = 0;
     struct fileop_file *ff = me->ff;
-    bool longfmt = !(ff->open & FF_PREPARE);
+    bool longfmt = !(ff->opencmd & FF_PREPARE);
     struct host_file *hf = ff->hf;
 
     if (!hf || !hf->d)
@@ -376,10 +416,9 @@ static int qsort_compare_ll(const void *l1, const void *l2)
     return strcmp_abc(ll1->line, ll2->line);
 }
 
-static unsigned int read_dir_data(struct abcprint *me)
+static unsigned int read_dir_data(struct abcprint *me, struct fileop_file *ff)
 {
     char dirname_buf[DIRSTR_BUF];
-    struct fileop_file *ff = me->ff;
     struct abcdata *abc;
     size_t lines = 0;
     size_t bytes = 0;
@@ -457,7 +496,8 @@ static unsigned int fop_open(struct abcprint *me)
     char *name = me->argbuf.c + 3;
 
     if (!vol || !vol->path) {
-        return send_reply(me, 128 + 42);   /* Skivan ej klar */
+	err = 128 + 42;   /* Skivan ej klar */
+	goto fail;
     }
 
     do_close(me, me->ff);
@@ -475,19 +515,20 @@ static unsigned int fop_open(struct abcprint *me)
         openflags = (cmd0 & FF_PREPARE) ? (O_RDWR | O_TRUNC | O_CREAT) : O_RDWR;
     }
 
-    hf = open_host_file(mode, vol->path, path_buf, openflags);
-    me->ff = ff = getfile_alloc(me, me->ix);
-    ff->hf = hf;
+    me->ff = ff = alloc_file(me);
+    if (!ff) {
+	err = 128 + 19;		/* Kan ej öppna fler filer */
+	goto fail;
+    }
+
+    ff->ix = me->ix;
+    ff->opencmd = cmd0;
+    ff->hf = hf = open_host_file(mode, vol->path, path_buf, openflags);
 
     if (hf) {
-	ff->open = cmd0;
 	err = 0;
-
-	if (mode == HF_DIRECTORY && (cmd0 & FF_BINARY)) {
-	    err = read_dir_data(me);
-	    if (err)
-		do_close(me, me->ff);
-	}
+	if (mode == HF_DIRECTORY && (cmd0 & FF_BINARY))
+	    err = read_dir_data(me, ff);
     } else {
 	switch (errno) {
 #if 0                           /* Enable this? */
@@ -498,6 +539,8 @@ static unsigned int fop_open(struct abcprint *me)
 	    err = 128 + 43;
 	    break;
 	case EIO:
+	    err = 128 + 35;
+	    break;
 	case ENOTDIR:
 	    err = 128 + 48;
 	    break;
@@ -508,6 +551,10 @@ static unsigned int fop_open(struct abcprint *me)
 	}
     }
 
+    if (err)
+	do_close(me, ff);
+
+fail:
     return send_reply(me, err);
 }
 
@@ -901,11 +948,37 @@ static void fileop_goto_init_state(struct abcprint *me)
     me->byte_count = 4;
 }
 
-/* Initialize or terminate the fileop session */
+/* Reset the fileop session */
 void fileop_reset(struct abcprint *me)
 {
     do_init(me, 253);
     fileop_goto_init_state(me);
+}
+
+/*
+ * Initialize the fileop data structures; the structure will be
+ * initialized to all zero and fileop_reset() will called independently
+ * afterwards
+ */
+void fileop_init(struct abcprint *me)
+{
+    for (size_t i = 0; i < MAX_FILES; i++)
+	me->files[i].i = i;
+}
+
+/*
+ * Shut down the fileop session and free all memory
+ */
+void fileop_shutdown(struct abcprint *me)
+{
+    do_close_all(me);
+    cleanup_volumes(me);
+
+    if (me->data) {
+	free(me->data);
+	me->data = NULL;
+	me->datasize = 0;
+    }
 }
 
 /* List available volumes; this includes the default volumes */
@@ -1040,8 +1113,7 @@ bool file_op(struct abcprint *me, unsigned char c)
 	}
 
 	if (seqerr) {
-	    if (me->open_cnt)
-		do_close_all(me);
+	    do_close_all(me);
 	    me->nextseq = -1;
 	} else {
 	    me->nextseq = (uint8_t)(me->cmd[1] + 1);
@@ -1058,16 +1130,22 @@ bool file_op(struct abcprint *me, unsigned char c)
 	/* Out of synchronization */
 	send_reply(me, 128+37);	/* "Felaktight recordformat" */
     } else {
-	me->byte_count = me->fop->runs[me->fseq](me);
+	fop_func do_next = me->fop->runs[me->fseq];
+	if (do_next) {
+	    me->byte_count = do_next(me);
+	    if (me->byte_count) {
+		me->datalen = me->byte_count;
+		me->bytep = me->bufp = me->data;
+		me->fseq++;
+		if (tracing(TRACE_PR)) {
+		    fprintf(tracef, "PR:  %-7s : <expect %u more bytes>\n",
+			    me->fop->name, me->byte_count);
+		}
+		return true;
+	    }
+	}
     }
 
-    if (me->byte_count) {
-	me->datalen = me->byte_count;
-	me->bytep = me->bufp = me->data;
-	me->fseq++;
-	return true;
-    } else {
-	fileop_goto_init_state(me);
-	return false;
-    }
+    fileop_goto_init_state(me);
+    return false;
 }

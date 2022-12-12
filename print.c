@@ -119,8 +119,20 @@ struct abcprint *abcprint_init(send_func send_data, void *pvt)
 
     me->sd.func = send_data;
     me->sd.pvt = pvt;
+
+    fileop_init(me);
     abcprint_reset(me);
     return me;
+}
+
+void abcprint_shutdown(struct abcprint *me)
+{
+    if (!me)
+	return;
+
+    print_finish(me);
+    fileop_shutdown(me);
+    free(me);
 }
 
 void abcprint_recv(struct abcprint *me, const void *data, size_t len)

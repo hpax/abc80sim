@@ -17,12 +17,6 @@ enum input_state {
     is_console                  /* Output to console */
 };
 
-struct fileop_file {
-    struct host_file *hf;
-    struct abcdata *abc;
-    uint8_t open;		/* Opened with? (0 = closed) */
-};
-
 #define FF_OPEN		0xA0
 #define FF_BINARY	0x01
 #define FF_PREPARE	0x02
@@ -34,7 +28,24 @@ typedef union argbuf {
 } argbuf;
 
 struct fop;
-#define MAX_VOLS 32
+#define MAX_VOLS  32
+#define MAX_FILES 16		/* Max files open per client */
+				/* ABC itself can't open more than 7 */
+#if MAX_FILES > 32
+typedef uint64_t files_mask_t;
+#define tzcount_files_mask(x) tzcount_64(x)
+#else
+typedef uint32_t files_mask_t;
+#define tzcount_files_mask(x) tzcount_32(x)
+#endif
+
+struct fileop_file {
+    uint8_t opencmd;		/* Opened how? (0 = closed) */
+    uint8_t i;			/* Position in open_mask */
+    uint16_t ix;		/* IX map reference */
+    struct host_file *hf;
+    struct abcdata *abc;
+};
 
 struct volume {
     char name[4];		/* Volume name (3 char) */
@@ -81,18 +92,21 @@ struct abcprint {
     unsigned char cmd[4];	/* Buffer for command */
     uint64_t arg;		/* argbuf as a qword */
     argbuf argbuf;		/* Buffer for argument(s) */
-    unsigned char data[65536+2]; /* Data buffer (maximum possible size) */
+    unsigned char *data;        /* Data buffer */
+    unsigned int datasize;	/* Current size of data buffer */
 
     /* Disk volumes */
     int vols;
     struct volume volumes[MAX_VOLS];
 
     /* Filemap; massive waste of space -- clean up? */
-    int open_cnt;		/* Count of open files */
-    struct fileop_file filemap[65536];
+    files_mask_t open_mask;		/* Mask of used file structures */
+    struct fileop_file files[MAX_FILES];
 };
 
+extern void fileop_init(struct abcprint *me);
 extern void fileop_reset(struct abcprint *me);
+extern void fileop_shutdown(struct abcprint *me);
 extern bool file_op(struct abcprint *me, unsigned char c);
 
 #endif /* PRINT_H */

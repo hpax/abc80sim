@@ -90,7 +90,7 @@ static int abcprint_client_task(struct client_thread *self)
 {
     char *ibuf = malloc(BUF_SIZE);
     ssize_t b = -1;
-    struct abcprint *abcprint;
+    struct abcprint *abcprint = NULL;
 
     if (!ibuf)
 	goto quit;
@@ -116,7 +116,8 @@ static int abcprint_client_task(struct client_thread *self)
     }
 
 quit:
-    /* abcprint_shutdown() */
+    if (abcprint)
+	abcprint_shutdown(abcprint);
     if (ibuf)
 	free(ibuf);
     return b;
