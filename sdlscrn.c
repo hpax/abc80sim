@@ -188,20 +188,21 @@ enum vid_attrib_flags {
     GMODE_DBLE   = 32,		/* Double height active */
     GMODE_DBL2   = 64,		/* Double width, lower half */
     GMODE_EL     = 128,		/* Double width active */
-    GMODE_EL2    = 256,		/* Double width, second half */
+    GMODE_EL2    = 256		/* Double width, second half */
 };
 struct vid_attrib {
-    unsigned int flags : 16;
-    unsigned int ch : 8;
-    unsigned int fg : 3;
-    unsigned int bg : 3;
+    unsigned int ch    :  9;
+    unsigned int flags : 15;
+    unsigned int fg    :  3;
+    unsigned int bg    :  3;
+    unsigned int inv   :  1;	/* Character may be inverted */
 };
 
 
 /* Row indicies are offset by 1; row 0 (= "-1") is always blank */
 static struct vid_attrib attrib[TS_HEIGHT+1][TS_WIDTH];
 
-/* Attributes for ABC80/800M/800C */
+/* Attributes for ABC80/800M/800C/802 */
 static void make_attributes(void)
 {
     static const uint32_t attrib_masks[] = {
@@ -223,6 +224,7 @@ static void make_attributes(void)
 	va.bg    = 0;
 	va.flags = 0;
 	va.ch    = ' ';
+	va.inv   = 0;
 
 	for (x = 0; x < width; x++) {
 	    struct vid_attrib a;
@@ -298,10 +300,14 @@ static void make_attributes(void)
 		    }
 		}
 
-		va.ch = (ch & 0x80) |
-		    ((va.flags & GMODE_HOLD) ? (va.ch & 0x7f) : ' ');
+		if (!(va.flags & GMODE_HOLD)) {
+		    va.ch = ' ';
+		    va.inv = 0;	/* Is this conditional on GMODE_HOLD? */
+		}
 	    } else {
-		va.ch = ch;
+		va.ch  = (ch & 0x7f) |
+		    ((va.flags & (GMODE_GFX|GMODE_SEP)) << 7);
+		va.inv = (ch >= 0xa0);
 	    }
 
 	    /* For the first row, this will always be false */
@@ -311,7 +317,7 @@ static void make_attributes(void)
 	    } else {
 		a = va;
 		if (a.flags & GMODE_HIDE)
-		    a.ch = (a.ch & 0x80) | ' ';
+		    a.ch = ' ';
 	    }
 	    if (m40) {
 		a.flags |= GMODE_EL;
@@ -325,13 +331,11 @@ static void make_attributes(void)
     }
 }
 
-
 /*
  * Update the on-screen structure to match the screendata[]
  * for character (tx,ty), but don't refresh the rectangle just
  * yet. These are 80-column coordinates even in 40-column mode!!
  */
-
 static void
 put_screen(struct surface *s, unsigned int tx, unsigned int ty, bool blink)
 {
@@ -353,10 +357,8 @@ put_screen(struct surface *s, unsigned int tx, unsigned int ty, bool blink)
     /* Decoded characters & attributes */
     va = attrib[ty+1][tx];
 
-    fontp = abc_font[(va.ch & 0x7f) +
-		     ((va.flags & (GMODE_GFX|GMODE_SEP)) << 7)];
-
-    if ((va.flags & GMODE_FLSH) && !blink)
+    fontp = abc_font[va.ch];
+    if (!blink && (va.flags & GMODE_FLSH))
 	fontp = abc_font[' '];	/* Flashing & off: render as blank */
 
     if (va.flags & GMODE_DBL2)
@@ -365,7 +367,7 @@ put_screen(struct surface *s, unsigned int tx, unsigned int ty, bool blink)
     invmask = 0;
     switch (opts.model) {
     case MODEL_ABC80:
-	invmask = (uint8_t)blink << 7;
+	invmask = (blink && va.inv) ? 7 : 0;
 	break;
     case MODEL_ABC800M:
     case MODEL_ABC806:
@@ -373,10 +375,9 @@ put_screen(struct surface *s, unsigned int tx, unsigned int ty, bool blink)
 	break;
     case MODEL_ABC800C:
     case MODEL_ABC802:
-	invmask = 0x80;
+	invmask = va.inv ? 7 : 0;
 	break;
     }
-    invmask = (va.ch & invmask) ? 7 : 0;
 
     if (vdu.fgctl & 0x80) {
 	bgp = fgp = 0;
