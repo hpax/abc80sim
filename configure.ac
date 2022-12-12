@@ -104,6 +104,33 @@ PA_HAVE_FUNC(_rdrand64_step, (NULL))
 PA_HAVE_FUNC(_rdseed32_step, (NULL))
 PA_HAVE_FUNC(_rdseed64_step, (NULL))
 
+dnl Bit operation intrinsics - the naming here is insanely redundant
+PA_HAVE_FUNC(__lzcnt32, (1))
+PA_HAVE_FUNC(__lzcnt, (1))
+PA_HAVE_FUNC(_lzcnt_u32, (1))
+PA_HAVE_FUNC(__lzcnt_u32, (1))
+PA_HAVE_FUNC(__builtin_clz, (1))
+PA_HAVE_FUNC(_BitScanForward, (1))
+
+PA_HAVE_FUNC(__lzcnt64, (1))
+PA_HAVE_FUNC(_lzcnt_u64, (1))
+PA_HAVE_FUNC(__lzcnt_u64, (1))
+PA_HAVE_FUNC(__builtin_clzll, (1))
+PA_HAVE_FUNC(_BitScanForward64, (1))
+
+PA_HAVE_FUNC(__tzcnt32, (1))
+PA_HAVE_FUNC(__tzcnt, (1))
+PA_HAVE_FUNC(_tzcnt_u32, (1))
+PA_HAVE_FUNC(__tzcnt_u32, (1))
+PA_HAVE_FUNC(__builtin_ctz, (1))
+PA_HAVE_FUNC(_BitScanReverse, (1))
+
+PA_HAVE_FUNC(__tzcnt64, (1))
+PA_HAVE_FUNC(_tzcnt_u64, (1))
+PA_HAVE_FUNC(__tzcnt_u64, (1))
+PA_HAVE_FUNC(__builtin_ctzll, (1))
+PA_HAVE_FUNC(_BitScanReverse64, (1))
+
 dnl System headers
 PA_ADD_HEADERS(windows.h)
 
