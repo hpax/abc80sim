@@ -13,6 +13,8 @@
 #include "hostfile.h"
 #include "serial.h"
 #include "network.h"
+#include "trace.h"
+
 #include <signal.h>
 #include <setjmp.h>
 
@@ -211,6 +213,17 @@ static int abcprint_listen_task(struct client_thread *self)
 int abcprint_run_servers(struct file_list *ports, unsigned long baud)
 {
     char *filename;
+
+    /*
+     * When tracing in server mode, we can't buffer arbitrarily;
+     * both because there might be more than one client, and because
+     * we don't want to hold on to the data too long - and there should
+     * be a lot less of it anyway.
+     */
+    if (tracef) {
+	fflush(tracef);
+	setvbuf(tracef, NULL, _IOLBF, 0);
+    }
 
     sigint_init();
     socket_init();
