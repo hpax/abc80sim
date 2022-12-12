@@ -62,6 +62,9 @@ struct abcprint {
     /* System block size */
     unsigned int blksize;
 
+    /* Next expected command sequence number */
+    int nextseq;
+
     /* Current ix value, and corresponding fileop_file, if any */
     uint16_t ix;
     struct fileop_file *ff;
@@ -85,6 +88,7 @@ struct abcprint {
     struct volume volumes[MAX_VOLS];
 
     /* Filemap; massive waste of space -- clean up? */
+    int open_cnt;		/* Count of open files */
     struct fileop_file filemap[65536];
 };
 

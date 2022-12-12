@@ -109,12 +109,18 @@ static inline struct fileop_file *getfile(struct abcprint *me, uint16_t ix)
     return &me->filemap[ix];
 }
 
-/* In the future this may be used to allocate filemap storage */
-#define getfile_alloc(me,ix) getfile(me,ix)
-
 static inline bool file_open(const struct fileop_file *ff)
 {
     return ff && ff->hf;
+}
+
+/* Allocate a new file structure for a new open */
+static struct fileop_file *getfile_alloc(struct abcprint *me, uint16_t ix)
+{
+    struct fileop_file * const ff = getfile(me, ix);
+    assert(!file_open(ff));
+    me->open_cnt++;
+    return ff;
 }
 
 static inline bool file_binary(const struct fileop_file *ff)
@@ -217,9 +223,11 @@ static unsigned int fop_blksize(struct abcprint *me)
 }
 
 /* Returns the error code if applicable */
-static int do_close(struct fileop_file *ff)
+static int do_close(struct abcprint *me, struct fileop_file *ff)
 {
     if (file_open(ff)) {
+	assert(me->open_cnt > 0);
+	me->open_cnt--;
 	close_file(&ff->hf);
 
 	if (ff->abc) {
@@ -237,7 +245,7 @@ static int do_close(struct fileop_file *ff)
 
 static unsigned int fop_close(struct abcprint *me)
 {
-    return send_reply(me, do_close(me->ff));
+    return send_reply(me, do_close(me, me->ff));
 }
 
 /* Close all files without sending a reply */
@@ -246,7 +254,9 @@ static int do_close_all(struct abcprint *me)
     size_t ix;
 
     for (ix = 0; ix <= 65535; ix++)
-	do_close(getfile(me, ix));
+	do_close(me, getfile(me, ix));
+
+    assert(me->open_cnt == 0);
 
     return 0;
 }
@@ -361,7 +371,7 @@ static unsigned int read_dir_data(struct abcprint *me)
     unsigned int blk_bytes;
 
     if (!ff || !ff->hf || !ff->hf->d)
-	return 128 + 37;	/* Felaktigt recordformat */
+	return 128 + 48;	/* Fel i biblioteket */
 
     ff->abc = abc = calloc(1, sizeof *abc);
     if (!abc)
@@ -432,7 +442,7 @@ static unsigned int fop_open(struct abcprint *me)
         return send_reply(me, 128 + 42);   /* Skivan ej klar */
     }
 
-    do_close(me->ff);
+    do_close(me, me->ff);
 
     if (name[0] == ' ') {
         /* Empty filename (readdir) */
@@ -458,7 +468,7 @@ static unsigned int fop_open(struct abcprint *me)
 	if (mode == HF_DIRECTORY && (cmd0 & FF_BINARY)) {
 	    err = read_dir_data(me);
 	    if (err)
-		do_close(me->ff);
+		do_close(me, me->ff);
 	}
     } else {
 	switch (errno) {
@@ -837,7 +847,7 @@ static unsigned int fop_delete(struct abcprint *me)
     }
 
     nuke_file(ff->hf);		/* Mark file for delete on close */
-    err = do_close(ff);
+    err = do_close(me, ff);
 
 fail:
     return send_reply(me, err);
@@ -923,6 +933,7 @@ typedef unsigned int (*fop_func)(struct abcprint *);
 struct fop {
     unsigned int byte_count;	/* Argument bytes needed */
     const char *name;		/* Command name for tracing */
+    bool isrst;			/* This command is allowed to reset sequence numbers */
     fop_func runs[2];		/* Command phases */
 };
 
@@ -931,39 +942,41 @@ struct fop {
 /* Command info starting at 0xA0... */
 #define FIRST_CMD 0xA0
 static const struct fop fops[] = {
-    { 14, "OPEN_A", { fop_open, NULL } },  /* A0: OPEN ASCII */
-    { 14, "OPEN_B", { fop_open, NULL } },  /* A1: OPEN BINARY */
-    { 14, "PREP_A", { fop_open, NULL } },  /* A2: PREPARE ASCII */
-    { 14, "PREP_B", { fop_open, NULL } },  /* A3: PREPARE BINARY */
-    {  0, "INPUT",  { fop_input, NULL } },   /* A4: INPUT */
-    {  2, "GET",    { fop_get, NULL } },     /* A5: READ BLOCK (GET) */
-    {  2, "PRINT",  { arg_len, fop_print } },   /* A6: PRINT */
-    {  0, "CLOSE",  { fop_close, NULL } },  /* A7: CLOSE */
-    {  0, "CLOSALL", { fop_closeall, NULL } }, /* A8: CLOSE ALL */
-    {  0, "INIT",   { fop_init, NULL } },    /* A9: close all and reset state */
-    { 11, "RENAME", { fop_rename, NULL } },  /* AA: RENAME */
-    {  0, "DELETE", { fop_delete, NULL } },  /* AB: DELETE (KILL) */
-    {  2, "PREAD",  { fop_pread, NULL } },   /* AC: PREAD */
-    {  2, "PWRITE", { arg_blkno, fop_pwrite } },  /* AD: PWRITE */
-    {  2, "BLKSIZE", { fop_blksize, NULL } }, /* AE: SET BLOCK SIZE */
-    {  2, "INITSZ", { fop_initsz, NULL } },  /* AF: INIT BLOCK SIZE */
-    {  0, "SEEK0", { fop_seek, NULL } },   /* B0: SEEK0 (REWIND) */
-    {  1, "SEEK1", { fop_seek, NULL } },   /* B1: SEEK1 */
-    {  2, "SEEK2", { fop_seek, NULL } },   /* B2: SEEK2 */
-    {  3, "SEEK3", { fop_seek, NULL } },   /* B3: SEEK3 */
-    {  4, "SEEK4", { fop_seek, NULL } },   /* B4: SEEK4 */
-    {  5, "SEEK5", { fop_seek, NULL } },   /* B5: SEEK5 */
-    {  6, "SEEK6", { fop_seek, NULL } },   /* B6: SEEK6 */
-    {  7, "SEEK7", { fop_seek, NULL } },   /* B7: SEEK7 */
-    {  8, "SEEK8", { fop_seek, NULL } },   /* B8: SEEK8 */
-    {  2, "PUT", { arg_len, fop_put } },     /* B9: PUT */
-    {  0, "LISTVOL", { fop_listvol, NULL } }, /* BA: LIST VOLUMES */
-    {  2, "CMD", { arg_len, fop_cmd } },      /* BB: GENERIC COMMAND */
-    {  0, "invalid", { fop_invalid, NULL } }  /* invalid command opcode */
+    { 14, "OPEN_A",  false, { fop_open, NULL } },  /* A0: OPEN ASCII */
+    { 14, "OPEN_B",  false, { fop_open, NULL } },  /* A1: OPEN BINARY */
+    { 14, "PREP_A",  false, { fop_open, NULL } },  /* A2: PREPARE ASCII */
+    { 14, "PREP_B",  false, { fop_open, NULL } },  /* A3: PREPARE BINARY */
+    {  0, "INPUT",   false, { fop_input, NULL } },   /* A4: INPUT */
+    {  2, "GET",     false, { fop_get, NULL } },     /* A5: READ BLOCK (GET) */
+    {  2, "PRINT",   false, { arg_len, fop_print } },   /* A6: PRINT */
+    {  0, "CLOSE",   false, { fop_close, NULL } },  /* A7: CLOSE */
+    {  0, "CLOSALL", true,  { fop_closeall, NULL } }, /* A8: CLOSE ALL */
+    {  0, "INIT",    true,  { fop_init, NULL } },    /* A9: close all and reset state */
+    { 11, "RENAME",  false, { fop_rename, NULL } },  /* AA: RENAME */
+    {  0, "DELETE",  false, { fop_delete, NULL } },  /* AB: DELETE (KILL) */
+    {  2, "PREAD",   false, { fop_pread, NULL } },   /* AC: PREAD */
+    {  2, "PWRITE",  false, { arg_blkno, fop_pwrite } },  /* AD: PWRITE */
+    {  2, "BLKSIZE", false, { fop_blksize, NULL } }, /* AE: SET BLOCK SIZE */
+    {  2, "INITSZ",  false, { fop_initsz, NULL } },  /* AF: INIT BLOCK SIZE */
+    {  0, "SEEK0",   false, { fop_seek, NULL } },   /* B0: SEEK0 (REWIND) */
+    {  1, "SEEK1",   false, { fop_seek, NULL } },   /* B1: SEEK1 */
+    {  2, "SEEK2",   false, { fop_seek, NULL } },   /* B2: SEEK2 */
+    {  3, "SEEK3",   false, { fop_seek, NULL } },   /* B3: SEEK3 */
+    {  4, "SEEK4",   false, { fop_seek, NULL } },   /* B4: SEEK4 */
+    {  5, "SEEK5",   false, { fop_seek, NULL } },   /* B5: SEEK5 */
+    {  6, "SEEK6",   false, { fop_seek, NULL } },   /* B6: SEEK6 */
+    {  7, "SEEK7",   false, { fop_seek, NULL } },   /* B7: SEEK7 */
+    {  8, "SEEK8",   false, { fop_seek, NULL } },   /* B8: SEEK8 */
+    {  2, "PUT",     false, { arg_len, fop_put } },     /* B9: PUT */
+    {  0, "LISTVOL", false, { fop_listvol, NULL } }, /* BA: LIST VOLUMES */
+    {  2, "CMD",     false, { arg_len, fop_cmd } },      /* BB: GENERIC COMMAND */
+    {  0, "invalid", false, { fop_invalid, NULL } }  /* invalid command opcode */
 };
 
 bool file_op(struct abcprint *me, unsigned char c)
 {
+    bool seqerr;
+
     *me->bytep++ = c;
     if (--me->byte_count)
         return true;            /* More to do... */
@@ -984,12 +997,36 @@ bool file_op(struct abcprint *me, unsigned char c)
 	me->bytep = me->bufp = me->argbuf.b;
 	me->fseq = 0;
 
+	seqerr = false;
+	if (me->cmd[1] != me->nextseq) {
+	    if (me->fop->isrst)
+		me->nextseq = me->cmd[1];
+	    else
+		seqerr = true;
+	}
+
         if (tracing(TRACE_PR)) {
             fprintf(tracef, "PR:  %-7s : FF %02X %02x %04x",
 		    me->fop->name, me->cmd[0], me->cmd[1], me->ix);
+	    if (seqerr) {
+		if (me->nextseq >= 0) {
+		    fprintf(tracef, "  <seq err %02x expected %02x>",
+			    me->cmd[1], me->nextseq);
+		} else {
+		    fprintf(tracef, "  <out of sync>");
+		}
+	    }
 	    if (me->byte_count)
 		fprintf(tracef, " <need %u bytes>", me->byte_count);
 	    fputc('\n', tracef);
+	}
+
+	if (seqerr) {
+	    if (me->open_cnt)
+		do_close_all(me);
+	    me->nextseq = -1;
+	} else {
+	    me->nextseq = (uint8_t)(me->cmd[1] + 1);
 	}
     } else {
 	if (tracing(TRACE_PR))
@@ -999,7 +1036,13 @@ bool file_op(struct abcprint *me, unsigned char c)
     if (me->byte_count)
 	return true;
 
-    me->byte_count = me->fop->runs[me->fseq](me);
+    if (me->nextseq < 0) {
+	/* Out of synchronization */
+	send_reply(me, 128+37);	/* "Felaktight recordformat" */
+    } else {
+	me->byte_count = me->fop->runs[me->fseq](me);
+    }
+
     if (me->byte_count) {
 	me->datalen = me->byte_count;
 	me->bytep = me->bufp = me->data;
