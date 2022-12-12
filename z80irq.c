@@ -1,6 +1,7 @@
 #include "compiler.h"
 #include "z80.h"
 #include "z80irq.h"
+#include "ilog2.h"
 
 atomic_uint irq_pending;      /* Quick way to poll */
 unsigned int irq_mask = ~0U;
@@ -34,7 +35,7 @@ int z80_intack(void)
         if (unlikely(!irqmasked))
             return vector;      /* All interrupts went away... */
 
-        prio = __builtin_ctz(irqmasked);
+        prio = tzcount_32(irqmasked);
 	thisirq = 1U << prio;
         if (unlikely(!(atomic_fetch_and(&irq_pending, ~thisirq) & thisirq)))
             continue;           /* This particular interrupt went away on us? */
