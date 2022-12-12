@@ -166,7 +166,8 @@ void genrand_data(void *buf, size_t len)
 /* generates a random double number on [0,1) */
 double genrand_double(void)
 {
-    uint64_t v = genrand_int64();
-    v &= ((uint64_t)1 << DBL_MANT_DIG) - 1;
-    return v * scalbn(1.0, -DBL_MANT_DIG); /* Multiply better here...?  */
+    const double scale = scalbn(1.0, -DBL_MANT_DIG);
+    const uint64_t mask = ((uint64_t)1 << DBL_MANT_DIG) - 1;
+
+    return (genrand_int64() & mask) * scale;
 }

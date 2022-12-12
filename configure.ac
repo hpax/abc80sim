@@ -211,6 +211,7 @@ AC_CHECK_FUNCS(setsid)
 PA_HAVE_FUNC(AllocConsole, ())
 
 dnl Checks for library functions.
+AC_SEARCH_LIBS([scalbn], [m])
 AC_SEARCH_LIBS([deflate], [z])
 AC_SEARCH_LIBS([png_write_png], [png])
 AC_SEARCH_LIBS([clock_gettime], [rt])
