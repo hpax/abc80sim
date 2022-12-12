@@ -192,19 +192,37 @@ static unsigned int pr_send(struct abcprint *me, const void *buf,
 
 static unsigned int send_data(struct abcprint *me, const void *buf, size_t len)
 {
-    return pr_send(me, buf, len, "return");
+    return pr_send(me, buf, len, "data");
 }
 
 static unsigned int send_reply(struct abcprint *me, int status)
 {
     unsigned char reply[4];
+    char err_txt[8];
+    const char *what = NULL;
 
     reply[0] = 0xff;
     reply[1] = me->cmd[0];
     reply[2] = me->cmd[1];
     reply[3] = status;
 
-    return pr_send(me, reply, 4, "reply");
+    if (tracing(TRACE_PR)) {
+	if (!status) {
+	    what = "ok";	/* Operation completed */
+	} else if (status == 0x80) {
+	    what = "fail";	/* Default failure for this operation */
+	} else {
+	    /*
+	     * Bit 7 should be set = error code
+	     * Bit 7 clear is reserved for future use and should not happen
+	     */
+	    snprintf(err_txt, sizeof err_txt, "%s %u",
+		     (status & 0x80) ? "err" : "wtf", status & 0x7f);
+	    what = err_txt;
+	}
+    }
+
+    return pr_send(me, reply, 4, what);
 }
 
 /* Returns error code */
