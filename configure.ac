@@ -57,6 +57,9 @@ PA_ARG_ENABLED([debug], [compile for debugging],
 [PA_ARG_DISABLED([O3], [don't compile with -O3 optimization],
  [], [PA_ADD_CFLAGS(-O3)])])
 
+dnl Verbose debug information, if at all possible
+PA_ADD_CFLAGS(-ggdb3,,,PA_ADD_CFLAGS(-g3))
+ 
 dnl Can we be selective about libraries?
 PA_ADD_LDFLAGS([-Wl,--as-needed])
 
