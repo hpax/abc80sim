@@ -213,6 +213,14 @@ static void make_attributes(void)
 	[MODEL_ABC806]  = 0xffffffff /* Should come from attribute memory*/
     };
     const uint32_t attrib_mask = attrib_masks[opts.model];
+    static const uint8_t inv_aboves[] = {
+	[MODEL_ABC80]   = 0x9f,
+	[MODEL_ABC800C] = 0x7f,
+	[MODEL_ABC800M] = 0xff,
+	[MODEL_ABC802]  = 0x7f,
+	[MODEL_ABC806]  = 0x7f	/* ? */
+    };
+    const uint8_t inv_above = inv_aboves[opts.model];
     const unsigned int m40 = vdu.mode40;
     const unsigned int width = TS_WIDTH >> m40;
     unsigned int x, y;
@@ -300,15 +308,13 @@ static void make_attributes(void)
 		    }
 		}
 
-		if (!(va.flags & GMODE_HOLD)) {
+		if (!(va.flags & GMODE_HOLD))
 		    va.ch = ' ';
-		    va.inv = 0;	/* Is this conditional on GMODE_HOLD? */
-		}
 	    } else {
 		va.ch  = (ch & 0x7f) |
 		    ((va.flags & (GMODE_GFX|GMODE_SEP)) << 7);
-		va.inv = (ch >= 0xa0);
 	    }
+	    va.inv = ch > inv_above;
 
 	    /* For the first row, this will always be false */
 	    if (vap[-TS_WIDTH].flags & GMODE_DBLE) {
@@ -364,20 +370,7 @@ put_screen(struct surface *s, unsigned int tx, unsigned int ty, bool blink)
     if (va.flags & GMODE_DBL2)
 	fontp += FONT_YSIZE >> 1; /* Second half */
 
-    invmask = 0;
-    switch (opts.model) {
-    case MODEL_ABC80:
-	invmask = (blink && va.inv) ? 7 : 0;
-	break;
-    case MODEL_ABC800M:
-    case MODEL_ABC806:
-	invmask = 0;
-	break;
-    case MODEL_ABC800C:
-    case MODEL_ABC802:
-	invmask = va.inv ? 7 : 0;
-	break;
-    }
+    invmask = (va.inv && (!is_abc80() || blink)) ? 7 : 0;
 
     if (vdu.fgctl & 0x80) {
 	bgp = fgp = 0;
