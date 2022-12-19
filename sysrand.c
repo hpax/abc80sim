@@ -178,6 +178,16 @@ static inline bool x86_has_cpuid(void)
 
 #endif
 
+#ifdef HAVE___PAUSE
+# define cpu_pause() __pause()
+#elif defined(HAVE__MM_PAUSE)
+# define cpu_pause() _mm_pause()
+#elif defined(HAVE___BUILTIN_IA32_PAUSE)
+# define cpu_pause() __builtin_ia32_pause()
+#else
+# define cpu_pause() ((void)0)
+#endif
+
 #define RDRAND_LOOPS 16
 
 #define x86_make_random_func(instr,bits)				\
@@ -195,6 +205,7 @@ static size_t x86_ ## instr ## _get_random_bytes(void *ptr, size_t len)	\
 	while (unlikely(! _ ## instr ## bits ## _step(&r))) {		\
 	    if (!--ctr)							\
 		return len - left;					\
+	    cpu_pause();						\
 	}								\
 	if (left < sizeof(rdrand_t)) {					\
 	    rdrand_t rr = r;						\

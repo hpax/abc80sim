@@ -106,6 +106,9 @@ PA_HAVE_FUNC(_rdrand32_step, (NULL))
 PA_HAVE_FUNC(_rdrand64_step, (NULL))
 PA_HAVE_FUNC(_rdseed32_step, (NULL))
 PA_HAVE_FUNC(_rdseed64_step, (NULL))
+PA_HAVE_FUNC(__pause, ())
+PA_HAVE_FUNC(_mm_pause, ())
+PA_HAVE_FUNC(__builtin_ia32_pause, ())
 
 dnl Bit operation intrinsics - the naming here is insanely redundant
 PA_HAVE_FUNC(__lzcnt32, (1))
