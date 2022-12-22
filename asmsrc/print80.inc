@@ -134,28 +134,22 @@ pr_print:
 	call select
 	ld a,0F3h			; Printer data
 	call send_esc
-	ld de,0FFFEh
 
 pr_print_loop:
 	ld a,b
 	or c
-	jr z,pr_done
+	ld a,0EFh
+	jr z,done_esc
 	ld a,(hl)
-	cp d
-	jr nz,pr_print_not_ff
-	call send_byte			; FF
-	ld a,e				; FE
-pr_print_not_ff:
 	call send_byte
-
+	inc a
+	jr nz,pr_not_ff
+	ld a,0FEh
+	call send_byte
+pr_not_ff:
 	dec bc
 	inc hl
 	jr pr_print_loop
-
-pr_done:
-	ld a,0EFh
-	call send_esc
-	jr done
 
 	;; Select the current device, and save the stack pointer
 	;; to allow for an error unwind. This should be called from the
@@ -177,9 +171,10 @@ select:
 pr_close:
 	call select
 	ld a,0FDh
-	call send_esc
-	jr done_ok
+	;; Fall through
 
+done_esc:
+	call send_esc
 done_ok:
 	xor a
 done:
@@ -191,10 +186,8 @@ done:
 	ld sp,(errsp)			; Restore stack
 	inc sp				; Drop return address from select
 	inc sp
-	add a				; Carry = negative number?
-	ret z				; A=0 success or default error
-	rra				; Restore original value
-	scf
+	rlca				; Bit 7 = set CF
+	srl a				; Strip bit 7 from result but is now in CF
 	ret
 
 	if pra_dev
@@ -321,10 +314,7 @@ output_common:
 	ld a,0xA6
 prx_length_command:
 	call send_cmd
-	ld a,c
-	call send_byte
-	ld a,b
-	call send_byte
+	call send_word
 	call send_buf
 	jp recv_reply
 
@@ -716,18 +706,28 @@ crlf:
 
 	endif
 
-	; Send a command header, A = command
+	; Send a command header, A = command; clobbers BC
 send_cmd:
+	push bc
 	ld (ram_cmd),a
 	call send_esc
 	ld a,(ram_serial)
-	inc a
-	ld (ram_serial),a
 	call send_byte
-	ld a,ixl
+	push ix
+	pop bc
+	call send_word
+	pop bc
+	ret
+
+	;; Send a word in BC
+send_word:
+	push af
+	ld a,c
 	call send_byte
-	ld a,ixh
-	jr send_byte
+	ld a,b
+	call send_byte
+	pop af
+	ret
 
 	;; Send FF + byte; reset running checksum
 send_esc:
@@ -736,6 +736,7 @@ send_esc:
 	call send_byte
 	ld (ram_csum),a
 	pop af
+	;; Fall through
 
 	; Send a single byte and add to running checksum
 send_byte:
@@ -813,7 +814,8 @@ wf_nope:
 	djnz wf_ctr
 wf_error:
 	ld a,128+42		; Device not ready
-	jr done4
+done4:
+	jp done
 
 send_endframe:
 	ld a,0EFh		; End of frame
@@ -831,23 +833,30 @@ send_endframe:
 recv_reply:
 	push bc
 	call send_endframe
+	ld bc,(ram_cmd)
 rr_loop:
 	call recv_byte
+rr_isff:
 	inc a			; FF?
 	jr nz,rr_loop
 	call recv_byte
-	ld bc,(ram_cmd)
 	cp c			; Command
-	jr nz,rr_loop
+	jr nz,rr_isff
 	call recv_byte
 	cp b			; Serial
-	jr nz,rr_loop
+	jr nz,rr_isff
 	call recv_byte		; Error code (if any)
+	;; Got this far, bump sequence number
+	inc b
+	ld (ram_cmd),bc
 	pop bc
 	and a
 	ret z
-done4:
-	jp done
+	jr done4
+
+rr_timeout:
+	dec b			; Drop the sequence number to allow resend
+	jr wf_error
 
 ;;;
 ;;; Discard any (stale) input, if any. Terminate immediately if suspended,
@@ -929,7 +938,7 @@ init:
 
 	ld a,0xA9		; CLOSE ALL NO REPLY
 	call send_cmd
-	call send_endframe
+	call recv_reply
 
 	ld a,0xBA		; LIST VOLUMES
 	pop hl
@@ -1263,7 +1272,7 @@ ram_csum:
 ram_cmd:
 	defs 1			; Latest sent command
 ram_serial:
-	defs 1			; Latest serial number
+	defs 1			; Latest serial number (must be immediately after ram_cmd)
 ram_dummy:
 	defs 1			; Scratch byte
 basic_jumps:

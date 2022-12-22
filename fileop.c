@@ -319,22 +319,24 @@ static int do_close_all(struct abcprint *me)
     return 0;
 }
 
-static unsigned int do_init(struct abcprint *me, unsigned int blksz)
+static void do_init(struct abcprint *me, unsigned int blksz)
 {
     do_blksize(me, blksz);
     do_close_all(me);
     init_volumes(me);
-    return 0;
-}
-
-static unsigned int fop_init(struct abcprint *me)
-{
-    return do_init(me, 253);
 }
 
 static unsigned int fop_initsz(struct abcprint *me)
 {
-    return do_init(me, me->arg);
+    do_init(me, me->arg);
+    me->pktmode = true;
+    return send_reply(me, 0);
+}
+
+static unsigned int fop_init(struct abcprint *me)
+{
+    me->arg = 253;
+    return fop_initsz(me);
 }
 
 static unsigned int fop_closeall(struct abcprint *me)
@@ -1130,10 +1132,7 @@ bool file_op(struct abcprint *me, unsigned char c)
     if (me->byte_count)
 	return true;
 
-    if (me->nextseq < 0) {
-	/* Out of synchronization */
-	send_reply(me, 128+37);	/* "Felaktight recordformat" */
-    } else if (me->endframe && (me->endframe[0] != 0xef || me->csum)) {
+    if (me->endframe && (me->endframe[0] != 0xef || me->csum)) {
 	if (tracing(TRACE_PR)) {
 	    fprintf(tracef, "PR:  %-7s : bad endframe signature %02x %02x (expected %02x %02x)\n",
 		    me->fop->name, me->endframe[0], me->endframe[1],
@@ -1143,22 +1142,27 @@ bool file_op(struct abcprint *me, unsigned char c)
     } else {
 	fop_func do_next = me->fop->runs[me->fseq];
 
-	me->byte_count = do_next ? do_next(me) : 0;
-	if (me->fseq == 0) {
-	    me->endframe = me->data + me->byte_count;
-	    me->byte_count += 2; /* End of frame goes here */
-	}
-	if (me->byte_count) {
-	    me->datalen = me->byte_count;
-	    me->bytep = me->bufp = me->data;
-	    me->fseq++;
-	    if (tracing(TRACE_PR)) {
-		if (do_next) {
-		    fprintf(tracef, "PR:  %-7s : <expect %u more bytes>\n",
-			    me->fop->name, me->byte_count);
-		}
+	if (me->nextseq < 0 && me->fseq > 0) {
+	    /* Out of synchronization */
+	    send_reply(me, 128+37);	/* "Felaktight recordformat" */
+	} else {
+	    me->byte_count = do_next ? do_next(me) : 0;
+	    if (me->fseq == 0) {
+		me->endframe = me->data + me->byte_count;
+		me->byte_count += 2; /* End of frame goes here */
 	    }
-	    return true;
+	    if (me->byte_count) {
+		me->datalen = me->byte_count;
+		me->bytep = me->bufp = me->data;
+		me->fseq++;
+		if (tracing(TRACE_PR)) {
+		    if (do_next) {
+			fprintf(tracef, "PR:  %-7s : <expect %u more bytes>\n",
+				me->fop->name, me->byte_count);
+		    }
+		}
+		return true;
+	    }
 	}
     }
 

@@ -75,7 +75,7 @@ FF A8 ss xxxx				CLOSE ALL
 FF A9 ss xxxx				INIT
 
 	All files are closed and forgotten.  Block size is set to 253.
-	xxxx ignored.  No response token is sent.
+	xxxx ignored.
 
 FF AA ss ixix NNNNNNNNEEE		RENAME
 
@@ -106,7 +106,7 @@ FF AE ss xxxx len2			SET BLOCK SIZE
 FF AF ss xxxx len2			INITSZ
 
 	All files are closed and forgotten.  Block size is set to len2.
-	xxxx ignored.  No response token is sent.
+	xxxx ignored.
 
 FF Bn ss ixix posn			REWIND, SEEK1..SEEK8
 
