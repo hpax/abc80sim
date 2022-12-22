@@ -9,13 +9,22 @@ All other bytes than FF are part of the print job.
 Multiple FF bytes are treated as a single one, so FF FF FF FF ...
 can be used to resynchonize if necessary.
 
+After an INIT command or FF F3 sequence has been received, printer
+data needs to be framed with the following sequences, or will be
+ignored:
+
+FF F3   -> start printer data
+
+FF EF   -> end of print data
+
 
 File sharing commands:
 ----------------------
 
-All commands start with FF <opcode> <seq>, and all responses begin
-with FF <opcode> <seq> <err>, where <err> is 0 for OK and otherwise
-0x80+ABC80 error code.
+All commands start with FF <opcode> <seq> and end with EF <neg_csum>.
+
+All responses begin with FF <opcode> <seq> <err>, where <err> is 0 for
+OK and otherwise 0x80+ABC80 error code.
 
 All multibyte arguments are sent in littleendian order.
 

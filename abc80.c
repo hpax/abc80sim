@@ -80,6 +80,7 @@ static void parse_trace(char *arg)
 	{"pr", TRACE_PR, "printer interface"},
 	{"flash", TRACE_FLASH, "MEG80 card flash programming"},
 	{"map", TRACE_MAP, "memory map settings"},
+	{"prdata", TRACE_PRDATA, "all printer interface data"},
 	{NULL, 0, NULL}
     };
     const struct trace_args *trp;

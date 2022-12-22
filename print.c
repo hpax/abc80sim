@@ -109,6 +109,7 @@ void abcprint_reset(struct abcprint *me)
 {
     fileop_reset(me);
     me->istate = is_normal;
+    me->pktmode = false;	/* Allow compatibility output */
 }
 
 struct abcprint *abcprint_init(send_func send_data, void *pvt)
@@ -140,18 +141,24 @@ void abcprint_recv(struct abcprint *me, const void *data, size_t len)
     const unsigned char *dp = data;
     unsigned char c;
 
+    if (tracing(TRACE_PRDATA))
+	trace_dump_data("PR:  ", data, len);
+
     while (len--) {
+	enum input_state istate = me->istate;
         c = *dp++;
 
-        switch (me->istate) {
+        switch (istate) {
         case is_normal:
-            if (c == 0xff)
+	    if (c == 0xff) {
                 me->istate = is_ff;
-            else
+	    } else if (!me->pktmode) {
                 output(me, c);
+	    }
             break;
 
         case is_ff:
+        case is_printer_ff:
 	    me->istate = is_normal; /* Unless otherwise stated... */
 	    switch (c) {
 	    case 0x00:		/* For limited backwards compatibility */
@@ -162,7 +169,7 @@ void abcprint_recv(struct abcprint *me, const void *data, size_t len)
                 print_finish(me);
 		break;
 	    case 0xff:
-		/* FF FF: stay in this state (resync) */
+		/* FF FF: can be sent indefinitely to resync */
 		me->istate = is_ff;
 		break;
 	    case 0xfa:
@@ -172,14 +179,18 @@ void abcprint_recv(struct abcprint *me, const void *data, size_t len)
 
 		me->sd.func(me->sd.pvt, "\xaf", 1); /* Respond with AF */
 		break;
-	    case 0xf0:
-		/* FF F0: Do nothing ("null", return to main state) */
+	    case 0xf3:
+		/* FF F3: Printer data (terminate with FF EF) */
 		if (tracing(TRACE_PR))
-		    fprintf(tracef, "PR:  FF F0  : NUL - ignoring\n");
+		    fprintf(tracef, "PR:  FF F3  : PRN - printer output\n");
+		me->pktmode = true;
+		me->istate = is_printer;
 		break;
 	    case 0xfe:
-		/* FF FE: "Escape" (send FF) */
-		output(me, 0xff);
+		/* FF FE: Output FF to the printer */
+		if (istate == is_printer_ff || !me->pktmode)
+		    output(me, 0xff);
+		me->istate = istate - 1; /* ff -> normal, printer_ff -> printer */
 		break;
 	    case 0xc0:
 		/* FF C0: Console output */
@@ -191,9 +202,17 @@ void abcprint_recv(struct abcprint *me, const void *data, size_t len)
 		/* Opcode range reserved for file operations */
                 me->istate = file_op(me, c) ? is_file : is_normal;
 		break;
+	    case 0xef:
+	    case 0xf0:
 	    default:
-                output(me, c);
-                me->istate = is_normal;
+		/* FF EF: End frame (return to main state) */
+		/* FF F0: Do nothing ("null", return to main state) */
+		if (tracing(TRACE_PR)) {
+		    fprintf(tracef, "PR:  FF %02X  : %s\n", c,
+			    (c == 0xef) ? "end frame" :
+			    (c == 0xf0) ? "NOP" : "unknown");
+		}
+		break;
             }
             break;
 
@@ -210,6 +229,13 @@ void abcprint_recv(struct abcprint *me, const void *data, size_t len)
                 fputc(c, console_file);
             }
             break;
+
+	case is_printer:
+	    if (c == 0xff)
+		me->istate = is_printer_ff;
+	    else
+		output(me, c);
+	    break;
         }
     }
 }

@@ -12,9 +12,11 @@
 /* Ordinary input state machine */
 enum input_state {
     is_normal,                  /* Normal operation */
-    is_ff,                      /* 0xFF received */
+    is_ff,                      /* FF received */
     is_file,                    /* File operation in progress */
-    is_console                  /* Output to console */
+    is_console,                 /* Output to console */
+    is_printer,			/* Output to printer */
+    is_printer_ff		/* FF received from is_printer */
 };
 
 #define FF_OPEN		0xA0
@@ -67,13 +69,16 @@ struct abcprint {
     /* Input state machine */
     enum input_state istate;
 
+    /* Compatibility or packet mode? */
+    bool pktmode;
+
     /* Position in file operations sequence (0 = initial command) */
     unsigned int fseq;
 
     /* System block size */
     unsigned int blksize;
 
-    /* Next expected command sequence number */
+    /* Next expected command sequence number, or -1 if out of sync */
     int nextseq;
 
     /* Current ix value, and corresponding fileop_file, if any */
@@ -85,8 +90,10 @@ struct abcprint {
     unsigned int byte_count;	/* Data still required */
     unsigned char *bufp;	/* Pointer to initial buffer */
     unsigned char *bytep;	/* Pointer to next byte to be received */
+    unsigned char *endframe;	/* Pointer to end frame signature */
     const struct fop *fop;	/* Command being executed */
     unsigned int seq;		/* Phase in sequence */
+    uint8_t csum;		/* Byte checksum */
 
     /* Data buffers */
     unsigned char cmd[4];	/* Buffer for command */

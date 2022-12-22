@@ -15,6 +15,7 @@ enum tracing {
     TRACE_PR = 0x20,
     TRACE_FLASH = 0x40,
     TRACE_MAP = 0x80,
+    TRACE_PRDATA = 0x100,
     TRACE_ALL = 0xff
 };
 

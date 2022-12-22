@@ -32,7 +32,7 @@
 	include "abc80.inc"
 	include "auxram.inc"
 
-	defc selcode=60			; ABC-bus select code (parallel port)
+	defc selcode=60			; ABC-bus select code
 
 	defc LARGE=(ROMSIZE >= 2048)
 
@@ -132,23 +132,30 @@ pra_jptable:
 
 pr_print:
 	call select
-	ld d,0FFh
+	ld a,0F3h			; Printer data
+	call send_esc
+	ld de,0FFFEh
 
 pr_print_loop:
 	ld a,b
 	or c
-	jr z,done
+	jr z,pr_done
 	ld a,(hl)
 	cp d
 	jr nz,pr_print_not_ff
 	call send_byte			; FF
-	dec a				; FE
+	ld a,e				; FE
 pr_print_not_ff:
 	call send_byte
 
 	dec bc
 	inc hl
 	jr pr_print_loop
+
+pr_done:
+	ld a,0EFh
+	call send_esc
+	jr done
 
 	;; Select the current device, and save the stack pointer
 	;; to allow for an error unwind. This should be called from the
@@ -169,13 +176,10 @@ select:
 
 pr_close:
 	call select
-	ld a,0FFh
-	call send_byte
-	ld a,0FDh			; FF FD = "done" = EOF
-	;; Fall through to send_byte_done
+	ld a,0FDh
+	call send_esc
+	jr done_ok
 
-send_byte_done:
-	call send_byte
 done_ok:
 	xor a
 done:
@@ -714,14 +718,8 @@ crlf:
 
 	; Send a command header, A = command
 send_cmd:
-	push af
-	call flush_rx
-
-	ld a,255
-	call send_byte
-	pop af
 	ld (ram_cmd),a
-	call send_byte
+	call send_esc
 	ld a,(ram_serial)
 	inc a
 	ld (ram_serial),a
@@ -729,16 +727,29 @@ send_cmd:
 	ld a,ixl
 	call send_byte
 	ld a,ixh
-	; Fall through to send_byte
+	jr send_byte
 
-	; Send a single byte
-send_byte:
+	;; Send FF + byte; reset running checksum
+send_esc:
 	push af
+	ld a,0FFh
+	call send_byte
+	ld (ram_csum),a
+	pop af
+
+	; Send a single byte and add to running checksum
+send_byte:
+	push hl
+	ld l,a
+	ld a,(ram_csum)
+	add l
+	ld (ram_csum),a
 	in a,(1)
 	and 2				; TX space available
 	call z,wait_for_tx
-	pop af
+	ld a,l
 	out (0),a
+	pop hl
 	ret
 
 	;; Send a buffer HL->data BC=count
@@ -804,12 +815,22 @@ wf_error:
 	ld a,128+42		; Device not ready
 	jr done4
 
-	;; Receive a reply header.
+send_endframe:
+	ld a,0EFh		; End of frame
+	call send_byte
+	ld a,(ram_csum)
+	neg			; Total checksum = 0
+	call send_byte
+
+	out (2),a		; Immediately transmit any pending output
+	ret
+
+	;; Send end of frame, and receive a reply header.
 	;; If the reply is an error, terminate command and return
 	;; the error code to BASIC (or other caller) by calling done.
 recv_reply:
 	push bc
-	out (2),a		; Flush any pending output
+	call send_endframe
 rr_loop:
 	call recv_byte
 	inc a			; FF?
@@ -863,7 +884,7 @@ prc_print:
 prc_print_loop:
 	ld a,b
 	or c
-	jp z,send_byte_done		; A=00 here
+	jr z,send_byte_done		; A=00 here
 	ld a,(hl)
 	and a
 	jr z,prc_skip
@@ -873,11 +894,15 @@ prc_skip:
 	inc hl
 	jr prc_print_loop
 
+send_byte_done:
+	call send_byte
+	jp done_ok
+
 	endif			; console_dev
 
 start:
 	if have_cmd
-	
+
 	ld hl,new_basic_jumps
 	ld bc,old_basic_jumps - new_basic_jumps
 	ld a,(65h)		; First byte different between old and new
@@ -889,7 +914,7 @@ is_new_basic:
 	ldir
 
 	endif
-	
+
 	call init		; Unwind to here on error or return
 	ld hl,__end + INIT_OFFS	; Where to search next
 	ret
@@ -904,6 +929,7 @@ init:
 
 	ld a,0xA9		; CLOSE ALL NO REPLY
 	call send_cmd
+	call send_endframe
 
 	ld a,0xBA		; LIST VOLUMES
 	pop hl
@@ -1035,7 +1061,7 @@ nul_jptable:
 	defc CMD_BUF_LEN = RADBUF_LEN
 	;; Need 16 bytes of overflow space for numbers
 	defc CMD_BUF_END = CMD_BUF + CMD_BUF_LEN - 16
-	
+
 	defc e_iec = ERR_8	; Not implemented
 
 e_cmd:
@@ -1069,7 +1095,7 @@ e_cmd_find_file_next:
 	cp l
 	jr nz,e_cmd_find_file_next
 	;; IX -> file map
-	
+
 e_cmd_start:
 	push ix
 
@@ -1088,7 +1114,7 @@ e_cmd_start_expr:
 	dec de
 	cp 192			; Byte code for expression
 	jr c,e_cmd_done		; Not an expression?
-	
+
 	rst 56			; Compute expression
 	push de			; Save P-code pointer
 	ld de,(e_cmd_buf_ptr)
@@ -1152,7 +1178,7 @@ e_cmd_done:
 	ld a,0BBh		; GENERIC COMMAND
 	call prx_length_command
 	jp done
-	
+
 e_cmd_check_overflow:
 	;; DE -> end of string data
 	push hl
@@ -1161,13 +1187,13 @@ e_cmd_check_overflow:
 	sbc hl,de
 	pop hl
 	ret nc			; All good
-	
+
 e_cmd_space_overflow:
 	rst 10h
 	defb 128 + 20		; "För lång rad"
 
 	endif			; have_cmd
-	
+
 device_list:
 	if console_dev
 prc_device:
@@ -1200,7 +1226,7 @@ new_basic_jumps:		; Checksum 9913, 10042
 	jp 1675h		; Float to string
 	jp 2152h		; Compile PRINT
 	endif
-	
+
 old_basic_jumps:		; Checksum 11273
 	if have_cmd
 	jp 339Bh		; Check space on stack
@@ -1213,7 +1239,7 @@ old_basic_jumps:		; Checksum 11273
 	defs ROMSIZE - ASMPC
 __end:
 
-	
+
 ;;
 ;; In RAM; this is assuming external SRAM or equivalent at 20-22K.
 ;; The top 64 bytes are used by UFD-DOS.
@@ -1232,6 +1258,8 @@ e_cmd_buf_ptr:
 	defs 2			; Current data buffer pointer
 ram_select:
 	defs 1			; Previous select code
+ram_csum:
+	defs 1			; Running output checksum
 ram_cmd:
 	defs 1			; Latest sent command
 ram_serial:

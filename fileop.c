@@ -946,6 +946,8 @@ static void fileop_goto_init_state(struct abcprint *me)
     me->fop = NULL;
     me->bytep = me->cmd;
     me->byte_count = 4;
+    me->endframe = NULL;
+    me->csum = 0xff;
 }
 
 /* Reset the fileop session */
@@ -1033,35 +1035,35 @@ struct fop {
 /* Command info starting at 0xA0... */
 #define FIRST_CMD 0xA0
 static const struct fop fops[] = {
-    { 14, "OPEN_A",  false, { fop_open, NULL } },  /* A0: OPEN ASCII */
-    { 14, "OPEN_B",  false, { fop_open, NULL } },  /* A1: OPEN BINARY */
-    { 14, "PREP_A",  false, { fop_open, NULL } },  /* A2: PREPARE ASCII */
-    { 14, "PREP_B",  false, { fop_open, NULL } },  /* A3: PREPARE BINARY */
-    {  0, "INPUT",   false, { fop_input, NULL } },   /* A4: INPUT */
-    {  2, "GET",     false, { fop_get, NULL } },     /* A5: READ BLOCK (GET) */
+    { 14, "OPEN_A",  false, { NULL, fop_open } },  /* A0: OPEN ASCII */
+    { 14, "OPEN_B",  false, { NULL, fop_open } },  /* A1: OPEN BINARY */
+    { 14, "PREP_A",  false, { NULL, fop_open } },  /* A2: PREPARE ASCII */
+    { 14, "PREP_B",  false, { NULL, fop_open } },  /* A3: PREPARE BINARY */
+    {  0, "INPUT",   false, { NULL, fop_input } },   /* A4: INPUT */
+    {  2, "GET",     false, { NULL, fop_get } },     /* A5: READ BLOCK (GET) */
     {  2, "PRINT",   false, { arg_len, fop_print } },   /* A6: PRINT */
-    {  0, "CLOSE",   false, { fop_close, NULL } },  /* A7: CLOSE */
-    {  0, "CLOSALL", true,  { fop_closeall, NULL } }, /* A8: CLOSE ALL */
-    {  0, "INIT",    true,  { fop_init, NULL } },    /* A9: close all and reset state */
-    { 11, "RENAME",  false, { fop_rename, NULL } },  /* AA: RENAME */
-    {  0, "DELETE",  false, { fop_delete, NULL } },  /* AB: DELETE (KILL) */
-    {  2, "PREAD",   false, { fop_pread, NULL } },   /* AC: PREAD */
+    {  0, "CLOSE",   false, { NULL, fop_close } },  /* A7: CLOSE */
+    {  0, "CLOSALL", true,  { NULL, fop_closeall } }, /* A8: CLOSE ALL */
+    {  0, "INIT",    true,  { NULL, fop_init } },    /* A9: close all and reset state */
+    { 11, "RENAME",  false, { NULL, fop_rename } },  /* AA: RENAME */
+    {  0, "DELETE",  false, { NULL, fop_delete } },  /* AB: DELETE (KILL) */
+    {  2, "PREAD",   false, { NULL, fop_pread } },   /* AC: PREAD */
     {  2, "PWRITE",  false, { arg_blkno, fop_pwrite } },  /* AD: PWRITE */
-    {  2, "BLKSIZE", false, { fop_blksize, NULL } }, /* AE: SET BLOCK SIZE */
-    {  2, "INITSZ",  false, { fop_initsz, NULL } },  /* AF: INIT BLOCK SIZE */
-    {  0, "SEEK0",   false, { fop_seek, NULL } },   /* B0: SEEK0 (REWIND) */
-    {  1, "SEEK1",   false, { fop_seek, NULL } },   /* B1: SEEK1 */
-    {  2, "SEEK2",   false, { fop_seek, NULL } },   /* B2: SEEK2 */
-    {  3, "SEEK3",   false, { fop_seek, NULL } },   /* B3: SEEK3 */
-    {  4, "SEEK4",   false, { fop_seek, NULL } },   /* B4: SEEK4 */
-    {  5, "SEEK5",   false, { fop_seek, NULL } },   /* B5: SEEK5 */
-    {  6, "SEEK6",   false, { fop_seek, NULL } },   /* B6: SEEK6 */
-    {  7, "SEEK7",   false, { fop_seek, NULL } },   /* B7: SEEK7 */
-    {  8, "SEEK8",   false, { fop_seek, NULL } },   /* B8: SEEK8 */
+    {  2, "BLKSIZE", false, { NULL, fop_blksize } }, /* AE: SET BLOCK SIZE */
+    {  2, "INITSZ",  false, { NULL, fop_initsz } },  /* AF: INIT BLOCK SIZE */
+    {  0, "SEEK0",   false, { NULL, fop_seek } },   /* B0: SEEK0 (REWIND) */
+    {  1, "SEEK1",   false, { NULL, fop_seek } },   /* B1: SEEK1 */
+    {  2, "SEEK2",   false, { NULL, fop_seek } },   /* B2: SEEK2 */
+    {  3, "SEEK3",   false, { NULL, fop_seek } },   /* B3: SEEK3 */
+    {  4, "SEEK4",   false, { NULL, fop_seek } },   /* B4: SEEK4 */
+    {  5, "SEEK5",   false, { NULL, fop_seek } },   /* B5: SEEK5 */
+    {  6, "SEEK6",   false, { NULL, fop_seek } },   /* B6: SEEK6 */
+    {  7, "SEEK7",   false, { NULL, fop_seek } },   /* B7: SEEK7 */
+    {  8, "SEEK8",   false, { NULL, fop_seek } },   /* B8: SEEK8 */
     {  2, "PUT",     false, { arg_len, fop_put } },     /* B9: PUT */
-    {  0, "LISTVOL", false, { fop_listvol, NULL } }, /* BA: LIST VOLUMES */
+    {  0, "LISTVOL", false, { NULL, fop_listvol } }, /* BA: LIST VOLUMES */
     {  2, "CMD",     false, { arg_len, fop_cmd } },      /* BB: GENERIC COMMAND */
-    {  0, "invalid", false, { fop_invalid, NULL } }  /* invalid command opcode */
+    {  0, "invalid", false, { NULL, fop_invalid } }  /* invalid command opcode */
 };
 
 bool file_op(struct abcprint *me, unsigned char c)
@@ -1069,6 +1071,8 @@ bool file_op(struct abcprint *me, unsigned char c)
     bool seqerr;
 
     *me->bytep++ = c;
+    me->csum += c;
+
     if (--me->byte_count)
         return true;            /* More to do... */
 
@@ -1129,20 +1133,32 @@ bool file_op(struct abcprint *me, unsigned char c)
     if (me->nextseq < 0) {
 	/* Out of synchronization */
 	send_reply(me, 128+37);	/* "Felaktight recordformat" */
+    } else if (me->endframe && (me->endframe[0] != 0xef || me->csum)) {
+	if (tracing(TRACE_PR)) {
+	    fprintf(tracef, "PR:  %-7s : bad endframe signature %02x %02x (expected %02x %02x)\n",
+		    me->fop->name, me->endframe[0], me->endframe[1],
+		    0xef, (uint8_t)(me->endframe[1] - me->csum));
+	}
+	/* Drop frame and wait for retransmit */
     } else {
 	fop_func do_next = me->fop->runs[me->fseq];
-	if (do_next) {
-	    me->byte_count = do_next(me);
-	    if (me->byte_count) {
-		me->datalen = me->byte_count;
-		me->bytep = me->bufp = me->data;
-		me->fseq++;
-		if (tracing(TRACE_PR)) {
+
+	me->byte_count = do_next ? do_next(me) : 0;
+	if (me->fseq == 0) {
+	    me->endframe = me->data + me->byte_count;
+	    me->byte_count += 2; /* End of frame goes here */
+	}
+	if (me->byte_count) {
+	    me->datalen = me->byte_count;
+	    me->bytep = me->bufp = me->data;
+	    me->fseq++;
+	    if (tracing(TRACE_PR)) {
+		if (do_next) {
 		    fprintf(tracef, "PR:  %-7s : <expect %u more bytes>\n",
 			    me->fop->name, me->byte_count);
 		}
-		return true;
 	    }
+	    return true;
 	}
     }
 
