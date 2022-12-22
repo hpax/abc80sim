@@ -78,9 +78,6 @@ struct abcprint {
     /* System block size */
     unsigned int blksize;
 
-    /* Next expected command sequence number, or -1 if out of sync */
-    int nextseq;
-
     /* Current ix value, and corresponding fileop_file, if any */
     uint16_t ix;
     struct fileop_file *ff;
@@ -92,7 +89,9 @@ struct abcprint {
     unsigned char *bytep;	/* Pointer to next byte to be received */
     unsigned char *endframe;	/* Pointer to end frame signature */
     const struct fop *fop;	/* Command being executed */
-    unsigned int seq;		/* Phase in sequence */
+    unsigned int seq;		/* Phase in command sequence */
+
+    uint8_t nextseq;		/* Next expected command sequence number */
     uint8_t csum;		/* Byte checksum */
 
     /* Data buffers */

@@ -1070,8 +1070,6 @@ static const struct fop fops[] = {
 
 bool file_op(struct abcprint *me, unsigned char c)
 {
-    bool seqerr;
-
     *me->bytep++ = c;
     me->csum += c;
 
@@ -1094,35 +1092,18 @@ bool file_op(struct abcprint *me, unsigned char c)
 	me->bytep = me->bufp = me->argbuf.b;
 	me->fseq = 0;
 
-	seqerr = false;
-	if (me->cmd[1] != me->nextseq) {
-	    if (me->fop->isrst)
-		me->nextseq = me->cmd[1];
-	    else
-		seqerr = true;
-	}
+	if (me->fop->isrst)	/* INIT commands force new sequence numbers */
+	    me->nextseq = me->cmd[1];
 
         if (tracing(TRACE_PR)) {
             fprintf(tracef, "PR:  %-7s : FF %02X %02x %04x",
 		    me->fop->name, me->cmd[0], me->cmd[1], me->ix);
-	    if (seqerr) {
-		if (me->nextseq >= 0) {
-		    fprintf(tracef, "  <seq err %02x expected %02x>",
-			    me->cmd[1], me->nextseq);
-		} else {
-		    fprintf(tracef, "  <out of sync>");
-		}
-	    }
+	    if (me->cmd[1] != me->nextseq)
+		fprintf(tracef, "  <seq err %02x expected %02x>",
+			me->cmd[1], me->nextseq);
 	    if (me->byte_count)
 		fprintf(tracef, " <need %u bytes>", me->byte_count);
 	    fputc('\n', tracef);
-	}
-
-	if (seqerr) {
-	    do_close_all(me);
-	    me->nextseq = -1;
-	} else {
-	    me->nextseq = (uint8_t)(me->cmd[1] + 1);
 	}
     } else {
 	if (tracing(TRACE_PR))
@@ -1132,40 +1113,47 @@ bool file_op(struct abcprint *me, unsigned char c)
     if (me->byte_count)
 	return true;
 
-    if (me->endframe && (me->endframe[0] != 0xef || me->csum)) {
-	if (tracing(TRACE_PR)) {
-	    fprintf(tracef, "PR:  %-7s : bad endframe signature %02x %02x (expected %02x %02x)\n",
-		    me->fop->name, me->endframe[0], me->endframe[1],
-		    0xef, (uint8_t)(me->endframe[1] - me->csum));
-	}
-	/* Drop frame and wait for retransmit */
-    } else {
-	fop_func do_next = me->fop->runs[me->fseq];
-
-	if (me->nextseq < 0 && me->fseq > 0) {
-	    /* Out of synchronization */
-	    send_reply(me, 128+37);	/* "Felaktight recordformat" */
+    if (me->endframe) {
+	if (me->endframe[0] != 0xef || me->csum) {
+	    if (tracing(TRACE_PR)) {
+		fprintf(tracef, "PR:  %-7s : bad endframe signature %02x %02x (expected %02x %02x)\n",
+			me->fop->name, me->endframe[0], me->endframe[1],
+			0xef, (uint8_t)(me->endframe[1] - me->csum));
+	    }
+	    goto drop_frame;
+	} else if (me->cmd[1] != me->nextseq) {
+	    if (tracing(TRACE_PR)) {
+		fprintf(tracef, "PR:  %-7s : dropping out of sequence frame (%02x expected %02x)\n",
+			me->fop->name, me->cmd[1], me->nextseq);
+	    }
+	    goto drop_frame;
 	} else {
-	    me->byte_count = do_next ? do_next(me) : 0;
-	    if (me->fseq == 0) {
-		me->endframe = me->data + me->byte_count;
-		me->byte_count += 2; /* End of frame goes here */
-	    }
-	    if (me->byte_count) {
-		me->datalen = me->byte_count;
-		me->bytep = me->bufp = me->data;
-		me->fseq++;
-		if (tracing(TRACE_PR)) {
-		    if (do_next) {
-			fprintf(tracef, "PR:  %-7s : <expect %u more bytes>\n",
-				me->fop->name, me->byte_count);
-		    }
-		}
-		return true;
-	    }
+	    /* Valid frame, increase sequence number */
+	    me->nextseq++;
 	}
     }
 
+    fop_func do_next = me->fop->runs[me->fseq];
+
+    me->byte_count = do_next ? do_next(me) : 0;
+    if (me->fseq == 0) {
+	me->endframe = me->data + me->byte_count;
+	me->byte_count += 2; /* End of frame goes here */
+    }
+    if (me->byte_count) {
+	me->datalen = me->byte_count;
+	me->bytep = me->bufp = me->data;
+	me->fseq++;
+	if (tracing(TRACE_PR)) {
+	    if (do_next) {
+		fprintf(tracef, "PR:  %-7s : <expect %u more bytes>\n",
+			me->fop->name, me->byte_count);
+	    }
+	}
+	return true;
+    }
+
+drop_frame:
     fileop_goto_init_state(me);
     return false;
 }
