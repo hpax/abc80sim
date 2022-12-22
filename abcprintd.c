@@ -14,6 +14,7 @@
 #include "serial.h"
 #include "network.h"
 #include "trace.h"
+#include "options.h"
 
 #include <signal.h>
 #include <setjmp.h>
@@ -45,11 +46,19 @@ typedef int (*client_func)(struct client_thread *);
 
 struct client_thread {
     SDL_Thread *tp;		/* Thread pointer */
-    struct client_thread *reap;	/* Reaper chain */
+    struct client_thread *reap;	/* Dead thread reaper chain */
     int rv;			/* Return value */
+    int error;			/* errno, if any */
     int rfd;			/* Read file descriptor */
     int wfd;			/* Write file descriptor */
     client_func task;		/* Thread function */
+    client_func ioerr;		/* Call this on EOF or I/O error */
+
+    /* Port information if applicable, used by ioerr */
+    struct {
+	const char *name;	/* Name of port if applicable */
+	unsigned int speed;	/* Speed of port */
+    } port;
 };
 
 static ssize_t abcprint_daemon_send(void *pvt, const void *data, size_t len)
@@ -80,11 +89,26 @@ struct client_sync {
     SDL_mutex   *m_launch;
     SDL_mutex   *m_quit;
     SDL_cond    *c_quit;
+    struct client_thread *list;
     struct client_thread *reap;
     unsigned int count;			/* Active thread counter */
 } client;
 
 #define BUF_SIZE 512
+
+static void abcprint_close(struct client_thread *self)
+{
+    if (self->rfd >= 0) {
+	close(self->rfd);
+	if (self->wfd == self->rfd)
+	    self->wfd = -1;
+	self->rfd = -1;
+    }
+    if (self->wfd >= 0) {
+	close(self->wfd);
+	self->wfd = -1;
+    }
+}
 
 static int abcprint_client_task(struct client_thread *self)
 {
@@ -92,11 +116,13 @@ static int abcprint_client_task(struct client_thread *self)
     ssize_t b = -1;
     struct abcprint *abcprint = NULL;
 
-    if (!ibuf)
+    if (!ibuf) {
+	self->error = ENOMEM;
 	goto quit;
+    }
 
     if (self->rfd < 0 || self->wfd < 0) {
-	errno = EBADF;
+	self->error = EBADF;
 	goto quit;
     }
 
@@ -105,14 +131,23 @@ static int abcprint_client_task(struct client_thread *self)
 	goto quit;
 
     while (1) {
-	errno = 0;
-	b = read(self->rfd, ibuf, BUF_SIZE);
-	if (b < 0 && errno_is_resume(errno))
-	    continue;
-	if (b <= 0)
-	    break;
+	self->error = 0;
+	while (1) {
+	    errno = 0;
+	    b = read(self->rfd, ibuf, BUF_SIZE);
+	    if (b <= 0) {
+		if (errno_is_resume(errno))
+		    continue;
+		self->error = errno;
+		break;
+	    }
+	    abcprint_recv(abcprint, ibuf, b);
+	}
 
-	abcprint_recv(abcprint, ibuf, b);
+	if (!self->ioerr || self->ioerr(self) < 0) {
+	    abcprint_close(self);
+	    break;
+	}
     }
 
 quit:
@@ -123,7 +158,7 @@ quit:
     return b;
 }
 
-static int abcprint_thread(void *selfp)
+static int abcprint_launch_thread(void *selfp)
 {
     struct client_thread *self = selfp;
     int rv;
@@ -132,10 +167,9 @@ static int abcprint_thread(void *selfp)
     assert(self->tp);
     SDL_UnlockMutex(client.m_launch);
 
-    rv = self->task(self);
+    self->rv = rv = self->task(self);
 
     SDL_LockMutex(client.m_quit);
-    self->rv    = rv;
     self->reap  = client.reap;
     client.reap = self;
     SDL_CondSignal(client.c_quit);
@@ -145,18 +179,16 @@ static int abcprint_thread(void *selfp)
 }
 
 static struct client_thread *
-abcprint_start_thread(client_func task, int rfd, int wfd)
+abcprint_start_thread(const struct client_thread *ctparm)
 {
-    struct client_thread *ct = calloc(1, sizeof *ct);
+    struct client_thread *ct = malloc(sizeof *ct);
     if (!ct)
 	return NULL;
 
-    ct->rfd  = rfd;
-    ct->wfd  = wfd;
-    ct->task = task;
+    *ct = *ctparm;
 
     SDL_LockMutex(client.m_launch);
-    ct->tp = SDL_CreateThread(abcprint_thread, ct);
+    ct->tp = SDL_CreateThread(abcprint_launch_thread, ct);
     if (ct->tp) {
 	client.count++;
     } else {
@@ -168,10 +200,29 @@ abcprint_start_thread(client_func task, int rfd, int wfd)
     return ct;
 }
 
+static int abcprint_serial_open(struct client_thread *self)
+{
+    abcprint_close(self);
+
+    while (1) {
+	int fd = open_serial(self->port.name, self->port.speed, FLOW_RTS);
+	self->rfd = self->wfd = fd;
+	if (fd >= 0) {
+	    self->error = 0;
+	    return fd;
+	} else if (errno == EBUSY || !opts.retry_port) {
+	    self->error = errno;
+	    free((void *)self->port.name);
+	    return -1;
+	}
+	sleep(opts.retry_port);
+    }
+}
+
 static struct client_thread *
 abcprint_serial_start(char *port, unsigned long baud, bool legacy)
 {
-    int fd;
+    struct client_thread ctparm = { .task = abcprint_client_task };
 
     if (!legacy) {
 	char *c2 = strrchr(port, ':');
@@ -186,27 +237,36 @@ abcprint_serial_start(char *port, unsigned long baud, bool legacy)
 	}
     }
 
-    fd = open_serial(port, baud, FLOW_RTS);
+    ctparm.ioerr     = opts.retry_port ? abcprint_serial_open : NULL;
+    ctparm.port.name = strdup(port);
+    ctparm.port.speed = baud;
+    ctparm.rfd = ctparm.wfd = -1;
 
-    if (fd < 0) {
-	fprintf(stderr, "%s: %s: %s\n",	program_name, port, strerror(errno));
+    if (abcprint_serial_open(&ctparm) < 0) {
+	fprintf(stderr, "%s: %s: %s\n", program_name, port,
+		strerror(ctparm.error));
 	return NULL;
     }
 
-    return abcprint_start_thread(abcprint_client_task, fd, fd);
+    return abcprint_start_thread(&ctparm);
 }
 
 static struct sockset servsocks = { .psock = NULL, .nsock = 0 };
 
 static int abcprint_listen_task(struct client_thread *self)
 {
+    struct client_thread ctparm = { .task = abcprint_client_task };
+
     (void)self;
+
     while (servsocks.nsock) {
-	int fd = sockset_accept(&servsocks);
+	int fd;
+
+	ctparm.rfd = ctparm.wfd = fd = sockset_accept(&servsocks);
 	if (fd < 0)
 	    break;
 
-	abcprint_start_thread(abcprint_client_task, fd, fd);
+	abcprint_start_thread(&ctparm);
     }
     return 0;
 }
@@ -239,23 +299,25 @@ int abcprint_run_servers(struct file_list *ports, unsigned long baud)
     SDL_LockMutex(client.m_quit);
 
     while ((filename = filelist_pop(ports, NULL))) {
+	struct client_thread ctparm = { .task = abcprint_client_task };
 	int af = AF_UNSPEC;
 	char *c1 = NULL;
 	size_t netpfx = 0;
 
 	if (!strcmp(filename, "-") || !strcasecmp(filename, "stdio")) {
-	    abcprint_start_thread(abcprint_client_task,
-				  fileno(stdin), fileno(stdout));
+	    ctparm.rfd = fileno(stdin);
+	    ctparm.wfd = fileno(stdout);
+	    abcprint_start_thread(&ctparm);
 	    continue;
 	}
 
 	if (!strncasecmp(filename, "fd:", 3)) {
-	    int rfd, wfd, nfd;
-	    nfd = sscanf(filename, "%d,%d", &rfd, &wfd);
-	    if (nfd >= 1) {
-		if (nfd < 2) wfd = rfd;
-		abcprint_start_thread(abcprint_client_task, rfd, wfd);
-	    }
+	    ctparm.rfd = ctparm.wfd = -1;
+	    sscanf(filename, "%d,%d", &ctparm.rfd, &ctparm.wfd);
+	    if (ctparm.wfd < 0)
+		ctparm.wfd = ctparm.rfd;
+	    if (ctparm.rfd >= 0)
+		abcprint_start_thread(&ctparm);
 	    continue;
 	}
 
@@ -296,8 +358,10 @@ int abcprint_run_servers(struct file_list *ports, unsigned long baud)
 	}
     }
 
-    if (servsocks.nsock)
-	abcprint_start_thread(abcprint_listen_task, 0, 0);
+    if (servsocks.nsock) {
+	struct client_thread ltparm = { .task = abcprint_listen_task };
+	abcprint_start_thread(&ltparm);
+    }
 
     if (!client.count)
 	return 1;		/* Nothing ever started... */

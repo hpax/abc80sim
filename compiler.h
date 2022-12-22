@@ -223,6 +223,12 @@ typedef int socklen_t;
 #endif
 
 /*
+ * A fatal function is both unlikely and no_return
+ */
+#define fatal_func     no_return unlikely_func
+#define fatal_func_ptr no_return unlikely_func_ptr
+
+/*
  * How to tell the compiler that a function is pure arithmetic
  */
 #ifdef HAVE_FUNC_ATTRIBUTE_CONST

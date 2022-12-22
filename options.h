@@ -68,6 +68,7 @@ struct opts {
     char *outputfile;		/* File to dump text screen to */
     double hz;			/* Frequency in Hz (HUGE_VAL if unlimited) */
     const char *pidfile;	/* Process ID file if detached */
+    unsigned int retry_port;	/* Retry acquiring a serial port? */
 };
 extern struct opts opts;
 

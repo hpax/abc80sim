@@ -309,20 +309,23 @@ static inline int lock_port(int fd)
 
 static int open_lock_port(const char *path)
 {
-    int fd;
+    int fd = -1;
 
+    do {
 #ifdef HAVE__SOPEN
-    fd = _sopen(path, O_RDWR|O_CLOEXEC, _SH_DENYRW);
+	fd = _sopen(path, O_RDWR|O_CLOEXEC, _SH_DENYRW);
 #else
-    fd = open(path, O_RDWR|O_CLOEXEC);
+	fd = open(path, O_RDWR|O_CLOEXEC);
 
-    if (fd >= 0 && lock_port(fd)) {
-	/* Lock failure */
-	close(fd);
-	errno = EBUSY;
-	fd = -1;
-    }
+	if (fd >= 0 && lock_port(fd)) {
+	    /* Lock failure */
+	    close(fd);
+	    errno = EBUSY;
+	    fd = -1;
+	    break;
+	}
 #endif
+    } while (fd < 0 && errno == EINTR);
 
     return fd;
 }

@@ -405,6 +405,11 @@ int main(int argc, char **argv)
 		opts.output = enable;
 	    } else if (!strcmp(optstr, "baud")) {
 		server_baud = strtoul(LONG_ARG(), NULL, 0);
+	    } else if (!strcmp(optstr, "retry")) {
+		if (enable)
+		    opts.retry_port = optarg ? strtoul(optarg, NULL, 0) : 10;
+		else
+		    opts.retry_port = 0;
 	    } else if (!strcmp(optstr, "initram")) {
 		config_init_ram(enable ? LONG_ARG() : NULL);
 	    } else if (valid_drive_name(optstr)) {
