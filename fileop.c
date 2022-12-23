@@ -7,6 +7,8 @@
 
 const char *fileop_path = "abcdir";
 
+#define USE_FILEOP_PR	1
+#define LEGACY_PRA_PRB	1
 #define BUF_SIZE 512
 
 /*
@@ -29,14 +31,16 @@ get_volume(struct abcprint *me, const char *name)
 }
 
 static void add_volume(struct abcprint *me, const char *name,
-		       int mode, int prio, const char *path)
+		       int mode, int prio, const char *path,
+		       const struct chardev *dev)
 {
     struct volume *vol = &me->volumes[me->vols++];
 
     memcpy(vol->name, name, 3);
     vol->mode = mode;
     vol->prio = prio;
-    vol->path = strdup(path);
+    vol->path = path ? strdup(path) : NULL;
+    vol->dev  = dev;
 }
 
 /* Clean up volume information */
@@ -48,6 +52,8 @@ static void cleanup_volumes(struct abcprint *me)
     }
     memset(me->volumes, 0, sizeof me->volumes);
 }
+
+static const struct chardev chardev_pr;
 
 /* Scan for volumes */
 static void init_volumes(struct abcprint *me)
@@ -63,11 +69,14 @@ static void init_volumes(struct abcprint *me)
     me->vols = 0;
 
     /* Default volumes */
-    add_volume(me, "NET", 2, 1, fileop_path);
-#if 1
+    add_volume(me, "NET", 2, 1, fileop_path, NULL);
+#if LEGACY_PRA_PRB
     /* Legacy volumes */
-    add_volume(me, "PRA", 1, 1, fileop_path);
-    add_volume(me, "PRB", 2, 1, fileop_path);
+    add_volume(me, "PRA", 1, 1, fileop_path, NULL);
+    add_volume(me, "PRB", 2, 1, fileop_path, NULL);
+#endif
+#if USE_FILEOP_PR
+    add_volume(me, "PR ", 1, 1, NULL, &chardev_pr);
 #endif
 
     hf = open_host_file(HF_DIRECTORY, NULL, fileop_path, 0);
@@ -105,6 +114,7 @@ static void init_volumes(struct abcprint *me)
 		    free((void *)vol->path);
 		vol->path = concat_path(fileop_path, de->d_name);
 		vol->mode = mode;
+		vol->dev  = NULL;
 	    }
 	}
     }
@@ -233,14 +243,12 @@ static unsigned int send_reply(struct abcprint *me, int status)
 	    what = "ok";	/* Operation completed */
 	} else if (status == 0x80) {
 	    what = "fail";	/* Default failure for this operation */
-	} else {
-	    /*
-	     * Bit 7 should be set = error code
-	     * Bit 7 clear is reserved for future use and should not happen
-	     */
-	    snprintf(err_txt, sizeof err_txt, "%s %u",
-		     (status & 0x80) ? "err" : "wtf", status & 0x7f);
+	} else if (status & 0x80) {
+	    snprintf(err_txt, sizeof err_txt, "err %u", status & 0x7f);
 	    what = err_txt;
+	} else {
+	    /* Successful return but with extra status, normally a bitmask */
+	    snprintf(err_txt, sizeof err_txt, "ok %02x", status);
 	}
     }
 
@@ -250,12 +258,13 @@ static unsigned int send_reply(struct abcprint *me, int status)
 /* Returns error code */
 static int do_blksize(struct abcprint *me, unsigned int arg)
 {
+    const unsigned int databuf_slack = 4;
     unsigned int datasize;
 
     if (arg < 1 || arg > 65535)
 	return 128 + 11;
 
-    datasize = (arg + 2 + 255) & ~255;
+    datasize = (arg + databuf_slack + 255) & ~255;
     if (datasize != me->datasize) {
 	me->data = realloc(me->data, datasize);
 	me->datasize = datasize;
@@ -274,6 +283,7 @@ static unsigned int fop_blksize(struct abcprint *me)
 static int do_close(struct abcprint *me, struct fileop_file *ff)
 {
     files_mask_t mask;
+    int err;
 
     if (!ff)
         return 128 + 49;        /* "Fel fysiskt filnummer" */
@@ -281,6 +291,15 @@ static int do_close(struct abcprint *me, struct fileop_file *ff)
     assert(ff->i < MAX_FILES);
     mask = OPEN_MASK(ff->i);
     assert(me->open_mask & mask);
+
+    err = 0;
+    if (ff->vol->dev) {
+	chardev_close close_func = ff->vol->dev->close;
+	if (close_func)
+	    err = close_func(me, ff);
+
+	/* FALL THROUGH: still do the same cleanup if applicable */
+    }
 
     if (ff->hf)
 	close_file(&ff->hf);
@@ -294,7 +313,7 @@ static int do_close(struct abcprint *me, struct fileop_file *ff)
 
     ff->ix = ff->opencmd = 0;
     me->open_mask &= ~mask;
-    return 0;
+    return err;
 }
 
 static unsigned int fop_close(struct abcprint *me)
@@ -418,7 +437,8 @@ static int qsort_compare_ll(const void *l1, const void *l2)
     return strcmp_abc(ll1->line, ll2->line);
 }
 
-static unsigned int read_dir_data(struct abcprint *me, struct fileop_file *ff)
+static unsigned int
+read_dir_data(struct abcprint *me, struct fileop_file *ff)
 {
     char dirname_buf[DIRSTR_BUF];
     struct abcdata *abc;
@@ -482,40 +502,26 @@ static unsigned int read_dir_data(struct abcprint *me, struct fileop_file *ff)
 
     free(lla);
 
-    return 0;
+    return 1;			/* It was a directory */
 }
 
 static unsigned int fop_open(struct abcprint *me)
 {
     int err;
-    char path_buf[64];
     int openflags;
     enum host_file_mode mode;
-    struct fileop_file *ff;
+    struct fileop_file *ff = NULL;
     struct host_file *hf;
     uint8_t cmd0 = me->cmd[0];
     const struct volume *vol = get_volume(me, me->argbuf.c);
     char *name = me->argbuf.c + 3;
 
-    if (!vol || !vol->path) {
+    if (!vol) {
 	err = 128 + 42;   /* Skivan ej klar */
 	goto fail;
     }
 
     do_close(me, me->ff);
-
-    if (name[0] == ' ') {
-        /* Empty filename (readdir) */
-
-	mode = HF_DIRECTORY;
-        openflags = 0;
-	path_buf[0] = '\0';
-    } else {
-	unmangle_filename(path_buf, name);
-        mode = HF_BINARY;
-        mode |= (cmd0 & FF_PREPARE) ? 0 : HF_RETRY;
-        openflags = (cmd0 & FF_PREPARE) ? (O_RDWR | O_TRUNC | O_CREAT) : O_RDWR;
-    }
 
     me->ff = ff = alloc_file(me);
     if (!ff) {
@@ -523,17 +529,39 @@ static unsigned int fop_open(struct abcprint *me)
 	goto fail;
     }
 
+    ff->vol = vol;
     ff->ix = me->ix;
     ff->opencmd = cmd0;
-    ff->hf = hf = open_host_file(mode, vol->path, path_buf, openflags);
+    unmangle_filename(ff->name, name);
 
+    if (vol->dev) {
+	chardev_open open_func = vol->dev->open;
+	if (open_func)
+	    err = open_func(me, ff);
+	else
+	    err = 0;
+	goto fail;
+    }
+
+    if (name[0] == ' ') {
+        /* Empty filename (readdir) */
+
+	mode = HF_DIRECTORY;
+        openflags = 0;
+	ff->name[0] = '\0';	/* Drop any extension */
+    } else {
+        mode = HF_BINARY;
+        mode |= (cmd0 & FF_PREPARE) ? 0 : HF_RETRY;
+        openflags = (cmd0 & FF_PREPARE) ? (O_RDWR | O_TRUNC | O_CREAT) : O_RDWR;
+    }
+
+    ff->hf = hf = open_host_file(mode, vol->path, ff->name, openflags);
     if (hf) {
 	err = 0;
 	if (mode == HF_DIRECTORY && (cmd0 & FF_BINARY))
 	    err = read_dir_data(me, ff);
     } else {
 	switch (errno) {
-#if 0                           /* Enable this? */
 	case EACCES:
 	    err = 128 + 39;
 	    break;
@@ -546,17 +574,16 @@ static unsigned int fop_open(struct abcprint *me)
 	case ENOTDIR:
 	    err = 128 + 48;
 	    break;
-#endif
 	default:
-	    err = 128;		/* Hittar ej filen (default error) */
+	    err = 128 + 21;	/* Hittar ej filen (default error) */
 	    break;
 	}
     }
 
-    if (err)
+fail:
+    if (ff && (err & 128))
 	do_close(me, ff);
 
-fail:
     return send_reply(me, err);
 }
 
@@ -569,9 +596,13 @@ static unsigned int do_read_block(struct abcprint *me, unsigned int len)
 
     assert(len < 65536);
 
-    if (!file_open(ff)) {
-        return send_reply(me, 128 + 45);
-    }
+    /* If read is supported to char devices in the future, fix this... */
+    if (ff->vol->dev)
+	return send_reply(me, 128 + 52); /* Ej till denna enhet */
+
+    if (!file_open(ff))
+        return send_reply(me, 128 + 45); /* Fel logiskt filnummer */
+
     hf = ff->hf;
 
     if (ff->abc) {
@@ -631,6 +662,9 @@ static int seeker(struct abcprint *me, uint64_t pos)
     struct fileop_file *ff = me->ff;
     struct host_file *hf;
 
+    if (ff->vol->dev)
+	return 128 + 52;	/* Ej till denna enhet */
+
     if (!file_open(ff))
         return 128 + 45;         /* Fel logiskt filnummer */
 
@@ -677,6 +711,10 @@ static unsigned int fop_input(struct abcprint *me)
     char data1[255 + 2];        /* Max number of bytes to return + 2 */
     char *p, *q, c;
     int dlen;
+
+    /* If read is supported to char devices in the future, fix this... */
+    if (ff->vol->dev)
+	return send_reply(me, 128 + 52);
 
     if (!file_open(ff))
 	return send_reply(me, 128 + 45);
@@ -752,6 +790,15 @@ static unsigned int do_write(struct abcprint *me, bool eolcvt)
     /* ABC sends CR LF as line endings, which matches Windows */
     eolcvt = false;
 #endif
+
+    if (ff->vol->dev) {
+	chardev_write write_func = ff->vol->dev->write;
+	if (write_func)
+	    err = write_func(me, ff, me->data, len);
+	else
+	    err = 128 + 52;
+	goto fail;
+    }
 
     if (!file_open(ff)) {
         err = 128 + 45;
@@ -1136,18 +1183,22 @@ bool file_op(struct abcprint *me, unsigned char c)
     fop_func do_next = me->fop->runs[me->fseq];
 
     me->byte_count = do_next ? do_next(me) : 0;
+
+    int eof_size = 0;
     if (me->fseq == 0) {
 	me->endframe = me->data + me->byte_count;
-	me->byte_count += 2; /* End of frame goes here */
+	eof_size = 2;
     }
-    if (me->byte_count) {
+    if (me->byte_count + eof_size) {
 	me->datalen = me->byte_count;
+	me->byte_count += eof_size;
 	me->bytep = me->bufp = me->data;
 	me->fseq++;
 	if (tracing(TRACE_PR)) {
-	    if (do_next) {
-		fprintf(tracef, "PR:  %-7s : <expect %u more bytes>\n",
-			me->fop->name, me->byte_count);
+	    if (me->datalen) {
+		fprintf(tracef, "PR:  %-7s : <expect %u more bytes%s>\n",
+			me->fop->name, me->datalen,
+			eof_size ? " + endframe" : "");
 	    }
 	}
 	return true;
@@ -1157,3 +1208,33 @@ drop_frame:
     fileop_goto_init_state(me);
     return false;
 }
+
+/*
+ * Functions for printers as character devices
+ */
+static int chardev_pr_open(struct abcprint *me, struct fileop_file *ff)
+{
+    (void)me;
+    char *p = strchr(ff->name, '.');
+    if (p)
+	*p = '\0';		/* Strip extension if present */
+    return 0;
+}
+
+static int chardev_pr_write(struct abcprint *me, struct fileop_file *ff,
+			    const void *data, size_t len)
+{
+    return printer_write(me, &ff->hf, ff->name, data, len);
+}
+
+static int chardev_pr_close(struct abcprint *me, struct fileop_file *ff)
+{
+    return printer_close(me, &ff->hf, ff->name);
+
+}
+
+static const struct chardev chardev_pr = {
+    .open  = chardev_pr_open,
+    .write = chardev_pr_write,
+    .close = chardev_pr_close,
+};

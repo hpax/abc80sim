@@ -29,78 +29,138 @@
 #ifdef _WIN32
 const char *lpr_command = "notepad /p \"*\"";
 #else
-const char *lpr_command = "lpr '*'";
+const char *lpr_command = "pp='?' lpr ${pp:+-P} ${pp} '*'";
 #endif
 
-static void print_finish(struct abcprint *me)
+int printer_close(struct abcprint *me, struct host_file **hfp,
+		   const char *prname)
 {
     const char *p;
     char *cmd, *q;
-    size_t cmdlen, namelen;
-    struct host_file *hf = me->prfile;
+    size_t cmdlen, filelen, prlen;
+    struct host_file *hf = *hfp;
+
+    (void)me;
 
     if (!hf)
-        return;
+        return 0;
 
     fflush(hf->f);
 
-    namelen = strlen(hf->filename);
-    cmdlen = 0;
+    filelen = strlen(hf->filename);
+    prlen = strlen(prname);
+
+    cmdlen = 1;			/* Final null */
     for (p = lpr_command; *p; p++) {
-        cmdlen += (*p == '*') ? namelen : 1;
+	switch (*p) {
+	case '*':
+	    cmdlen += filelen;
+	    break;
+	case '?':
+	    cmdlen += prlen;
+	    break;
+	default:
+	    cmdlen++;
+	    break;
+	}
     }
-    cmd = malloc(cmdlen + 1);
+    cmd = malloc(cmdlen);
 
     if (cmd) {
         for (p = lpr_command, q = cmd; *p; p++) {
-            if (*p == '*') {
-                memcpy(q, hf->filename, namelen);
-                q += namelen;
-            } else {
-                *q++ = *p;
-            }
-        }
+	    switch (*p) {
+	    case '*':
+		q = mempcpy(q, hf->filename, filelen);
+		break;
+	    case '?':
+		q = mempcpy(q, prname, prlen);
+		break;
+	    default:
+		*q++ = *p;
+		break;
+	    }
+	}
         *q = '\0';
 
         system(cmd);
         free(cmd);
     }
-    close_file(&me->prfile);
+    close_file(hfp);
+    return 0;
 }
 
-static void output(struct abcprint *me, unsigned char c)
+static int printer_close_default(struct abcprint *me)
 {
-    static const char temp_prefix[] = "abcprint_tmp_";
-    struct host_file *hf = me->prfile;
+    return printer_close(me, &me->prfile, "");
+}
 
-    static const wchar_t abc_to_unicode[256] =
-        L"\000\001\002\003\004\005\006\007\010\011\012\013\014\015\016\017"
-        L"\020\021\022\023\024\025\026\027\030\031\032\033\034\035\036\037"
-        L" !\"#¤%&\'()*+,-./0123456789:;<=>?"
-        L"ÉABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÅÜ_"
-        L"éabcdefghijklmnopqrstuvwxyzäöåü\x25a0"
-        L"\x20ac\x25a1\x201a\x0192\x201e\x2026\x2020\x2021"
-        L"\x02c6\x2030\x0160\x2039\x0152\x2190\x017d\x2192"
-        L"\x2191\x2018\x2019\x201c\x201d\x2022\x2013\x2014"
-        L"\x02dc\x2122\x0161\x203a\x0153\x2193\x017e\x0178"
-        L"\240\241\242\243$\245\246\247\250\251\252\253\254\255\256\257"
-        L"\260\261\262\263\264\265\266\267\270\271\272\273\274\275\276\277"
-        L"\300\301\302\303[]\306\307\310@\312\313\314\315\316\317"
-        L"\320\321\322\323\324\325\\\327\330\331\332\333^\335\336\337"
-        L"\340\341\342\343{}\346\347\350`\352\353\354\355\356\357"
-        L"\360\361\362\363\364\365|\367\370\371\372\373~\375\376\377";
+static const wchar_t abc_to_unicode[256] =
+    L"\000\001\002\003\004\005\006\007\010\011\012\013\014\015\016\017"
+    L"\020\021\022\023\024\025\026\027\030\031\032\033\034\035\036\037"
+    L" !\"#¤%&\'()*+,-./0123456789:;<=>?"
+    L"ÉABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÅÜ_"
+    L"éabcdefghijklmnopqrstuvwxyzäöåü\x25a0"
+    L"\x20ac\x25a1\x201a\x0192\x201e\x2026\x2020\x2021"
+    L"\x02c6\x2030\x0160\x2039\x0152\x2190\x017d\x2192"
+    L"\x2191\x2018\x2019\x201c\x201d\x2022\x2013\x2014"
+    L"\x02dc\x2122\x0161\x203a\x0153\x2193\x017e\x0178"
+    L"\240\241\242\243$\245\246\247\250\251\252\253\254\255\256\257"
+    L"\260\261\262\263\264\265\266\267\270\271\272\273\274\275\276\277"
+    L"\300\301\302\303[]\306\307\310@\312\313\314\315\316\317"
+    L"\320\321\322\323\324\325\\\327\330\331\332\333^\335\336\337"
+    L"\340\341\342\343{}\346\347\350`\352\353\354\355\356\357"
+    L"\360\361\362\363\364\365|\367\370\371\372\373~\375\376\377";
 
-    if (!hf) {
-        if (c < '\b' || (c > '\r' && c < 31))
-            me->prfile = hf = temp_file(HF_BINARY, temp_prefix);
-        else
-            me->prfile = hf = temp_file(HF_UNICODE, temp_prefix);
+int printer_write(struct abcprint *me,
+		  struct host_file **hfp, const char *prname,
+		  const char *data, size_t len)
+{
+    struct host_file *hf = *hfp;
+
+    (void)me;
+
+    if (!len)
+	return 0;
+
+    if (unlikely(!hf)) {
+	enum host_file_mode mode = HF_UNICODE;
+	char temp_prefix[64];
+
+	if (!data)
+	    return 0;
+
+	snprintf(temp_prefix, sizeof temp_prefix, "abcprint_pr_%s_", prname);
+
+	for (size_t i = 0; i < len; i++) {
+	    unsigned char c = data[i];
+	    if (c < '\b' || (c > '\r' && c < 31)) {
+		mode = HF_BINARY;
+		break;
+	    }
+	}
+	*hfp = hf = temp_file(mode, temp_prefix);
+	if (!hf)
+	    return 128 + 41;
     }
 
-    if (hf->mode == HF_BINARY)
-        putc(c, hf->f);
-    else if (c != '\r')
-        putwc(abc_to_unicode[c], hf->f);
+    if (hf->mode == HF_BINARY) {
+	fwrite(data, 1, len, hf->f);
+    } else {
+	while (len--) {
+	    unsigned char c = *data++;
+#ifndef _WIN32
+	    if (c == '\r')
+		continue;
+#endif
+	    putwc(abc_to_unicode[c], hf->f);
+	}
+    }
+    return 0;
+}
+
+static void output(struct abcprint *me, char c)
+{
+    printer_write(me, &me->prfile, "", &c, 1);
 }
 
 FILE *console_file;
@@ -131,7 +191,7 @@ void abcprint_shutdown(struct abcprint *me)
     if (!me)
 	return;
 
-    print_finish(me);
+    printer_close_default(me);
     fileop_shutdown(me);
     free(me);
 }
@@ -166,7 +226,7 @@ void abcprint_recv(struct abcprint *me, const void *data, size_t len)
 		/* FF FD: End of job "done" */
 		if (tracing(TRACE_PR))
 		    fprintf(tracef, "PR:  FF %02X  : EOF - sending job to printer\n", c);
-                print_finish(me);
+                printer_close_default(me);
 		break;
 	    case 0xff:
 		/* FF FF: can be sent indefinitely to resync */

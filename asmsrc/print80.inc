@@ -51,6 +51,12 @@
 	;; Quicklib routine
 	defc quicklib = 1
 
+	;; Return real error codes or always zero?
+	defc return_real_errors = 0	; Match UFD-DOS 80
+
+	;; PR: using raw protocol (not a chardev volume?)
+	defc raw_pr = 0
+
 	;; CMD routine if in IEC area?
 	defc have_cmd = LARGE && (ROMSTART == 0x7000)
 	if !have_cmd
@@ -71,6 +77,7 @@ __begin:
 	jp e_iec
 	endif
 
+	if raw_pr
 	; jp table for PR: (if in printer area, should be first)
 pr_jptable:
 	jp trivial			; OPEN
@@ -82,6 +89,7 @@ pr_jptable:
 	jp notforme			; WRBLK
 	jp notforme			; DELETE
 	jp notforme			; RENAME
+	endif
 
 prb_jptable:
 	jp prb_open			; OPEN
@@ -99,15 +107,7 @@ prb_jptable:
 
 	;; Fixed entry points, reserved for future use
 fixfunc:
-	if ROMSTART != 0x7000
-	jp notforme			; Reserved
-	jp notforme			; Reserved
-	jp notforme			; Reserved
-	endif
-	jp notforme			; Reserved
-	jp notforme			; Reserved
-	jp notforme			; Reserved
-	jp notforme			; Reserved
+	defs 0x4b - (ASMPC - __begin)
 	;; Init entry point, same offset as in DOS
 	jp start
 
@@ -130,6 +130,8 @@ pra_jptable:
 
 	endif
 
+	if raw_pr
+
 pr_print:
 	call select
 	ld a,0F3h			; Printer data
@@ -151,6 +153,13 @@ pr_not_ff:
 	inc hl
 	jr pr_print_loop
 
+pr_close:
+	call select
+	ld a,0FDh
+	jr done_esc
+
+	endif
+
 	;; Select the current device, and save the stack pointer
 	;; to allow for an error unwind. This should be called from the
 	;; topmost stack so that a RET on error returns to BASIC;
@@ -168,26 +177,27 @@ select:
 	pop af
 	ret
 
-pr_close:
-	call select
-	ld a,0FDh
-	;; Fall through
-
 done_esc:
 	call send_esc
 done_ok:
 	xor a
 done:
+	ld sp,(errsp)	; Restore stack
+	inc sp		; Drop return address from select
+	inc sp
+
 	push af
 	ld a,(ram_select)
 	ld (SELECT),a
 	out (1),a
 	pop af
-	ld sp,(errsp)			; Restore stack
-	inc sp				; Drop return address from select
-	inc sp
-	rlca				; Bit 7 = set CF
-	srl a				; Strip bit 7 from result but is now in CF
+
+	rlca	; CF <- bit 7
+	if return_real_errors
+	srl a		; Strip bit 7 from result but is in CF
+	else
+	ld a,0		; This is what UFD-DOS 80 does?!
+	endif
 	ret
 
 	if pra_dev
@@ -197,65 +207,138 @@ pra_open:
 	jr prx_open
 pra_prepare:
 	ld c,0xA2
-	jr prx_prepare
-
-	endif
-
-prb_open:
-	call prb_setup_buf
-	ld c,0xA1
 	jr prx_open
-prb_prepare:
-	call prb_setup_buf
-	ld c,0xA3
-prx_prepare:
-	;; Check for LIST PRx: in command mode
-	if quicklib
-
-	ld a,(de)
-	cp ' '
-	jr nz,prx_open
-	bit 0,(iy+14)
-	jp nz,prx_quicklib
 
 	endif
+
+prb_prepare:
+	ld c,0xA3
+	jr prb_open_prepare
+prb_open:
+	ld c,0xA1
+prb_open_prepare:
+	call prb_setup_buf
+
+	;; Fall through...
 
 prx_open:
-	ld (ix+6),0
+	if pra_dev			; Handled by prb_setup_buf
 	ld (ix+7),132			; Line length, seems to be standard?
-	call select
-	if pra_dev
-	push bc
 	endif
-	push de
+	call select
+	push bc
 	ld a,c
-	call send_cmd
+	call send_cmd			; Returns with CF = 0
 	ld l,(ix+3)			; Get volume name
 	ld h,(ix+4)
-	dec hl
-	dec hl
-	dec hl
 	ld bc,3
+	sbc hl,bc
+	ld (ix+6),b			; 0
 	call send_buf
 	ex de,hl			; HL <- filename
-	ld c,11
+	ld c,11				; B = 0 already
 	call send_buf
-	pop de				; Restore DE <- filename
-	if pra_dev
-	pop bc
-	endif
 	call recv_reply
+	pop de				; E = command
 
-	;; Mark buffer busy if successful, any value other than 0xff works,
-	;; so since successful means A=0 use that value
+	;; Mark buffer busy if successful, any value other than 0xff
+	;; works, so just use zero...
 	if pra_dev
-
-	bit 0,c				; PRA -> no buffer
-	jr z,done2
-
+	bit 0,e				; PRA -> no buffer, no quicklib
+	jr z,nohazbuf
 	endif
-	call prb_mark_buf
-	jr done2
+
+	call prb_dosfd
+	ld (hl),b			; B = 0 on exit here
+nohazbuf:
+
+	if quicklib
+
+	;; For this to be a quicklib, we need to:
+	;; 1. Be in command mode
+	;; 2. Have done a PREPARE (LIST, SAVE)
+	;; 3. Actually be accessing a directory listing
+
+	;; Bit 0 of A will be set if this is a directory
+	and (iy+14)	; Bit 0 = command mode
+	add a		; Bit 0 -> bit 1
+	and e		; Check for PREPARE (bit 1)
+	and 2
+	jr z,done	; Not quicklib (A = 0 here)
+
+	;; -------- Show library listing on screen --------
+
+prx_quicklib:
+	;; Restore the original select code in memory. It isn't
+	;; necessary to send the select code to the bus, because
+	;; the subsequent I/O operations will do that for us.
+
+	ld a,(ram_select)	; Restore original select code
+	ld (SELECT),a
+
+	call crlf
+	ld (ix+6),22		; 22 lines before wait
+ql_getline:
+	call CHECKCTRLC
+	jr nz,ql_done
+
+	ld hl,CRAD
+	push hl
+	ld bc,CRAD_LEN
+	call IX_INPUT
+	pop hl
+	jr c,ql_done
+	call CUR_MAX_X
+	ld bc,+(12 << 8) + 13
+	add c			; Space needed
+	sub e
+	jr c,ql_nocrlf
+
+	call crlf
+	dec (ix+6)
+	jr nz,ql_nocrlf
+
+	push ix
+	call CON_GET
+	pop ix
+
+	ld (ix+6),1		; <Return> = one line only
+	cp c
+	jr z,ql_nocrlf
+
+	ld (ix+6),22
+
+ql_nocrlf:
+	push hl
+ql_find_comma:
+	ld a,(hl)
+	cp '.'			; Lowest valid filename character
+	jr c,ql_found_comma	; Comma, CR, or other non-filename character
+	inc hl
+	djnz ql_find_comma
+ql_found_comma:
+	inc b
+ql_pad_space:
+	ld (hl),' '
+	inc hl
+	djnz ql_pad_space
+ql_cleaned_comma:
+	pop hl
+	; BC = 13 here
+	call CON_PRINT
+	jr ql_getline
+ql_done:
+	call CLOSEFILE
+	jp CMD			; Forcible return to command loop -
+				; abort LIST command
+
+crlf:
+	push bc
+	call CON_CRLF
+	pop bc
+	ret
+
+	endif			; quicklib
 
 prx_rename:
 	call select
@@ -278,8 +361,8 @@ prb_close:
 	ld c,a
 	call output_common
 pbc_noflush:
-	ld a,0xff			; Free
-	call prb_mark_buf
+	call prb_dosfd
+	ld (hl),255			; Buffer now free
 	;; Returns with B=0
 	ld (ix+14),b
 	if pra_dev
@@ -497,11 +580,8 @@ prb_wrblk:
 	call select
 	call prb_getbufaddr
 	ld bc,253
-	push hl			; HL -> buf address
 	call output_common
-	pop hl			; HL -> buf address
 	call prb_empty_buf
-	ex de,hl		; DE -> buf address
 done3:
 	jp done
 
@@ -555,16 +635,14 @@ pbp_allbuf:
 	sub e
 	jr pbp_limitlen
 
-	;; Mark the buffer for the current device busy or free
-	;; by writing the value in A into the drive number
-	;; byte of the corresponding DOS file description
-	;; Clobbers BC, HL; returns with B=0
-prb_mark_buf:
+	;; Get the address of the DOS file description corresponding
+	;; to the allocated buffer.
+	;; Returns with B = 0, C = DOSBUF*16, HL = DOS file description
+prb_dosfd:
 	ld b,0
 	ld c,(ix+12)
 	ld hl,0xFD41
 	add hl,bc
-	ld (hl),a
 	ret
 
 	; Set up a BUF for PRB: (open/prepare)
@@ -579,7 +657,9 @@ prb_setup_buf:
 	pop bc
 	ret
 
-	defc prb_empty_buf=663Fh
+prb_empty_buf:			; Returns with A=0, HL->buf
+	ld a,(ix+12)
+	jp 662Fh
 
 	else			; Do not use
 
@@ -632,81 +712,12 @@ prb_empty_buf:
 
 ;;; Load the address of the start of the current buffer into HL
 prb_getbufaddr:
-	ld l,(ix+8)
+	ld l,3
 	ld h,(ix+9)
 	ret
 
-	;; Show library listing on screen
-	if quicklib
-
-prx_quicklib:
-	call prx_open		; Complete the file open
-	ret c			; File not found
-
-	call crlf
-	ld (ix+6),22		; 22 lines before wait
-ql_getline:
-	call CHECKCTRLC
-	jr nz,ql_done
-
-	ld hl,CRAD
-	push hl
-	ld bc,CRAD_LEN
-	call IX_INPUT
-	pop hl
-	jr c,ql_done
-	call CUR_MAX_X
-	ld bc,+(12 << 8) + 13
-	add c			; Space needed
-	sub e
-	jr c,ql_nocrlf
-
-	call crlf
-	dec (ix+6)
-	jr nz,ql_nocrlf
-
-	push ix
-	call CON_GET
-	pop ix
-
-	ld (ix+6),1		; <Return> = one line only
-	cp c
-	jr z,ql_nocrlf
-
-	ld (ix+6),22
-
-ql_nocrlf:
-	push hl
-ql_find_comma:
-	ld a,(hl)
-	cp '.'			; Lowest valid filename character
-	jr c,ql_found_comma	; Comma, CR, or other non-filename character
-	inc hl
-	djnz ql_find_comma
-ql_found_comma:
-	inc b
-ql_pad_space:
-	ld (hl),' '
-	inc hl
-	djnz ql_pad_space
-ql_cleaned_comma:
-	pop hl
-	; BC = 13 here
-	call CON_PRINT
-	jr ql_getline
-ql_done:
-	call CLOSEFILE
-	jp CMD			; Return to command loop - abort LIST command
-
-crlf:
-	push bc
-	call CON_CRLF
-	pop bc
-	ret
-
-	endif
-
-	; Send a command header, A = command; clobbers BC
+	;; Send a command header, A = command
+	;; Returns with CF = 0
 send_cmd:
 	push bc
 	ld (ram_cmd),a
@@ -719,7 +730,7 @@ send_cmd:
 	pop bc
 	ret
 
-	;; Send a word in BC
+	;; Send a word in BC, preserves AF
 send_word:
 	push af
 	ld a,c
@@ -730,6 +741,7 @@ send_word:
 	ret
 
 	;; Send FF + byte; reset running checksum
+	;; Returns with CF = 0!
 send_esc:
 	push af
 	ld a,0FFh
@@ -738,7 +750,8 @@ send_esc:
 	pop af
 	;; Fall through
 
-	; Send a single byte and add to running checksum
+	;; Send a single byte and add to running checksum
+	;; Returns with CF = 0!
 send_byte:
 	push hl
 	ld l,a
@@ -851,7 +864,7 @@ rr_isff:
 	ld (ram_cmd),bc
 	pop bc
 	and a
-	ret z
+	ret p			; Bit 7 = 0 -> no error
 	jr done4
 
 rr_timeout:
@@ -1203,10 +1216,19 @@ e_cmd_space_overflow:
 
 	endif			; have_cmd
 
+
+	defc need_device_list = console_dev | connul | raw_pr
+
+	if need_device_list
 device_list:
+
 	if console_dev
 prc_device:
+	if connul | raw_pr
 	defw ASMPC + 7		; Next entry follows
+	else
+	defw voldevs
+	endif
 	defm "PRC"
 	defw prc_jptable
 	endif
@@ -1217,15 +1239,23 @@ con_device:
 	defm "CON"
 	defw con_jptable
 nul_device:
+	if raw_pr
 	defw ASMPC + 7		; Next entry follows
+	else
+	defw voldevs
+	endif
 	defm "NUL"
 	defw nul_jptable
 	endif
 
+	if raw_pr
 pr_device:
 	defw voldevs
 	defm "PR "
 	defw pr_jptable
+	endif
+
+	endif
 
 	;; Jump table for BASIC functions that are inconsistent
 new_basic_jumps:		; Checksum 9913, 10042
@@ -1259,6 +1289,9 @@ __end:
 	section bss
 	org ram_start
 __bss:
+	if !need_device_list
+device_list:
+	endif
 voldevs:
 	defs 7*MAX_VOLS		; Up to 32 volume device entries
 errsp:

@@ -35,7 +35,8 @@ Options (defaults in brackets):
   -Df, --filedir dir       set directory for file sharing [abcdir]
   -Ds, --scrndir dir       set directory for screen shots [.]
   -Dd, --dumpdir dir       set directory for memory dumps [.]
-  -Cp, --printcmd cmd      set command to launch a print job (* = filename)
+  -Cp, --printcmd cmd      set command to launch a print job
+			   (* = filename, ? = printer name)
   -Fc, --casfile file      input file for cassette (CAS:)
   -Lc, --caslist file      read list of files for the cassette from a file
   -Dc, --casdir dir        set directory for named cassette files [= filedir]

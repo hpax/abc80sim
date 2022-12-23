@@ -41,19 +41,35 @@ typedef uint32_t files_mask_t;
 #define tzcount_files_mask(x) tzcount_32(x)
 #endif
 
-struct fileop_file {
-    uint8_t opencmd;		/* Opened how? (0 = closed) */
-    uint8_t i;			/* Position in open_mask */
-    uint16_t ix;		/* IX map reference */
-    struct host_file *hf;
-    struct abcdata *abc;
+struct fileop_file;
+
+typedef int (*chardev_open)(struct abcprint *, struct fileop_file *);
+typedef int (*chardev_write)(struct abcprint *, struct fileop_file *,
+				      const void *data, size_t len);
+typedef int (*chardev_close)(struct abcprint *, struct fileop_file *);
+
+struct chardev {
+    chardev_open open;
+    chardev_write write;
+    chardev_close close;
 };
 
 struct volume {
     char name[4];		/* Volume name (3 char) */
     unsigned char prio;		/* Mapping priority during enumeration */
     unsigned char mode;		/* 01 = text, 02 = binary */
-    const char *path;		/* Root path */
+    const char *path;		/* Root path or other spec */
+    const struct chardev *dev;	/* Is character device? */
+};
+
+struct fileop_file {
+    uint8_t opencmd;		/* Opened how? (0 = closed) */
+    uint8_t i;			/* Position in open_mask */
+    uint16_t ix;		/* IX map reference */
+    struct host_file *hf;
+    struct abcdata *abc;
+    const struct volume *vol;
+    char name[16];		/* Demangled ABC filename */
 };
 
 struct abcprint {
@@ -63,7 +79,7 @@ struct abcprint {
 	void *pvt;
     } sd;
 
-    /* Temporary file for actual printing */
+    /* Temporary file for actual printing using "raw" I/O */
     struct host_file *prfile;
 
     /* Input state machine */
@@ -114,5 +130,11 @@ extern void fileop_init(struct abcprint *me);
 extern void fileop_reset(struct abcprint *me);
 extern void fileop_shutdown(struct abcprint *me);
 extern bool file_op(struct abcprint *me, unsigned char c);
+
+extern int printer_write(struct abcprint *me,
+			 struct host_file **hfp, const char *prname,
+			 const char *data, size_t len);
+extern int printer_close(struct abcprint *me, struct host_file **hfp,
+			 const char *prname);
 
 #endif /* PRINT_H */
