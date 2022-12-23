@@ -1,6 +1,6 @@
 /* ----------------------------------------------------------------------- *
  *
- *   Copyright 2004-2018 H. Peter Anvin - All Rights Reserved
+ *   Copyright 2004-2022 H. Peter Anvin - All Rights Reserved
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
@@ -27,9 +27,9 @@
 #include <locale.h>
 
 #ifdef _WIN32
-const char *lpr_command = "notepad /p \"*\"";
+const char *lpr_command = "notepad /p?{t \"?\"} \"*\"";
 #else
-const char *lpr_command = "pp='?' lpr ${pp:+-P} ${pp} '*'";
+const char *lpr_command = "lpr ?{-P '?'} '*'";
 #endif
 
 int printer_close(struct abcprint *me, struct host_file **hfp,
@@ -50,6 +50,11 @@ int printer_close(struct abcprint *me, struct host_file **hfp,
     filelen = strlen(hf->filename);
     prlen = strlen(prname);
 
+    /*
+     * This will overestimate the storage needed when ?{|} is in use,
+     * but that doesn't matter...
+     */
+
     cmdlen = 1;			/* Final null */
     for (p = lpr_command; *p; p++) {
 	switch (*p) {
@@ -67,13 +72,45 @@ int printer_close(struct abcprint *me, struct host_file **hfp,
     cmd = malloc(cmdlen);
 
     if (cmd) {
+	bool suppress = false;
+	int bracelevel = 0;
+	char lastbrace = 0;
+
         for (p = lpr_command, q = cmd; *p; p++) {
 	    switch (*p) {
 	    case '*':
 		q = mempcpy(q, hf->filename, filelen);
 		break;
 	    case '?':
-		q = mempcpy(q, prname, prlen);
+		if (p[1] == '{') {
+		    lastbrace = p[1];
+		    suppress = !prlen;
+		    p++;
+		} else if (!suppress) {
+		    q = mempcpy(q, prname, prlen);
+		}
+		break;
+	    case '{':
+		bracelevel++;
+		*q++ = *p;
+		break;
+	    case '|':
+		if (lastbrace == '{' && !bracelevel) {
+		    suppress = !suppress;
+		    lastbrace = *p;
+		    break;
+		}
+		*q++ = *p;
+		break;
+	    case '}':
+		if (bracelevel) {
+		    bracelevel--;
+		} else if (lastbrace) {
+		    suppress = false;
+		    lastbrace = 0;
+		    break;
+		}
+		*q++ = *p;
 		break;
 	    default:
 		*q++ = *p;

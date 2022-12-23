@@ -35,8 +35,7 @@ Options (defaults in brackets):
   -Df, --filedir dir       set directory for file sharing [abcdir]
   -Ds, --scrndir dir       set directory for screen shots [.]
   -Dd, --dumpdir dir       set directory for memory dumps [.]
-  -Cp, --printcmd cmd      set command to launch a print job
-			   (* = filename, ? = printer name)
+  -Cp, --printcmd cmd      set command to launch a print job (see below)
   -Fc, --casfile file      input file for cassette (CAS:)
   -Lc, --caslist file      read list of files for the cassette from a file
   -Dc, --casdir dir        set directory for named cassette files [= filedir]
@@ -126,6 +125,22 @@ Memory spaces for loading data files or Alt-d data dumps:
 	mem	MEM area of RAM (ABC802)
 	sram	SRAM (ABC80 with MEG80)
 	flash	Flash memory (ABC80 with MEG80)
+
+The --printcmd command to launch a print job uses the following syntax
+to specify the command line arguments:
+
+	*	- replaced by the path to the file to print
+	?	- replaced by the name of the printer if any
+		  (if the user specified "LIST PR:FOO" this will
+		  expand to the string "foo" without quotation marks)
+		  This is only available with PUN80 emulation, currently
+		  only available on ABC80.
+	?{a|b}	- if a printer name is specified, expand to "a",
+		  otherwise (meaning ? would expand to the empty
+		  string) expand to "b". If "b" is empty the | is
+		  optional. This is used to adjust command line
+		  options that may depend on if a printer name is
+		  present or not, e.g. the -P option to lpr on Unix.
 
 
 The simulator supports the following hotkeys; the same events can also
