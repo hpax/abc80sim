@@ -898,7 +898,7 @@ static unsigned int fop_rename(struct abcprint *me)
 {
     int err;
     struct fileop_file *ff = me->ff;
-    char newname[16];
+    unmangled_name newname;
 
     if (!file_open(ff)) {
         err = 128 + 45;

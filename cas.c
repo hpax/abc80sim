@@ -111,7 +111,7 @@ static void cas_enable(bool enable)
          * HACK: if a specific filename has been given, try to snoop memory
          * to figure out what file the user wanted.
          */
-        char casfile[64];
+	unmangled_name casfile;
         uint16_t fnaddr;
         int i;
 

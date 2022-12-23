@@ -69,7 +69,7 @@ struct fileop_file {
     struct host_file *hf;
     struct abcdata *abc;
     const struct volume *vol;
-    char name[16];		/* Demangled ABC filename */
+    unmangled_name name;	/* Demangled ABC filename */
 };
 
 struct abcprint {

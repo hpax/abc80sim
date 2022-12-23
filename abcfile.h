@@ -3,6 +3,15 @@
 
 #include "compiler.h"
 
+/*
+ * A buffer size large enough to be able to handle any unmangled ABC
+ * filename (8.3) - *including* characters possibly extended to
+ * multibyte characters and a final null. This assumes a maximum of 4
+ * bytes/character, which should be very conservative even with UTF-8.
+ */
+#define UNMANGLED_NAME_BUFSIZE 48
+typedef char unmangled_name[UNMANGLED_NAME_BUFSIZE];
+
 struct abcdata {
     void *buf;			/* Allocated buffer */
     const void *data;

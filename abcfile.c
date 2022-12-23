@@ -125,7 +125,8 @@ int mangle_for_readdir(char *dst, const char *src)
     int n;
     const char *s;
     char *d;
-    char mangle_buf[12], unmangle_buf[64];
+    char mangle_buf[12];
+    unmangled_name unmangle_buf;
 
     mangle_filename(mangle_buf, src);
     unmangle_filename(unmangle_buf, mangle_buf);
@@ -164,7 +165,8 @@ int mangle_for_readdir(char *dst, const char *src)
  */
 int mangle_volname(char *dst, const char *src)
 {
-    char mangle_buf[12], unmangle_buf[64];
+    char mangle_buf[12];
+    unmangled_name unmangle_buf;
 
     mangle_filename(mangle_buf, src);
 
