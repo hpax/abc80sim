@@ -203,31 +203,32 @@ done:
 	if pra_dev
 
 pra_open:
-	ld c,0xA0
+	ld a,0xA0
 	jr prx_open
 pra_prepare:
-	ld c,0xA2
+	ld a,0xA2
 	jr prx_open
 
 	endif
 
 prb_prepare:
-	ld c,0xA3
+	ld a,0xA3
 	jr prb_open_prepare
 prb_open:
-	ld c,0xA1
+	ld a,0xA1
 prb_open_prepare:
 	call prb_setup_buf
 
 	;; Fall through...
 
 prx_open:
+	;; ABC80-BASIC expects DE to be preserved across this routine,
+	;; otherwise .BAC -> .BAS searching does not work.
 	if pra_dev			; Handled by prb_setup_buf
 	ld (ix+7),132			; Line length, seems to be standard?
 	endif
 	call select
-	push bc
-	ld a,c
+	push af				; Save command code
 	call send_cmd			; Returns with CF = 0
 	ld l,(ix+3)			; Get volume name
 	ld h,(ix+4)
@@ -235,16 +236,28 @@ prx_open:
 	sbc hl,bc
 	ld (ix+6),b			; 0
 	call send_buf
-	ex de,hl			; HL <- filename
+	;; HL <- filename. Do not use EX DE,HL here: if send_buf
+	;; aborts we have to have DE intact on return to BASIC.
+	ld l,e
+	ld h,d
 	ld c,11				; B = 0 already
 	call send_buf
 	call recv_reply
-	pop de				; E = command
+	pop hl				; H = command
+
+	if quicklib
+
+	and (iy+14)	; Bit 0 = command mode
+	add a		; Bit 0 -> bit 1
+	and h		; Check for PREPARE (bit 1)
+	;; bit 1 in A is now set if quicklib
+
+	endif
 
 	;; Mark buffer busy if successful, any value other than 0xff
 	;; works, so just use zero...
 	if pra_dev
-	bit 0,e				; PRA -> no buffer, no quicklib
+	bit 0,h				; PRA -> no buffer, no quicklib
 	jr z,nohazbuf
 	endif
 
@@ -252,17 +265,13 @@ prx_open:
 	ld (hl),b			; B = 0 on exit here
 nohazbuf:
 
-	if quicklib
+	if !quicklib
 
-	;; For this to be a quicklib, we need to:
-	;; 1. Be in command mode
-	;; 2. Have done a PREPARE (LIST, SAVE)
-	;; 3. Actually be accessing a directory listing
+	jr done
 
-	;; Bit 0 of A will be set if this is a directory
-	and (iy+14)	; Bit 0 = command mode
-	add a		; Bit 0 -> bit 1
-	and e		; Check for PREPARE (bit 1)
+	else
+
+	;; A is as set up above...
 	and 2
 	jr z,done	; Not quicklib (A = 0 here)
 
@@ -645,70 +654,29 @@ prb_dosfd:
 	add hl,bc
 	ret
 
-	; Set up a BUF for PRB: (open/prepare)
-	if 1			; Use UFD-DOS internal routines
-
+	;; Set up a BUF for PRB: (open/prepare)
+	;; This uses routines from UFD-DOS due to space
 prb_setup_buf:
+	push af
 	push bc
 	push hl
 	call 65F4h		; Allocate buffer
 	call 662Bh		; Initialize buffer pointers
 	pop hl
 	pop bc
+	pop af
 	ret
 
+	;; This returns with DE -> buffer start. It seems ABC80-BASIC
+	;; requires this to work...
 prb_empty_buf:			; Returns with A=0, HL->buf
+	push af
+	ex de,hl
 	ld a,(ix+12)
-	jp 662Fh
-
-	else			; Do not use
-
-prb_setup_buf:
-	push hl
-	ld hl,0xFD51		; DOSDEV1 + 1
-psb_loop:
-	ld a,(hl)
-	inc a
-	jr z,psb_found
-	ld a,l
-	add 10h
-	ld l,a
-	cp 0C1h
-	jr nz,psb_loop
-	pop hl
-	rst 10h
-	defb 128+19		; Too many files open
-psb_found:
-	push de
-	ld a,l
-	sub 041h
-	ld (ix+12),a		; DOSDEV*16
-	rrca
-	rrca
-	rrca
-	rrca
-	ld h,a
-	ld l,3			; Mimic the behavior of DOS (block header)
-	ld de,(0xFD12)		; Address to DOSBUF1
-	add hl,de
-	ld (ix+8),l
-	ld (ix+9),h
-	call prb_empty_buf
-	pop de
-	pop hl
+	call 662Fh		; Returns with HL -> buffer
+	ex de,hl
+	pop af
 	ret
-
-	;; Mark buffer empty (at start, or after write)
-prb_empty_buf:
-	;; HL should point to the buffer here
-	ld (ix+10),l
-	ld (ix+11),h
-	ld (ix+13),252		; Bytes left (for text, so excluding ETX)
-	ld (ix+14),0
-	ld (hl),l		; Set first byte in buffer to ETX (L=3)
-	ret
-
-	endif
 
 ;;; Load the address of the start of the current buffer into HL
 prb_getbufaddr:

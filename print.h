@@ -72,6 +72,23 @@ struct fileop_file {
     unmangled_name name;	/* Demangled ABC filename */
 };
 
+/*
+ * Format for a response token with optional data block
+ * The size of this structure is considered the minimum amount of
+ * "slack" the memory allocation for the response buffer requires.
+ */
+struct fop_response {
+    /* Required header */
+    uint8_t ff;
+    uint8_t cmd;
+    uint8_t seq;
+    uint8_t status;
+
+    /* Optional length-prefixed data block */
+    uint8_t len[2];
+    uint8_t data[1];
+};
+
 struct abcprint {
     /* Function to send data */
     struct send_data {
@@ -107,7 +124,7 @@ struct abcprint {
     const struct fop *fop;	/* Command being executed */
     unsigned int seq;		/* Phase in command sequence */
 
-    uint8_t nextseq;		/* Next expected command sequence number */
+    uint8_t nextpktnum;		/* Packet number of last received packet */
     uint8_t csum;		/* Byte checksum */
 
     /* Data buffers */
@@ -115,7 +132,18 @@ struct abcprint {
     uint64_t arg;		/* argbuf as a qword */
     argbuf argbuf;		/* Buffer for argument(s) */
     unsigned char *data;        /* Data buffer */
-    unsigned int datasize;	/* Current size of data buffer */
+    unsigned int datasize;	/* Current size available for actual data */
+
+    /* Last command and last reponse sent */
+    struct fop_response *response;
+    unsigned int response_len;
+    unsigned char prev_cmd[4];
+
+    /*
+     * Temporary working buffer for fop_input;
+     * this should be 2*datasize
+     */
+    unsigned char *tmpbuf;
 
     /* Disk volumes */
     int vols;

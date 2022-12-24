@@ -222,21 +222,11 @@ static unsigned int pr_send(struct abcprint *me, const void *buf,
     return 0;			/* For convenience: no more data */
 }
 
-static unsigned int send_data(struct abcprint *me, const void *buf, size_t len)
+static unsigned int send_response(struct abcprint *me)
 {
-    return pr_send(me, buf, len, "data");
-}
-
-static unsigned int send_reply(struct abcprint *me, int status)
-{
-    unsigned char reply[4];
     char err_txt[8];
     const char *what = NULL;
-
-    reply[0] = 0xff;
-    reply[1] = me->cmd[0];
-    reply[2] = me->cmd[1];
-    reply[3] = status;
+    uint8_t status = me->response->status;
 
     if (tracing(TRACE_PR)) {
 	if (!status) {
@@ -252,22 +242,51 @@ static unsigned int send_reply(struct abcprint *me, int status)
 	}
     }
 
-    return pr_send(me, reply, 4, what);
+    return pr_send(me, me->response, me->response_len, what);
 }
 
+/* Simple reply token, no data */
+static unsigned int send_reply(struct abcprint *me, int status)
+{
+    me->response->ff     = 0xff;
+    me->response->cmd    = me->cmd[0];
+    me->response->seq    = me->cmd[1];
+    me->response->status = status;
+    me->response_len    = 4;
+
+    return send_response(me);
+}
+
+/* Reply token with zero status plus a length-prefixed data block */
+static unsigned int send_ok_data(struct abcprint *me, size_t len)
+{
+    me->response->ff     = 0xff;
+    me->response->cmd    = me->cmd[0];
+    me->response->seq    = me->cmd[1];
+    me->response->status = 0;	/* OK */
+    me->response->len[0] = len;
+    me->response->len[1] = len >> 8;
+    me->response_len     = 6 + len;
+
+    return send_response(me);
+}
 /* Returns error code */
 static int do_blksize(struct abcprint *me, unsigned int arg)
 {
-    const unsigned int databuf_slack = 4;
+    const unsigned int databuf_slack = sizeof(struct fop_response);
     unsigned int datasize;
+    unsigned int bufsize;
 
     if (arg < 1 || arg > 65535)
 	return 128 + 11;
 
-    datasize = (arg + databuf_slack + 255) & ~255;
+    bufsize = (arg + databuf_slack + 255) & ~255;
+    datasize = bufsize - databuf_slack;
     if (datasize != me->datasize) {
-	me->data = realloc(me->data, datasize);
 	me->datasize = datasize;
+	me->data = realloc(me->data, bufsize);
+	me->response = realloc(me->response, bufsize);
+	me->tmpbuf = realloc(me->tmpbuf, 2*bufsize);
     }
 
     me->blksize = arg;
@@ -610,7 +629,7 @@ static unsigned int do_read_block(struct abcprint *me, unsigned int len)
 		   - (const char *)ff->abc->data, len);
 	errno = 0;
 	if (dlen > 0) {
-	    memcpy(me->data + 2, ff->abc->data, dlen);
+	    memcpy(me->response->data, ff->abc->data, dlen);
 	    ff->abc->data = (const char *)ff->abc->data + dlen;
 	}
     } else {
@@ -618,7 +637,7 @@ static unsigned int do_read_block(struct abcprint *me, unsigned int len)
 	    return send_reply(me, 128 + 37);   /* Felaktigt recordformat */
 
 	clearerr(hf->f);
-	dlen = fread(me->data + 2, 1, len, hf->f);
+	dlen = fread(me->response->data, 1, len, hf->f);
 	if (!ferror(hf->f))
 	    errno = 0;
     }
@@ -641,14 +660,10 @@ static unsigned int do_read_block(struct abcprint *me, unsigned int len)
 	}
         return send_reply(me, err);
     } else if (dlen < len) {
-	memset(me->data + 2 + dlen, 0, len - dlen);
+	memset(me->response->data + dlen, 0, len - dlen);
     }
 
-    send_reply(me, 0);
-
-    me->data[0] = len;
-    me->data[1] = len >> 8;
-    return send_data(me, me->data, len + 2);
+    return send_ok_data(me, len);
 }
 
 static unsigned int fop_get(struct abcprint *me)
@@ -707,10 +722,8 @@ static unsigned int fop_input(struct abcprint *me)
 {
     struct fileop_file *ff = me->ff;
     struct host_file *hf;
-    int err;
-    char data1[255 + 2];        /* Max number of bytes to return + 2 */
-    char *p, *q, c;
-    int dlen;
+    int err = 0;
+    size_t dlen = 0;
 
     /* If read is supported to char devices in the future, fix this... */
     if (ff->vol->dev)
@@ -722,61 +735,61 @@ static unsigned int fop_input(struct abcprint *me)
     hf = ff->hf;
 
     if (file_mode(ff) != HF_DIRECTORY) {
+	const int txtchk = file_binary(ff) ? -1 : '\r';
+	int c;
+	unsigned char *q = me->response->data;
+	unsigned char *eq = q + me->blksize;
+
         clearerr(hf->f);
-        if (!fgets((char *)me->data, sizeof me->data, hf->f)) {
-            if (ferror(hf->f)) {
-                switch (errno) {
-                case EBADF:
-                    err = 128 + 44;     /* Logisk fil ej öppen */
-                    break;
-                case EIO:
-                    err = 128 + 35;     /* Checksummafel vid läsning */
-                    break;
-                default:
-                    err = 128 + 48;     /* Fel i biblioteket */
-                    break;
-                }
-            } else {
-                /* EOF */
-                err = 128; /* Slut på filen (default error) */
-            }
-        } else {
+
+	while (q < eq) {
+	    c = getc(hf->f);
+	    if (unlikely(c < 0)) {
+		if (ferror(hf->f)) {
+		    switch (errno) {
+		    case EBADF:
+			err = 128 + 44;     /* Logisk fil ej öppen */
+			break;
+		    case EIO:
+			err = 128 + 35;     /* Checksummafel vid läsning */
+			break;
+		    default:
+			err = 128 + 48;     /* Fel i biblioteket(?) */
+			break;
+		    }
+		}
+		break;
+	    }
+	    if (c >= txtchk) {
             /* Strip CR and change LF -> CR LF */
-            if (!file_binary(ff)) {
-                for (p = (char *)me->data, q = data1 + 2; (c = *p); p++) {
-                    if (q == &data1[sizeof data1])
-                        break;
-                    switch (c) {
-                    case '\r':
-                        break;
-                    case '\n':
-                        *q++ = '\r';
-                        /* fall through */
-                    default:
-                        *q++ = c;
-                        break;
-                    }
-                }
-                dlen = q - (data1 + 2);
-            } else {
-                dlen = strnlen(data1 + 2, sizeof data1 - 2);
-            }
-            err = 0;
-        }
+		if (c == '\r') {
+		    continue;
+		} else if (c == '\n') {
+		    *q++ = '\r';
+		    if (q >= eq)
+			break;
+		}
+	    }
+	    *q++ = c;
+	    if (c == '\n')
+		break;		/* End of line */
+	}
+	dlen = q - me->response->data;
+	if (dlen)
+	    err = 0;		/* At least some data received */
     } else if (hf->d) {
-	dlen = read_dir_entry(me, data1 + 2);
-	err = dlen ? 0 : 128;	/* 128 = end of file */
+	dlen = read_dir_entry(me, (char *)me->response->data);
     } else {
         err = 128 + 44;
     }
 
-    send_reply(me, err);
-    if (err)
-	return 0;
-
-    data1[0] = dlen;
-    data1[1] = dlen >> 8;
-    return send_data(me, data1, dlen + 2);
+    if (!err) {
+	if (dlen >= me->blksize)
+	    err = 128 + 20;		/* För lång rad */
+	else if (!dlen)
+	    err = 128 + 34;		/* Slut på filen */
+    }
+    return err ? send_reply(me, err) : send_ok_data(me, dlen);
 }
 
 static unsigned int do_write(struct abcprint *me, bool eolcvt)
@@ -824,7 +837,7 @@ static unsigned int do_write(struct abcprint *me, bool eolcvt)
 		    putc(c, hf->f);
 	    }
 	    /* Last char is always verbatim */
-	    fputc(me->data[len - 1], hf->f);
+	    putc(me->data[len - 1], hf->f);
 	} else {
 	    fwrite(me->data, 1, len, hf->f);
 	}
@@ -863,7 +876,6 @@ fail:
 
 static unsigned int arg_len(struct abcprint *me)
 {
-    /* Argument received is data length */
     return me->arg;
 }
 static unsigned int arg_blkno(struct abcprint *me)
@@ -1025,19 +1037,19 @@ void fileop_shutdown(struct abcprint *me)
     do_close_all(me);
     cleanup_volumes(me);
 
-    if (me->data) {
+    me->datasize = 0;
+    if (me->data)
 	free(me->data);
-	me->data = NULL;
-	me->datasize = 0;
-    }
+    me->data = NULL;
+    if (me->response)
+	free(me->response);
+    me->response = NULL;
 }
 
 /* List available volumes; this includes the default volumes */
 static unsigned int fop_listvol(struct abcprint *me)
 {
-    unsigned char *dp = me->data;
-    unsigned char *vp = dp + 2;
-    size_t bytes;
+    unsigned char *vp = me->response->data;
     int i;
 
     for (i = 0; i < me->vols; i++) {
@@ -1046,12 +1058,7 @@ static unsigned int fop_listvol(struct abcprint *me)
     }
 
     *vp++ = '\0';
-    bytes = vp - dp - 2;
-    dp[0] = bytes;
-    dp[1] = bytes >> 8;
-
-    send_reply(me, 0);		/* This command is always successful */
-    return send_data(me, dp, bytes + 2);
+    return send_ok_data(me, vp - me->response->data);
 }
 
 static inline uint64_t get_qword(const argbuf *v)
@@ -1117,7 +1124,8 @@ static const struct fop fops[] = {
 
 bool file_op(struct abcprint *me, unsigned char c)
 {
-    *me->bytep++ = c;
+    if (me->bytep)
+	*me->bytep++ = c;
     me->csum += c;
 
     if (--me->byte_count)
@@ -1140,14 +1148,14 @@ bool file_op(struct abcprint *me, unsigned char c)
 	me->fseq = 0;
 
 	if (me->fop->isrst)	/* INIT commands force new sequence numbers */
-	    me->nextseq = me->cmd[1];
+	    me->nextpktnum = me->cmd[1];
 
         if (tracing(TRACE_PR)) {
             fprintf(tracef, "PR:  %-7s : FF %02X %02x %04x",
 		    me->fop->name, me->cmd[0], me->cmd[1], me->ix);
-	    if (me->cmd[1] != me->nextseq)
+	    if (me->cmd[1] != me->nextpktnum)
 		fprintf(tracef, "  <seq err %02x expected %02x>",
-			me->cmd[1], me->nextseq);
+			me->cmd[1], me->nextpktnum);
 	    if (me->byte_count)
 		fprintf(tracef, " <need %u bytes>", me->byte_count);
 	    fputc('\n', tracef);
@@ -1168,15 +1176,23 @@ bool file_op(struct abcprint *me, unsigned char c)
 			0xef, (uint8_t)(me->endframe[1] - me->csum));
 	    }
 	    goto drop_frame;
-	} else if (me->cmd[1] != me->nextseq) {
+	} else if (me->cmd[1] == me->nextpktnum) {
+	    /* Success! Bump the packet sequence number and save. */
+	    memcpy(me->prev_cmd, me->cmd, sizeof me->prev_cmd);
+	    me->nextpktnum++;
+	} else if (!memcmp(me->prev_cmd, me->cmd, sizeof me->prev_cmd)) {
+	    /*
+	     * This was a retransmit of the last packet already seen.
+	     * Return the same response.
+	     */
+	    pr_send(me, me->response, me->response_len, "resend");
+	    goto drop_frame;	/* Nothing more to do */
+	} else {
 	    if (tracing(TRACE_PR)) {
 		fprintf(tracef, "PR:  %-7s : dropping out of sequence frame (%02x expected %02x)\n",
-			me->fop->name, me->cmd[1], me->nextseq);
+			me->fop->name, me->cmd[1], me->nextpktnum);
 	    }
 	    goto drop_frame;
-	} else {
-	    /* Valid frame, increase sequence number */
-	    me->nextseq++;
 	}
     }
 
@@ -1192,6 +1208,10 @@ bool file_op(struct abcprint *me, unsigned char c)
     if (me->byte_count + eof_size) {
 	me->datalen = me->byte_count;
 	me->byte_count += eof_size;
+	if (me->byte_count > me->datasize) {
+	    send_reply(me, 128 + 37); /* Felaktigt recordformat */
+	    goto drop_frame;	/* Hope for the best? */
+	}
 	me->bytep = me->bufp = me->data;
 	me->fseq++;
 	if (tracing(TRACE_PR)) {
