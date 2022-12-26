@@ -9,6 +9,7 @@ UFDDOS = ../roms/ufddos80.rom
 PRINT  = ../roms/print80_29.rom ../roms/print80_30.rom ../roms/print80_28.rom
 ROMS   = $(PRINT) $(UFDDOS)
 BAS    = printnet.bas printnet.bac
+BIN    = tkn80inp.bin
 HDRS   = print80.inc abc80.inc auxram.inc
 
 .SUFFIXES:
@@ -17,7 +18,7 @@ HDRS   = print80.inc abc80.inc auxram.inc
 
 .DELETE_ON_ERROR:
 
-all: $(ROMS) $(BAS)
+all: $(ROMS) $(BAS) $(BIN)
 
 %.bin: %.asm $(HDRS)
 	$(Z80ASM) -b -l -m -s -g $<
