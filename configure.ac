@@ -10,6 +10,7 @@ AC_CONFIG_SRCDIR([abc80.c])
 AC_CONFIG_HEADERS(config/config.h)
 
 AC_CONFIG_AUX_DIR(autoconf/helpers)
+AC_CONFIG_LIBOBJ_DIR(clib)
 
 dnl If we have wine installed, don't run it when checking for cross-compile
 WINELOADER=/dev/null
@@ -27,10 +28,12 @@ AC_CANONICAL_HOST
 dnl Checks for programs.
 AC_USE_SYSTEM_EXTENSIONS
 PA_PROG_CC
+PA_CC_AUTODEPS
 AC_PROG_LN_S
 AC_PROG_MAKE_SET
 AC_PROG_INSTALL
-PA_CC_AUTODEPS
+AC_CHECK_TOOL([AR], [ar])
+AC_CHECK_TOOL([RANLIB], [ranlib], [:])
 
 dnl Checks for typedefs, structures, and compiler characteristics.
 AC_C_CONST
@@ -195,7 +198,7 @@ AC_CHECK_TYPES(speed_t)
 
 dnl Useful functions which we may lack
 AC_CHECK_FUNCS([mempcpy])
-AC_CHECK_FUNCS([asprintf])
+AC_REPLACE_FUNCS(asprintf)
 
 dnl Windows stat functions are a bit different, sigh...
 AC_CHECK_TYPES([struct _stat64])
@@ -207,7 +210,7 @@ dnl Other things different in Windows...
 PA_ADD_HEADERS(time.h)
 AC_SEARCH_LIBS([strcpy_s], [ssp])
 AC_SEARCH_LIBS([__strcpy_chk], [ssp])
-AC_CHECK_FUNCS(localtime_r)
+AC_REPLACE_FUNCS(localtime_r)
 PA_HAVE_FUNC([localtime_s], [(NULL, NULL)])
 
 dnl POSIX file handling
@@ -238,6 +241,10 @@ AC_CHECK_FUNCS(clock_gettime)
 AC_CHECK_FUNCS(clock_nanosleep)
 AC_CHECK_FUNCS(nanosleep)
 AC_CHECK_FUNCS(gettimeofday)
+
+dnl fnmatch()
+AC_FUNC_FNMATCH
+AS_IF([test $ac_cv_func_fnmatch_works = no], [AC_LIBOBJ(fnmatch)])
 
 dnl Process and console handling
 AC_FUNC_FORK

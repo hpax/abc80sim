@@ -16,6 +16,9 @@ AUTODEPS        = @AUTODEPS@
 CPPFLAGS	= @CPPFLAGS@ @DEFS@ -I.
 CFLAGS		= $(CPPFLAGS) @CFLAGS@
 LDFLAGS		= $(CFLAGS) @LDFLAGS@
+AR              = @AR@
+RANLIB          = @RANLIB@
+LIBOBJS         = @LIBOBJS@
 LIBS		= @LIBS@
 
 MKDIR		= mkdir
@@ -26,6 +29,7 @@ RM_F		= rm -f
 # For Windows/MinGW use obj and .exe
 O		= @OBJEXT@
 X		= @EXEEXT@
+A               = a
 
 .SUFFIXES:
 .SUFFIXES: .c .h .$(O) .bin $(X) .i .s .asm
@@ -40,10 +44,11 @@ SRCS = abc80.c clock.c sdlscrn.c fgcolor.c screenshot.c \
 	nstime.c hostfile.c console.c cas.c abcfile.c filelist.c \
 	trace.c sysload.c \
 	abcprintd.c serial.c netopen.c \
-	random.c sysrand.c \
-	clib/asprintf.c clib/localtime.c $(GENC)
+	random.c sysrand.c $(GENC)
 
 OBJS = $(patsubst %.c,%.$(O),$(SRCS))
+
+CLIB = clib.$(A)
 
 SRCDIRS = . clib roms
 
@@ -57,8 +62,8 @@ install: all
 	$(MKDIR) -p $(INSTALLROOT)$(mandir)/man1
 	$(INSTALL_DATA) abc80.man $(INSTALLROOT)$(mandir)/man1/abc80.1
 
-abc80$(X): $(OBJS)
-	$(CC) $(LDFLAGS) -o abc80$(X) $(OBJS) $(LIBS)
+abc80$(X): $(CLIB) $(OBJS)
+	$(CC) $(LDFLAGS) -o abc80$(X) $(OBJS) $(CLIB) $(LIBS)
 
 abc80win$(X): winwrap.c
 	$(CC) $(LDFLAGS) -mwindows -municode -D_UNICODE -o abc80win$(X) $^
@@ -77,6 +82,11 @@ z80dis$(X): z80dis.$(O) z80dasm.$(O)
 
 %.s: %.c $(HDRS)
 	$(CC) $(AUTODEPS) $(CFLAGS) -DMODULE='$(*F)' -S -o $@ $<
+
+$(CLIB): $(LIBOBJS)
+	rm -f $@
+	$(AR) cq $@ $^
+	$(RANLIB) $@
 
 helptxt.c: HELP.txt txt2c.sed
 	$(SED) -f txt2c.sed $< > $@
@@ -104,7 +114,7 @@ clean:
 		$(RM_F) $$d/*.$(O) $$d/.*.d $$d/*.lst $$d/*.i $$d/*.s \
 			$$d/*.lst ; \
 	done
-	$(RM_F) $(TARGETS) core $(GENC) roms/*.c
+	$(RM_F) $(TARGETS) core $(GENC) $(CLIB) roms/*.c
 
 spotless: clean
 	for d in $(SRCDIRS); do \

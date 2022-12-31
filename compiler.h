@@ -140,6 +140,15 @@ struct tm *localtime_r(const time_t *, struct tm *);
 #endif
 
 /*
+ * fnmatch()
+ */
+#ifdef HAVE_FNMATCH
+# include <fnmatch.h>
+#else
+# include "clib/fnmatch.h"
+#endif
+
+/*
  * mode_t, speed_t, socklen_t
  */
 #ifndef HAVE_MODE_T
