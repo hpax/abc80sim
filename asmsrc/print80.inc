@@ -288,16 +288,16 @@ prx_quicklib:
 	call crlf
 	ld (ix+6),22		; 22 lines before wait
 ql_getline:
-	call CHECKCTRLC
+	call S_CHECKCTRLC
 	jr nz,ql_done
 
-	ld hl,CRAD
+	ld hl,PCODE_BUF
 	push hl
-	ld bc,CRAD_LEN
+	ld bc,PCODE_SIZE
 	call IX_INPUT
 	pop hl
 	jr c,ql_done
-	call CUR_MAX_X
+	call S_CUR_MAX_X
 	ld bc,+(12 << 8) + 13
 	add c			; Space needed
 	sub e
@@ -337,8 +337,8 @@ ql_cleaned_comma:
 	call CON_PRINT
 	jr ql_getline
 ql_done:
-	call CLOSEFILE
-	jp CMD			; Forcible return to command loop -
+	call S_CLOSEFILE
+	jp S_CMD		; Forcible return to command loop -
 				; abort LIST command
 
 crlf:
@@ -994,7 +994,7 @@ notforme:
 con_open:
 	;; Be nice and initialize the position fields, even though
 	;; we aren't really able to keep them updated...
-	call CUR_MAX_X
+	call S_CUR_MAX_X
 	ld (ix+6),a
 	ld (ix+7),e
 	;; Fall through
@@ -1047,8 +1047,8 @@ nul_jptable:
 ;;; a null byte before sending
 ;;;
 	if have_cmd
-	defc CMD_BUF     = RADBUF
-	defc CMD_BUF_LEN = RADBUF_LEN
+	defc CMD_BUF     = LINE_BUF
+	defc CMD_BUF_LEN = LINE_SIZE
 	;; Need 16 bytes of overflow space for numbers
 	defc CMD_BUF_END = CMD_BUF + CMD_BUF_LEN - 16
 

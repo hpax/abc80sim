@@ -358,7 +358,7 @@ _jp_done:
 ;;; entry points... a potentially good thing at least.
 ;;;
 ;;; We also factor out the autostart routine; DOS will initialize first,
-;;; and install its autostart command into the command line buffer (RADBUF).
+;;; and install its autostart command into the command line buffer (LINE_BUF).
 ;;; Subsequent ROMs can override that. If DOS has not initialized and there
 ;;; is no command, the buffer will simply contain <CR>.
 ;;;
@@ -376,27 +376,27 @@ _jp_done:
 __autostart:
 setup_autostart_cmd:
 	ld hl,autostart_cmd
-	ld de,RADBUF
+	ld de,LINE_BUF
 	ld bc,autostart_cmd_len
 	ldir
 	ret
 
 autostart:
-	call SCRATCH		; Initialize BASIC program area (empty)
-	call CHECKCTRLC		; Clear Ctrl-C flag, returns with A = 0
+	call S_SCRATCH		; Initialize BASIC program area (empty)
+	call S_CHECKCTRLC	; Clear Ctrl-C flag, returns with A = 0
 	ld (iy+14),1		; Set command mode
 	;ld sp,(STACK)		; Set user stack - NOT NEEDED ALREADY THERE
 	ei
-	ld hl,RADBUF
+	ld hl,LINE_BUF
 	cp (hl)			; A = 0
-	jp z,CMD		; Regular command prompt ("ABC80")
-	jp RUNCMD		; Run autostart command
+	jp nz,S_RUNCMD		; Run autostart command
+	jp S_CMD		; Regular command prompt ("ABC80")
 
 	;; Initialize DOS proper, then scan for ROMs in the range
 	;; 0x4000..0x5fff and 0x7000..0x7bff for JP instructions at
 	;; page offset 0x4b (same as DOS)
 init:
-	ld (iy+RADBUF-IYBASE),0 ; No autostart
+	ld (iy+LINE_BUF-IYBASE),0 ; No autostart
 	call DOSINIT		; Initialize DOS proper
 	ld h,40h		; Scan 0x5000..0x7c00 except DOS itself
 
