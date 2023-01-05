@@ -9,7 +9,7 @@ UFDDOS = ../roms/ufddos80.rom
 PRINT  = ../roms/print80_29.rom ../roms/print80_30.rom ../roms/print80_28.rom
 ROMS   = $(PRINT) $(UFDDOS)
 BAS    = printnet.bas printnet.bac
-BIN    = tkn80inp.bin
+BIN    =
 HDRS   = print80.inc abc80.inc auxram.inc
 
 .SUFFIXES:
