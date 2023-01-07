@@ -25,6 +25,7 @@ MKDIR		= mkdir
 PERL		= perl
 SED             = sed
 RM_F		= rm -f
+RM_RF		= rm -rf
 
 # For Windows/MinGW use obj and .exe
 O		= @OBJEXT@
@@ -121,6 +122,6 @@ spotless: clean
 		$(RM_F) $$d/*~ $$d/'.#'* $$d/'#'* $$d/*.bak $$d/*.$$$$$$ ; \
 	done
 	$(RM_F) configure config.status config.log Makefile config/config.h
-	$(RM_F) autoconf/aclocal.m4 autom4te.cache
+	$(RM_RF) autoconf/aclocal.m4 autom4te.cache
 
 -include .*.d clib/.*.d roms/.*.d

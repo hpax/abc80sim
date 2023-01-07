@@ -17,5 +17,3 @@ AC_DEFUN([PA_CC_AUTODEPS],
  )
  CPPFLAGS="$pa_add_flags__old_flags"
  AC_SUBST([AUTODEPS])])
- 
-

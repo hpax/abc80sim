@@ -1,4 +1,4 @@
-dnl Process this file with autoconf 2.69 or later to produce
+dnl Process this file with autoconf 2.71 or later to produce
 dnl a configure script.
 AC_PREREQ([2.71])
 
@@ -12,28 +12,42 @@ AC_CONFIG_HEADERS(config/config.h)
 AC_CONFIG_AUX_DIR(autoconf/helpers)
 AC_CONFIG_LIBOBJ_DIR(clib)
 
-dnl If we have wine installed, don't run it when checking for cross-compile
-WINELOADER=/dev/null
-export WINELOADER
-
 AC_PREFIX_PROGRAM(abc80)
 
 dnl What to build
 TARGETS='abc80$(X)'
 AC_SUBST(TARGETS)
 
-dnl Get canonical target ("host") name
-AC_CANONICAL_HOST
+dnl Get canonical build and host (runtime) names
+dnl Note that "target" in GNU terminology means the target of a compiler,
+dnl which is not applicable here.
+dnl
+dnl This must be run before the first compiler check.
+PA_CROSS_COMPILE
 
 dnl Checks for programs.
 AC_USE_SYSTEM_EXTENSIONS
-PA_PROG_CC
+AC_PROG_CC
 PA_CC_AUTODEPS
 AC_PROG_LN_S
 AC_PROG_MAKE_SET
 AC_PROG_INSTALL
 AC_CHECK_TOOL([AR], [ar])
 AC_CHECK_TOOL([RANLIB], [ranlib], [:])
+
+AC_LANG(C++)
+: Hello C++
+AC_LANG(C)
+
+dnl Some environments abuse __STRICT_ANSI__ to disable some
+dnl function declarations
+PA_ADD_CPPFLAGS([-U__STRICT_ANSI__])
+
+dnl Add -O3 unless disabled or we are debugging; seems to help this
+dnl program quite a bit. If we are debugging, get verbose debug info.
+PA_CONFIG_DEBUG([],
+[PA_ARG_DISABLED([O3], [don't compile with -O3 optimization], [],
+ [PA_ADD_LANGFLAGS([-O3])])])
 
 dnl Checks for typedefs, structures, and compiler characteristics.
 AC_C_CONST
@@ -50,19 +64,6 @@ dnl Force gcc and gcc-compatible compilers treat signed integers
 dnl as 2's complement
 PA_ADD_CFLAGS([-fwrapv])
 
-dnl Some environments abuse __STRICT_ANSI__ to disable some
-dnl function declarations
-PA_ADD_CPPFLAGS([-U__STRICT_ANSI__])
-
-dnl Add -O3 unless disabled; seems to help this program quite a bit
-PA_ARG_ENABLED([debug], [compile for debugging],
-[PA_ADD_CFLAGS(-Og,,,PA_ADD_CFLAGS(-O0))],
-[PA_ARG_DISABLED([O3], [don't compile with -O3 optimization],
- [], [PA_ADD_CFLAGS(-O3)])])
-
-dnl Verbose debug information, if at all possible
-PA_ADD_CFLAGS(-ggdb3,,,PA_ADD_CFLAGS(-g3))
- 
 dnl Can we be selective about libraries?
 PA_ADD_LDFLAGS([-Wl,--as-needed])
 
@@ -276,7 +277,7 @@ PA_FUNC_ATTRIBUTE(noreturn)
 PA_FUNC_ATTRIBUTE(returns_nonnull,,,,,never_null)
 PA_FUNC_ATTRIBUTE(malloc)
 PA_FUNC_ATTRIBUTE(alloc_size,[1])
-PA_FUNC_ATTRIBUTE(alloc_size,[1,2])
+PA_FUNC_ATTRIBUTE(alloc_size,[1,2], [void *], [int,int], [1,1])
 PA_FUNC_ATTRIBUTE(sentinel,,, [const char *, ...], ["a","b",NULL],end_with_null)
 PA_FUNC_ATTRIBUTE(format, [printf,1,2], int, [const char *, ...], ["%d",1])
 PA_FUNC_ATTRIBUTE(const)
@@ -351,7 +352,7 @@ PA_ADD_CPPFLAGS([-Wstrict-prototypes])
 PA_ADD_CPPFLAGS([-Wmissing-prototypes])
 PA_ADD_CPPFLAGS([-Wmissing-declarations])
 PA_ADD_CPPFLAGS([-Wcomment])
-PA_ADD_CPPFLAGS([-Wvla])]
+PA_ADD_CPPFLAGS([-Wvla])
 PA_ARG_ENABLED([werror],
  [compile with -Werror to error out on any warning],
  [PA_ADD_CPPFLAGS([-Werror])],
