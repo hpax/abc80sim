@@ -24,7 +24,7 @@
  * mode and 2:3 in 80-column mode. This reflects 80-column mode, with
  * 40 columns simply being duplicated pixels thereof.
  */
-#define FONT_XDUP  2            /* For 80-column mode */
+#define FONT_XDUP  2		/* For 80-column mode */
 #define FONT_YDUP  3
 
 #define PX_WIDTH  (TS_WIDTH*FONT_XSIZE*FONT_XDUP)
@@ -37,20 +37,20 @@ extern const unsigned char abc_font[512][FONT_YSIZE];
 static struct argb {
     uint8_t a, r, g, b;
 } rgbcolors[NCOLORS] = {
-    {0x00, 0x00, 0x00, 0x00},    /* black */
-    {0x00, 0xff, 0x00, 0x00},    /* red */
-    {0x00, 0x00, 0xff, 0x00},    /* green */
-    {0x00, 0xff, 0xff, 0x00},    /* yellow */
-    {0x00, 0x00, 0x00, 0xff},    /* blue */
-    {0x00, 0xff, 0x00, 0xff},    /* purple */
-    {0x00, 0x00, 0xff, 0xff},    /* cyan */
-    {0x00, 0xff, 0xff, 0xff},    /* white */
+    {0x00, 0x00, 0x00, 0x00},	 /* black */
+    {0x00, 0xff, 0x00, 0x00},	 /* red */
+    {0x00, 0x00, 0xff, 0x00},	 /* green */
+    {0x00, 0xff, 0xff, 0x00},	 /* yellow */
+    {0x00, 0x00, 0x00, 0xff},	 /* blue */
+    {0x00, 0xff, 0x00, 0xff},	 /* purple */
+    {0x00, 0x00, 0xff, 0xff},	 /* cyan */
+    {0x00, 0xff, 0xff, 0xff},	 /* white */
 };
 
 /* Mutexes for interaction with the CPU thread */
 static SDL_mutex *screen_mutex;	/* Lock screen operation */
 static SDL_mutex *magic_mutex;	/* "Magic" operation started */
-static SDL_cond  *magic_done;	/* "Magic" operation finished */
+static SDL_cond	 *magic_done;	/* "Magic" operation finished */
 
 #define VRAM_SIZE  2048
 #define VRAM_MASK  (VRAM_SIZE-1)
@@ -60,22 +60,22 @@ static SDL_cond  *magic_done;	/* "Magic" operation finished */
 union crtc {
     uint8_t regs[18];
     struct {
-        uint8_t htotal;         /* Horizontal total characters */
-        uint8_t hdisp;          /* Horizontal displayed characters */
-        uint8_t hsyncpos;       /* Horizontal sync position (char units) */
-        uint8_t hsyncwidth;     /* Horizontal sync width (char units) */
-        uint8_t vscantotal;     /* Vertical total (char units) */
-        uint8_t vadjust;        /* Vertical adjust scan lines */
-        uint8_t vdisplay;       /* Displayed character rows */
-        uint8_t vsyncpos;       /* Vertical sync position */
-        uint8_t interlace;      /* Interlace mode */
-        uint8_t maxscan;        /* Maximum scan line address */
-        uint8_t curstart;       /* Cursor start line */
-        uint8_t curend;         /* Cursor end line */
-        uint8_t starth;         /* High half of start address */
-        uint8_t startl;         /* Low half of start address */
-        uint8_t curh;           /* High half of cursor address */
-        uint8_t curl;           /* Low half of cursor address */
+	uint8_t htotal;		/* Horizontal total characters */
+	uint8_t hdisp;		/* Horizontal displayed characters */
+	uint8_t hsyncpos;	/* Horizontal sync position (char units) */
+	uint8_t hsyncwidth;	/* Horizontal sync width (char units) */
+	uint8_t vscantotal;	/* Vertical total (char units) */
+	uint8_t vadjust;	/* Vertical adjust scan lines */
+	uint8_t vdisplay;	/* Displayed character rows */
+	uint8_t vsyncpos;	/* Vertical sync position */
+	uint8_t interlace;	/* Interlace mode */
+	uint8_t maxscan;	/* Maximum scan line address */
+	uint8_t curstart;	/* Cursor start line */
+	uint8_t curend;		/* Cursor end line */
+	uint8_t starth;		/* High half of start address */
+	uint8_t startl;		/* Low half of start address */
+	uint8_t curh;		/* High half of cursor address */
+	uint8_t curl;		/* Low half of cursor address */
     } r;
 };
 
@@ -86,8 +86,8 @@ union crtc {
  */
 struct video_state {
     union crtc crtc;
-    uint16_t startaddr;         /* Position of the first character */
-    uint16_t curaddr;           /* Memory position of the CRTC cursor */
+    uint16_t startaddr;		/* Position of the first character */
+    uint16_t curaddr;		/* Memory position of the CRTC cursor */
     bool mode40;
     bool blink_on;
     uint8_t fgctl;		/* FG memory color control */
@@ -106,13 +106,13 @@ static struct xy addr_to_xy_tbl[2][2048];
 
 /* A local abstraction of a drawing surface */
 struct surface {
-    SDL_Surface *surf;          /* SDL_Surface object */
+    SDL_Surface *surf;		/* SDL_Surface object */
     Uint32 colors[NCOLORS];
-    int lock_count;             /* Lock nesting count */
-    uint64_t updated;           /* Time stamp of last update */
+    int lock_count;		/* Lock nesting count */
+    uint64_t updated;		/* Time stamp of last update */
 };
 
-static struct surface rscreen;  /* The "physical" screen surface */
+static struct surface rscreen;	/* The "physical" screen surface */
 
 /*
  * Give the x,y coordinates for a given location in shadow video RAM
@@ -134,15 +134,15 @@ static inline unsigned int screenoffs(uint8_t y, uint8_t x, bool m40)
     switch (opts.model) {
     case MODEL_ABC80:
     case MODEL_ABC800C:
-        if (m40)
-            offs = 1024 + (((y >> 3) * 5) << 3) + ((y & 7) << 7) + x;
-        else
-            offs = (((y >> 3) * 5) << 4) + ((y & 7) << 8) + x;
-        break;
+	if (m40)
+	    offs = 1024 + (((y >> 3) * 5) << 3) + ((y & 7) << 7) + x;
+	else
+	    offs = (((y >> 3) * 5) << 4) + ((y & 7) << 8) + x;
+	break;
 
     default:			/* ABC800M, ABC802, ABC806 */
-        offs = (y * 80) + (x << m40);
-        break;
+	offs = (y * 80) + (x << m40);
+	break;
 
     }
 
@@ -163,15 +163,15 @@ static inline uint8_t screendata(uint8_t y, uint8_t x)
 static void lock_screen(struct surface *s)
 {
     if (!s->lock_count++)
-        SDL_LockSurface(s->surf);
+	SDL_LockSurface(s->surf);
 }
 
 static void unlock_screen(struct surface *s)
 {
     if (s->lock_count > 0)
-        SDL_UnlockSurface(s->surf);
+	SDL_UnlockSurface(s->surf);
     else if (unlikely(s->lock_count < 0))
-        abort();                /* SHOULD NEVER HAPPEN */
+	abort();		/* SHOULD NEVER HAPPEN */
 
     s->lock_count--;
 }
@@ -180,15 +180,15 @@ static void unlock_screen(struct surface *s)
  * Compute text attributes
  */
 enum vid_attrib_flags {
-    GMODE_GFX    = 1,		/* Graphics active - must be 1 */
-    GMODE_SEP    = 2,		/* Separated graphics - must be 2 */
-    GMODE_HIDE   = 4,		/* Hidden text (render as space) */
-    GMODE_HOLD   = 8,		/* Repeat prev character if control */
-    GMODE_FLSH   = 16,		/* Flashing */
-    GMODE_DBLE   = 32,		/* Double height active */
-    GMODE_DBL2   = 64,		/* Double width, lower half */
-    GMODE_EL     = 128,		/* Double width active */
-    GMODE_EL2    = 256		/* Double width, second half */
+    GMODE_GFX	 = 1,		/* Graphics active - must be 1 */
+    GMODE_SEP	 = 2,		/* Separated graphics - must be 2 */
+    GMODE_HIDE	 = 4,		/* Hidden text (render as space) */
+    GMODE_HOLD	 = 8,		/* Repeat prev character if control */
+    GMODE_FLSH	 = 16,		/* Flashing */
+    GMODE_DBLE	 = 32,		/* Double height active */
+    GMODE_DBL2	 = 64,		/* Double width, lower half */
+    GMODE_EL	 = 128,		/* Double width active */
+    GMODE_EL2	 = 256		/* Double width, second half */
 };
 struct vid_attrib {
     unsigned int ch    :  9;
@@ -206,19 +206,19 @@ static struct vid_attrib attrib[TS_HEIGHT+1][TS_WIDTH];
 static void make_attributes(void)
 {
     static const uint32_t attrib_masks[] = {
-	[MODEL_ABC80]   = 0x00fe00fe,
+	[MODEL_ABC80]	= 0x00fe00fe,
 	[MODEL_ABC800C] = 0xf7fe33fe,
 	[MODEL_ABC800M] = 0x00000000,
-	[MODEL_ABC802]  = 0x00fe00fe,
-	[MODEL_ABC806]  = 0xffffffff /* Should come from attribute memory*/
+	[MODEL_ABC802]	= 0x00fe00fe,
+	[MODEL_ABC806]	= 0xffffffff /* Should come from attribute memory */
     };
     const uint32_t attrib_mask = attrib_masks[opts.model];
     static const uint8_t inv_aboves[] = {
-	[MODEL_ABC80]   = 0x9f,
+	[MODEL_ABC80]	= 0x9f,
 	[MODEL_ABC800C] = 0x7f,
 	[MODEL_ABC800M] = 0xff,
-	[MODEL_ABC802]  = 0x7f,
-	[MODEL_ABC806]  = 0x7f	/* ? */
+	[MODEL_ABC802]	= 0x7f,
+	[MODEL_ABC806]	= 0x7f	/* ? */
     };
     const uint8_t inv_above = inv_aboves[opts.model];
     const unsigned int m40 = vdu.mode40;
@@ -228,11 +228,11 @@ static void make_attributes(void)
 
     for (y = 0; y < TS_HEIGHT; y++) {
 	struct vid_attrib va;
-	va.fg    = 7;
-	va.bg    = 0;
+	va.fg	 = 7;
+	va.bg	 = 0;
 	va.flags = 0;
-	va.ch    = ' ';
-	va.inv   = 0;
+	va.ch	 = ' ';
+	va.inv	 = 0;
 
 	for (x = 0; x < width; x++) {
 	    struct vid_attrib a;
@@ -285,7 +285,7 @@ static void make_attributes(void)
 			va.flags |= GMODE_SEP;
 			break;
 
-		    case 0x1c:	        /* BLBG */
+		    case 0x1c:		/* BLBG */
 			va.fg = va.bg;	/* ? */
 			va.bg = 0;
 			break;
@@ -358,7 +358,7 @@ put_screen(struct surface *s, unsigned int tx, unsigned int ty, bool blink)
     int i;
 
     if (tx >= (unsigned int)TS_WIDTH || ty >= (unsigned int)TS_HEIGHT)
-        return;
+	return;
 
     /* Decoded characters & attributes */
     va = attrib[ty+1][tx];
@@ -383,8 +383,8 @@ put_screen(struct surface *s, unsigned int tx, unsigned int ty, bool blink)
 	fg_color[i] = s->colors[fgcolor[vdu.fgctl & 0x7f][i]];
 
     pixelp = ((uint32_t *) s->surf->pixels) +
-        (ty * PX_WIDTH * FONT_YSIZE * FONT_YDUP) +
-        (tx * FONT_XSIZE * FONT_XDUP);
+	(ty * PX_WIDTH * FONT_YSIZE * FONT_YDUP) +
+	(tx * FONT_XSIZE * FONT_XDUP);
 
     curmask = 0;
     voffs = screenoffs(ty, tx >> vdu.mode40, vdu.mode40) + vdu.startaddr;
@@ -392,9 +392,9 @@ put_screen(struct surface *s, unsigned int tx, unsigned int ty, bool blink)
 	uint8_t curmode = vdu.crtc.r.curstart & 0x60;
 
 	if ((curmode == 0) || (blink && (curmode & 0x40))) {
-            curmask = (~0U << (vdu.crtc.r.curstart & 0x1f));
-            curmask &= (2U << (vdu.crtc.r.curend & 0x1f)) - 1;
-        }
+	    curmask = (~0U << (vdu.crtc.r.curstart & 0x1f));
+	    curmask &= (2U << (vdu.crtc.r.curend & 0x1f)) - 1;
+	}
     }
 
     /* ABC800C/M "fine graphics" */
@@ -419,35 +419,157 @@ put_screen(struct surface *s, unsigned int tx, unsigned int ty, bool blink)
 	vv = *fontp << xshift;
 	fontp += (y | notdble) & 1;
 
-        if (curmask & 1)
-            vv = ~0;
-        curmask >>= 1;
+	if (curmask & 1)
+	    vv = ~0;
+	curmask >>= 1;
 
-        for (yy = 0; yy < FONT_YDUP; yy++) {
+	for (yy = 0; yy < FONT_YDUP; yy++) {
 	    uint16_t fgdtmp = fgdata;
 	    unsigned int fgshtmp = fgshift;
-            v = vv;
-            pixelpp = pixelp;
-            for (x = 0; x < FONT_XSIZE; x++) {
+	    v = vv;
+	    pixelpp = pixelp;
+	    for (x = 0; x < FONT_XSIZE; x++) {
 		uint32_t hrp, px;
 
 		hrp = fg_color[(fgdtmp >> fgshtmp) & 3];
 		if (x & 1)
 		    fgshtmp -= 2;
 		px = hrp | ((v & 0x80) ? fgp : bgp);
-                for (xx = 0; xx < FONT_XDUP; xx++)
-                    *pixelpp++ = px;
-                v <<= (notel | x) & 1;
-            }
-            pixelp += PX_WIDTH;
-        }
+		for (xx = 0; xx < FONT_XDUP; xx++)
+		    *pixelpp++ = px;
+		v <<= (notel | x) & 1;
+	    }
+	    pixelp += PX_WIDTH;
+	}
     }
 }
+
+/* Smoothen the screen content by pixel interpolation
+ * XXX: this code currently assumes FONT_XDUP = 2 FONT_YDUP = 3
+ *
+ * This uses raised cosine interpolation between each two points; it
+ * just conveniently happens such that for two points:
+ *
+ *	y = x0/2 + x1/2
+ * ... and for three points ...
+ *	y = x0/4 + x1/2 + x2/4
+ * In this application, either x0 = x1 or x1 = x2.
+ *
+ * This implementations uses masking to implement pixelwise division,
+ * since the only possible inputs are 0 and 255. The masks are
+ * intentionally slightly unbalanced to make sure they add to 255.
+ *
+ * This does not attempt to compensate for gamma during the averaging.
+ * The results seem OK without it, and may help separate thin lines.
+ */
+#if FONT_XDUP != 2 || FONT_YDUP != 3
+
+static void interpolate_screen(struct surface *s)
+{
+    (void)s;
+}
+
+#else
+
+static inline uint32_t avg2(uint32_t p0, uint32_t p1)
+{
+    return (p0 & 0x7f7f7f7f) + (p1 & 0x80808080);
+}
+static inline uint32_t avg3(uint32_t p0, uint32_t p1, uint32_t p2)
+{
+    return (p0 & 0x40404040) + (p2 & 0x40404040) + (p1 & 0x7f7f7f7f);
+}
+
+static void interpolate_screen(struct surface *s)
+{
+    uint32_t *p0, *p1, *p2;	/* Physical pixels of the current row */
+    const uint32_t *lu, *ld;	/* Logical pixels one row up/down */
+    uint32_t pp0, pp1, pp2;	/* Previous pixel */
+
+    /* Logical pixels per line */
+    const size_t lxwidth = TS_WIDTH * FONT_XSIZE;
+    /* Physical pixels per physical (post-scale) pixel line */
+    const size_t pxwidth = lxwidth * FONT_XDUP;
+    /* Physical pixels per logical (pre-scale) pixel line */
+    const size_t pxline  = pxwidth * FONT_YDUP;
+    /* Total logical lines */
+    const size_t lxheight = TS_HEIGHT*FONT_YSIZE;
+
+    p0 = (uint32_t *)s->surf->pixels;
+    p1 = p0 + pxwidth;
+    p2 = p1 + pxwidth;
+
+    /* First row has no row above it */
+    ld = p1 + pxline + 1;
+    pp0 = pp1 = pp2 = 0;
+    for (unsigned int x = 0; x < lxwidth; x++) {
+	p0[1] = avg3(0, p1[1], p1[1]);
+	p2[1] = avg3(p1[1], p1[1], *ld);
+	p0[0] = avg2(pp0, p0[1]);
+	p1[0] = avg2(pp1, p1[1]);
+	p2[0] = avg2(pp2, p2[1]);
+	pp0 = p0[1];
+	pp1 = p1[1];
+	pp2 = p2[1];
+	p0 += FONT_XDUP;
+	p1 += FONT_XDUP;
+	p2 += FONT_XDUP;
+	ld += FONT_XDUP;
+    }
+
+    p0 += pxwidth*(FONT_YDUP-1);
+    p1 += pxwidth*(FONT_YDUP-1);
+    p2 += pxwidth*(FONT_YDUP-1);
+
+    for (unsigned int y = 1; y < lxheight-1; y++) {
+	lu = p1 - pxline + 1;
+	ld = p1 + pxline + 1;
+	pp0 = pp1 = pp2 = 0;
+	for (unsigned int x = 0; x < lxwidth; x++) {
+	    p0[1] = avg3(*lu, p1[1], p1[1]);
+	    p2[1] = avg3(p1[1], p1[1], *ld);
+	    p0[0] = avg2(pp0, p0[1]);
+	    p1[0] = avg2(pp1, p1[1]);
+	    p2[0] = avg2(pp2, p2[1]);
+	    pp0 = p0[1];
+	    pp1 = p1[1];
+	    pp2 = p2[1];
+	    p0 += FONT_XDUP;
+	    p1 += FONT_XDUP;
+	    p2 += FONT_XDUP;
+	    lu += FONT_XDUP;
+	    ld += FONT_XDUP;
+	}
+	p0 += pxwidth*(FONT_YDUP-1);
+	p1 += pxwidth*(FONT_YDUP-1);
+	p2 += pxwidth*(FONT_YDUP-1);
+    }
+
+    /* Last row has no row below it */
+    lu = p1 - pxline + 1;
+    pp0 = pp1 = pp2 = 0;
+    for (unsigned int x = 0; x < lxwidth; x++) {
+	p0[1] = avg3(*lu, p1[1], p1[1]);
+	p2[1] = avg3(p1[1], p1[1], 0);
+	p0[0] = avg2(pp0, p0[1]);
+	p1[0] = avg2(pp1, p1[1]);
+	p2[0] = avg2(pp2, p2[1]);
+	pp0 = p0[1];
+	pp1 = p1[1];
+	pp2 = p2[1];
+	p0 += FONT_XDUP;
+	p1 += FONT_XDUP;
+	p2 += FONT_XDUP;
+	lu += FONT_XDUP;
+    }
+}
+
+#endif
 
 static void update_screen(struct surface *s)
 {
     if (s->lock_count > 0)
-        return;
+	return;
 
     SDL_Flip(s->surf);
 }
@@ -474,8 +596,10 @@ static void refresh_screen(struct surface *s, bool force_blink)
 
     make_attributes();
     for (y = 0; y < TS_HEIGHT; y++)
-        for (x = 0; x < TS_WIDTH; x++)
-            put_screen(s, x, y, blink);
+	for (x = 0; x < TS_WIDTH; x++)
+	    put_screen(s, x, y, blink);
+
+    interpolate_screen(s);
 
     unlock_screen(s);
     update_screen(s);
@@ -486,7 +610,7 @@ void setmode40(bool m40)
 {
     cpu.mode40 = m40;
     if (opts.model == MODEL_ABC80)
-        abc80_mem_mode80(!m40);
+	abc80_mem_mode80(!m40);
 }
 
 /*
@@ -497,13 +621,13 @@ static struct surface *init_surface(struct surface *s)
     int i;
 
     if (unlikely(!s || !s->surf))
-        return NULL;
+	return NULL;
 
     /* Convert colors to preferred machine representation */
     for (i = 0; i < NCOLORS; i++) {
-        s->colors[i] = SDL_MapRGB(s->surf->format,
-                                  rgbcolors[i].r, rgbcolors[i].g,
-                                  rgbcolors[i].b);
+	s->colors[i] = SDL_MapRGB(s->surf->format,
+				  rgbcolors[i].r, rgbcolors[i].g,
+				  rgbcolors[i].b);
     }
 
     /* Surface is unlocked */
@@ -520,10 +644,10 @@ void abc_screenshot(const char *path)
     struct surface s;
 
     s.surf = SDL_CreateRGBSurface(SDL_SWSURFACE, PX_WIDTH, PX_HEIGHT, 32,
-                                  0x00ff0000, 0x0000ff00, 0x000000ff, 0);
+				  0x00ff0000, 0x0000ff00, 0x000000ff, 0);
     if (!init_surface(&s))
-        return;
-    refresh_screen(&s, true);   /* Always snapshot with blink on */
+	return;
+    refresh_screen(&s, true);	/* Always snapshot with blink on */
 
     screenshot(s.surf, path);
     SDL_FreeSurface(s.surf);
@@ -557,7 +681,7 @@ void dump_txt_screen(const char *path, const char *file)
 
     make_attributes();
     for (ty = 0; ty < TS_HEIGHT; ty++) {
-        for (tx = 0; tx < TS_WIDTH; tx++) {
+	for (tx = 0; tx < TS_WIDTH; tx++) {
 	    unsigned char ch;
 	    struct vid_attrib va;
 
@@ -591,8 +715,8 @@ enum user_event {
  */
 void screen_init(bool width40, bool color)
 {
-    int window = 1;             /* True = run in a window */
-    int debug = 1;              /* False = force clean shutdown */
+    int window = 1;		/* True = run in a window */
+    int debug = 1;		/* False = force clean shutdown */
     int i, x, y;
     Uint32 sdlinit;
 
@@ -609,7 +733,7 @@ void screen_init(bool width40, bool color)
 	    sdlinit |= SDL_INIT_NOPARACHUTE;
 
     if (SDL_Init(sdlinit))
-        return;
+	return;
 
     assert((int)UEV_END <= (int)SDL_NUMEVENTS);
 
@@ -634,8 +758,8 @@ void screen_init(bool width40, bool color)
 
     /* Create interlock mutexes */
     screen_mutex = SDL_CreateMutex();
-    magic_mutex  = SDL_CreateMutex();
-    magic_done   = SDL_CreateCond();
+    magic_mutex	 = SDL_CreateMutex();
+    magic_done	 = SDL_CreateCond();
 
     /* If not color, then overwrite colors 1-6 with white */
     if (!color) {
@@ -659,13 +783,13 @@ void screen_init(bool width40, bool color)
     /* Initialize reverse mapping table */
     memset(addr_to_xy_tbl, -1, sizeof addr_to_xy_tbl);
     for (i = 0; i < 2; i++) {
-        for (y = 0; y < TS_HEIGHT; y++) {
-            for (x = 0; x < (TS_WIDTH >> i); x++) {
-                size_t p = screenoffs(y, x, i);
-                addr_to_xy_tbl[i][p].x = x;
-                addr_to_xy_tbl[i][p].y = y;
-            }
-        }
+	for (y = 0; y < TS_HEIGHT; y++) {
+	    for (x = 0; x < (TS_WIDTH >> i); x++) {
+		size_t p = screenoffs(y, x, i);
+		addr_to_xy_tbl[i][p].x = x;
+		addr_to_xy_tbl[i][p].y = y;
+	    }
+	}
     }
 
     /* Draw initial screen */
@@ -882,8 +1006,8 @@ void event_loop(void)
     int abcsym;
 
     while (SDL_WaitEvent(&event)) {
-        switch (event.type) {
-        case SDL_KEYDOWN:
+	switch (event.type) {
+	case SDL_KEYDOWN:
 	    abcsym = sym_to_abc(&event.key.keysym);
 	    if (abcsym >= 0) {
 		if (event.key.keysym.mod & (KMOD_LALT|KMOD_RALT)) {
@@ -895,16 +1019,16 @@ void event_loop(void)
 		     */
 		    keyboard_scan = event.key.keysym.scancode;
 		    keyboard_down(abcsym);
-                }
+		}
 	    }
 	    break;
 
-        case SDL_KEYUP:
+	case SDL_KEYUP:
 	    if (keyboard_enabled) {
 		if (event.key.keysym.scancode == keyboard_scan)
 		    keyboard_up();
 	    }
-            break;
+	    break;
 
 	case UEV_REFRESH_SCREEN:
 	    /* Time to update the screen */
@@ -925,12 +1049,12 @@ void event_loop(void)
 	}
 	break;
 
-        case SDL_QUIT:
-            return;             /* Return to main(), terminate */
+	case SDL_QUIT:
+	    return;		/* Return to main(), terminate */
 
-        default:
-            break;
-        }
+	default:
+	    break;
+	}
     }
 }
 
@@ -940,12 +1064,12 @@ void event_loop(void)
  */
 void vsync_screen(void)
 {
-    const int blink_rate = 400 / 20;    /* 400 ms/20 ms = 2.5 Hz */
+    const int blink_rate = 400 / 20;	/* 400 ms/20 ms = 2.5 Hz */
     static int blink_ctr;
 
     if (!blink_ctr--) {
-        blink_ctr = blink_rate;
-        cpu.blink_on = !cpu.blink_on;
+	blink_ctr = blink_rate;
+	cpu.blink_on = !cpu.blink_on;
     }
 
     trigger_screen_refresh();
@@ -987,7 +1111,7 @@ void trigger_screen_refresh(void)
 	push_user_event(UEV_REFRESH_SCREEN, 0, NULL);
 
     if (traceflags)
-        fflush(tracef);         /* So we don't buffer indefinitely */
+	fflush(tracef);		/* So we don't buffer indefinitely */
 }
 
 /* Called by the CPU thread once any script file is fully consumed */
@@ -1004,12 +1128,12 @@ void crtc_out(uint16_t port, uint8_t data)
     uint8_t old_data;
 
     if (!(port & 1)) {
-        crtc_addr = data & 31;	/* 5 bits per datasheet */
-        return;
+	crtc_addr = data & 31;	/* 5 bits per datasheet */
+	return;
     }
 
     if (crtc_addr >= 16)	/* Only R0-R15 are writable */
-        return;
+	return;
 
     SDL_mutexP(screen_mutex);
 
@@ -1032,7 +1156,7 @@ pure_func uint8_t crtc_in(uint16_t port)
 	return 0xff;		/* Address register is wo per datasheet */
 
     if (crtc_addr < 14 || crtc_addr >= 18) /* Only R14-R17 are readable */
-        return 0xff;
+	return 0xff;
 
     return cpu.crtc.regs[crtc_addr];
 }
