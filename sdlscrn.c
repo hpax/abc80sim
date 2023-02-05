@@ -477,7 +477,7 @@ static inline uint32_t avg2(uint32_t p0, uint32_t p1)
 }
 static inline uint32_t avg3(uint32_t p0, uint32_t p1, uint32_t p2)
 {
-    return (p0 & 0x40404040) + (p2 & 0x40404040) + (p1 & 0x7f7f7f7f);
+    return (p0 & 0x40404040) + (p2 & 0x3f3f3f3f) + (p1 & 0x80808080);
 }
 
 static void interpolate_screen(struct surface *s)
