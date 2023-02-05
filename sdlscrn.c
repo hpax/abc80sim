@@ -455,10 +455,6 @@ put_screen(struct surface *s, unsigned int tx, unsigned int ty, bool blink)
  *	y = x0/4 + x1/2 + x2/4
  * In this application, either x0 = x1 or x1 = x2.
  *
- * This implementations uses masking to implement pixelwise division,
- * since the only possible inputs are 0 and 255. The masks are
- * intentionally slightly unbalanced to make sure they add to 255.
- *
  * This does not attempt to compensate for gamma during the averaging.
  * The results seem OK without it, and may help separate thin lines.
  */
@@ -473,8 +469,19 @@ static void interpolate_screen(struct surface *s)
 
 static inline uint32_t avg2(uint32_t p0, uint32_t p1)
 {
-    return (p0 & 0x7f7f7f7f) + (p1 & 0x80808080);
+    uint32_t p;
+    p0 = (p0 >> 1) & 0x7f7f7f7f;
+    p1 = (p1 >> 1) & 0x7f7f7f7f;
+    p = p0 + p1;
+    return p + ((p >> 7) & 0x01010101);
 }
+/*
+ * This implementations uses masking to implement pixelwise division,
+ * since the only possible inputs are 0 and 255. The masks are
+ * intentionally slightly unbalanced to make sure they add to 255.
+ *
+ * This is NOT true for avg2()!
+ */
 static inline uint32_t avg3(uint32_t p0, uint32_t p1, uint32_t p2)
 {
     return (p0 & 0x40404040) + (p2 & 0x3f3f3f3f) + (p1 & 0x80808080);
