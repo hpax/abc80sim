@@ -35,8 +35,6 @@ AC_PROG_INSTALL
 AC_CHECK_TOOL([AR], [ar])
 AC_CHECK_TOOL([RANLIB], [ranlib], [:])
 
-AC_LANG(C++)
-: Hello C++
 AC_LANG(C)
 
 dnl Some environments abuse __STRICT_ANSI__ to disable some
