@@ -86,7 +86,7 @@ struct as {
     } p;
     size_t mask;		/* Address mask */
     size_t base;		/* Base offset within this address space */
-    size_t len;		        /* Size of the namespace, per map */
+    size_t len;			/* Size of the namespace, per map */
 
     enum as_flags flags;        /* Flags for the drivers */
     unsigned int grain;		/* Granularity of address translation */
@@ -94,10 +94,12 @@ struct as {
     unsigned int map;		/* Current map number */
     unsigned int nmaps;		/* Total maps */
 
+    bool need_sync;		/* do_as_load() executed on this ns */
+
     const char *name;		/* Address space name */
     const char *dump_name;	/* name when dumping to a file */
 
-    struct as *next;	        /* Linked list of known address spaces */
+    struct as *next;		/* Linked list of known address spaces */
 };
 
 /*
@@ -179,6 +181,7 @@ static inline void do_as_load(struct as *as, size_t offs, uint8_t v)
     struct asoffs aso = do_translate_addr(as, offs);
     as_write_op load_op = aso.as->ops->load;
 
+    aso.as->need_sync = true;
     if (!load_op) {
 	aso.as->p.data[aso.offs] = v;
     } else {
@@ -186,13 +189,8 @@ static inline void do_as_load(struct as *as, size_t offs, uint8_t v)
     }
 }
 
-static inline void do_as_sync(struct as *as)
-{
-    as_sync_op sync_op = as->ops->sync;
-
-    if (sync_op)
-	return sync_op(as);
-}
+/* Synchronize side effects after do_as_load() */
+void as_sync(void);
 
 /*
  * Dummy address space
@@ -274,6 +272,7 @@ static inline void
 as_point_alias(struct as *alias_as, struct as *parent_as, size_t offs)
 {
     alias_as->p.parent_as = parent_as;
+    alias_as->ops = parent_as->ops;
     alias_as->base = offs;
 }
 struct as *as_alias(const char *name, size_t len, struct as *parent_as,

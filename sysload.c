@@ -403,7 +403,8 @@ int load_sysfile(const char *filespec)
 
     fclose(f);
 
-    do_as_sync(as);
+    /* After using the load functions, need to sync */
+    as_sync();
 
     return rv;
 }

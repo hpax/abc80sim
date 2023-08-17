@@ -322,6 +322,23 @@ static void null_as_init(void)
 }
 
 /* -------------------------------------------------------------------------
+ *  Walk the list of address spaces and call ops->sync on the ones that
+ *  need it.
+ * ------------------------------------------------------------------------- */
+void as_sync(void)
+{
+    struct as *as;
+    for (as = addrspaces; as; as = as->next) {
+	if (as->need_sync) {
+	    as_sync_op sync_op = as->ops->sync;
+	    as->need_sync = false;
+	    if (sync_op)
+		sync_op(as);
+	}
+    }
+}
+
+/* -------------------------------------------------------------------------
  *  Translation map iterator
  *
  *  This derives contiguous translation maps from the as_translate
