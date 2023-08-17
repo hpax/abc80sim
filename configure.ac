@@ -43,7 +43,7 @@ PA_ADD_CPPFLAGS([-U__STRICT_ANSI__])
 
 dnl Add -O3 unless disabled or we are debugging; seems to help this
 dnl program quite a bit. If we are debugging, get verbose debug info.
-PA_CONFIG_DEBUG([],
+PA_OPTION_DEBUG([],
 [PA_ARG_DISABLED([O3], [don't compile with -O3 optimization], [],
  [PA_ADD_LANGFLAGS([-O3])])])
 
