@@ -1,7 +1,8 @@
 dnl --------------------------------------------------------------------------
 dnl PA_FLAGS_LANGLIST(flagvar)
 dnl
-dnl Return a list of languages affected by the variable flagvar
+dnl  Return a list of languages affected by the variable flagvar.
+dnl  If flagvar is unknown, assume it affects the current language.
 dnl --------------------------------------------------------------------------
 AC_DEFUN([PA_FLAGS_LANGLIST],
 [m4_dquote(m4_case([$1],

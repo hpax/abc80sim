@@ -11,6 +11,8 @@
 #error "Need compiler-specific hacks here"
 #endif
 
+#include "autoconf/attribute.h"
+
 /* On Microsoft platforms we support multibyte character sets in filenames */
 #define _MBCS 1
 
@@ -224,7 +226,7 @@ typedef int socklen_t;
 #include <stdnoreturn.h>
 #define no_return noreturn void
 #elif defined(HAVE_FUNC_ATTRIBUTE_NORETURN)
-#define no_return void __attribute__((noreturn))
+#define no_return void ATTRIBUTE(noreturn)
 #elif defined(_MSC_VER)
 #define no_return __declspec(noreturn) void
 #else
@@ -241,7 +243,7 @@ typedef int socklen_t;
  * How to tell the compiler that a function is pure arithmetic
  */
 #ifdef HAVE_FUNC_ATTRIBUTE_CONST
-#define const_func __attribute__((const))
+#define const_func ATTRIBUTE(const)
 #else
 #define const_func
 #endif
@@ -253,7 +255,7 @@ typedef int socklen_t;
  * by a pointer argument are *NOT* considered pure.
  */
 #ifdef HAVE_FUNC_ATTRIBUTE_PURE
-#define pure_func __attribute__((pure))
+#define pure_func ATTRIBUTE(pure)
 #else
 #define pure_func
 #endif
@@ -262,8 +264,8 @@ typedef int socklen_t;
  * This is a printf()-type function
  */
 #ifdef HAVE_FUNC_ATTRIBUTE3_FORMAT
-#define printf_func(fi,ai) __attribute__((__format__ (__printf__,fi,ai)))
-#define vprintf_func(fi)   __attribute__((__format__ (__printf__,fi,0)))
+#define printf_func(fi,ai) ATTRIBUTE(__format__ (__printf__,fi,ai))
+#define vprintf_func(fi)   ATTRIBUTE(__format__ (__printf__,fi,0))
 #else
 #define printf_func(fi,ai)
 #define vprintf_func(fi)
