@@ -43,7 +43,7 @@ PA_ADD_CPPFLAGS([-U__STRICT_ANSI__])
 
 dnl Add -O3 unless disabled or we are debugging; seems to help this
 dnl program quite a bit. If we are debugging, get verbose debug info.
-PA_CONFIG_DEBUG([],
+PA_OPTION_DEBUG([],
 [PA_ARG_DISABLED([O3], [don't compile with -O3 optimization], [],
  [PA_ADD_LANGFLAGS([-O3])])])
 
@@ -270,53 +270,23 @@ dnl Check for supported gcc attributes; some compilers (e.g. Sun CC)
 dnl support these, but don't define __GNUC__ as they don't support
 dnl some other features of gcc.
 dnl
-PA_ADD_CFLAGS([-Werror=attributes])
-PA_FUNC_ATTRIBUTE(noreturn)
-PA_FUNC_ATTRIBUTE(returns_nonnull,,,,,never_null)
-PA_FUNC_ATTRIBUTE(malloc)
-PA_FUNC_ATTRIBUTE(alloc_size,[1])
-PA_FUNC_ATTRIBUTE(alloc_size,[1,2], [void *], [int,int], [1,1])
-PA_FUNC_ATTRIBUTE(sentinel,,, [const char *, ...], ["a","b",NULL],end_with_null)
-PA_FUNC_ATTRIBUTE(format, [printf,1,2], int, [const char *, ...], ["%d",1])
-PA_FUNC_ATTRIBUTE(const)
-PA_FUNC_ATTRIBUTE(pure)
-PA_FUNC_ATTRIBUTE(cold,,,,,unlikely_func)
-PA_FUNC_ATTRIBUTE(unused)
-PA_FUNC_ATTRIBUTE_ERROR
+PA_COMMON_ATTRIBUTES
 
 dnl
 dnl Support function sections (if available)
 dnl Would be nice to know how to do this on other compilers...
 dnl
-PA_ARG_DISABLED([gc],
- [don't compile with dead code elimination],
- [],
- [PA_ADD_CFLAGS([-ffunction-sections])
-  PA_ADD_CFLAGS([-fdata-sections])
-  PA_ADD_CFLAGS([-Wl,--gc-sections])])
+PA_OPTION_GC
 
 dnl
 dnl support LTO
 dnl
-PA_ARG_ENABLED([lto],
- [compile with gcc-style link time optimization],
- [PA_ADD_CFLAGS([-flto])
-  dnl Note: we use _PROG rather than _TOOL since we are prepending the full
-  dnl CC name which ought to already contain the host triplet if needed
-  ccbase=`echo "$CC" | awk '{ print $1; }'`
-  AC_CHECK_PROGS(CC_AR, [${ccbase}-ar], [$ac_cv_prog_AR])
-  AR="$CC_AR"
-  AC_CHECK_PROGS(CC_RANLIB, [${ccbase}-ranlib], [$ac_cv_prog_RANLIB])
-  RANLIB="$CC_RANLIB"], [])
+PA_OPTION_LTO
 
 dnl
 dnl support sanitizers (if available)
 dnl
-PA_ARG_ENABLED([sanitizer],
- [compile with sanitizers enabled],
- [PA_ADD_CFLAGS([-fno-omit-frame-pointer])
-  PA_ADD_CFLAGS([-fsanitize=address])
-  PA_ADD_CFLAGS([-fsanitize=undefined])])
+PA_OPTION_SANITIZER
 
 dnl
 dnl Don't make symbols visible, there is no point and it just

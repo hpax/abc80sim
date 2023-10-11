@@ -1,8 +1,8 @@
 dnl --------------------------------------------------------------------------
 dnl PA_BUILD_IFELSE(input [,success [,failure]])
 dnl
-dnl Same as AC_LINK_IFELSE for languages where linking is applicable,
-dnl otherwise AC_COMPILE_IFELSE.
+dnl  Same as AC_LINK_IFELSE for languages where linking is applicable,
+dnl  otherwise AC_COMPILE_IFELSE.
 dnl
 dnl If the first argument is empty, use _AC_LANG_IO_PROGRAM.
 dnl --------------------------------------------------------------------------

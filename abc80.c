@@ -81,6 +81,8 @@ static void parse_trace(char *arg)
 	{"flash", TRACE_FLASH, "MEG80 card flash programming"},
 	{"map", TRACE_MAP, "memory map settings"},
 	{"prdata", TRACE_PRDATA, "all printer interface data"},
+	{"buf", TRACE_BUF, "force buffered trace output"},
+	{"unbuf", TRACE_UNBUF, "force unbuffered trace output"},
 	{NULL, 0, NULL}
     };
     const struct trace_args *trp;
@@ -98,7 +100,8 @@ static void parse_trace(char *arg)
     for (arg = strtok(arg, ","); arg; arg = strtok(NULL, ",")) {
         bool invert = false;
         if (!strcmp(arg, "none")) {
-            traceflags = TRACE_NONE;
+	    /* Alias for "no-all" */
+            traceflags &= ~TRACE_ALL;
             continue;
         }
         if (!strncmp(arg, "no-", 3)) {
@@ -508,7 +511,7 @@ int main(int argc, char **argv)
                 "other than ABC802 - not possible\n");
     }
 
-    if (traceflags) {
+    if (traceflags & TRACE_ALL) {
         if (is_stdio(tracefile)) {
             tracef = stdout;
         } else {
@@ -516,9 +519,14 @@ int main(int argc, char **argv)
             if (!tracef) {
                 fprintf(stderr, "%s: Unable to open trace file %s: %s\n",
                         program_name, tracefile, strerror(errno));
-                traceflags = TRACE_NONE;
+                traceflags = TRACE_NONE; /* Clobber *all* bits */
             }
         }
+	unsigned int trace_buf_mode = (traceflags & TRACE_BUFMASK)/TRACE_BUF;
+	if (trace_buf_mode) {
+	    static const int modes[4] = { 0, _IOFBF, _IONBF, _IOLBF };
+	    setvbuf(tracef, NULL, modes[trace_buf_mode], 0);
+	}
     }
 
     if (opts.console) {

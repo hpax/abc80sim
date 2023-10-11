@@ -732,7 +732,7 @@ static inline void init_vram_abc800c(void)
  * map 7 or not.  If this isn't reliable, change this to have a
  * map set up specifically for Alt-u dumps.
  */
-void mem_init(unsigned int flags, const char *memfile)
+void mem_init(enum memflags flags, const char *memfile)
 {
     /* General memory subsystem */
     as_init();
