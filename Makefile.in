@@ -1,44 +1,17 @@
+#!/usr/bin/make -R -r
+
 #
-# Makefile for the ABC80 emulator
+# Main makefile for ABC80/800 simulator
 #
 
-top_srcdir      = @top_srcdir@
-srcdir          = @srcdir@
-VPATH           = @srcdir@
-prefix          = @prefix@
-exec_prefix     = @exec_prefix@
-bindir          = @bindir@
-mandir          = @mandir@
-datarootdir     = @datarootdir@
-
-CC		= @CC@
-AUTODEPS        = @AUTODEPS@
-CPPFLAGS	= @CPPFLAGS@ @DEFS@ -I.
-CFLAGS		= $(CPPFLAGS) @CFLAGS@
-LDFLAGS		= $(CFLAGS) @LDFLAGS@
-AR              = @AR@
-RANLIB          = @RANLIB@
-LIBOBJS         = @LIBOBJS@
-LIBS		= @LIBS@
-
-MKDIR		= mkdir
-PERL		= perl
-SED             = sed
-RM_F		= rm -f
-RM_RF		= rm -rf
-
-# For Windows/MinGW use obj and .exe
-O		= @OBJEXT@
-X		= @EXEEXT@
-A               = a
-
-.SUFFIXES:
-.SUFFIXES: .c .h .$(O) .bin $(X) .i .s .asm
+top_srcdir      := @top_srcdir@
+srcdir          := @srcdir@
+include $(top_srcdir)/common.mk
 
 .SECONDARY:
 .DELETE_ON_ERROR:
 
-GENC = $(patsubst %.rom,%.c,$(wildcard roms/*.rom)) baudtospeed.c helptxt.c
+GENC = baudtospeed.c helptxt.c
 SRCS = abc80.c clock.c sdlscrn.c fgcolor.c screenshot.c \
 	z80.c z80irq.c as.c mem.c abcmem.c abcio.c debug.c \
 	abcfont.c disk.c rtc.c simprint.c print.c fileop.c z80dasm.c \
@@ -50,8 +23,9 @@ SRCS = abc80.c clock.c sdlscrn.c fgcolor.c screenshot.c \
 OBJS = $(patsubst %.c,%.$(O),$(SRCS))
 
 CLIB = clib.$(A)
+ROMLIB = roms/roms.$(A)
 
-SRCDIRS = . clib roms
+SRCDIRS = . clib
 
 TARGETS = @TARGETS@
 
@@ -63,8 +37,8 @@ install: all
 	$(MKDIR) -p $(INSTALLROOT)$(mandir)/man1
 	$(INSTALL_DATA) abc80.man $(INSTALLROOT)$(mandir)/man1/abc80.1
 
-abc80$(X): $(CLIB) $(OBJS)
-	$(CC) $(LDFLAGS) -o abc80$(X) $(OBJS) $(CLIB) $(LIBS)
+abc80$(X): $(OBJS) $(ROMLIB) $(CLIB)
+	$(CC) $(LDFLAGS) -o abc80$(X) $^ $(LIBS)
 
 abc80win$(X): winwrap.c
 	$(CC) $(LDFLAGS) -mwindows -municode -D_UNICODE -o abc80win$(X) $^
@@ -72,17 +46,14 @@ abc80win$(X): winwrap.c
 z80dis$(X): z80dis.$(O) z80dasm.$(O)
 	$(CC) $(LDFLAGS) -o z80dis$(X) $^
 
+.PHONY: roms
+roms:
+	$(MAKE) -C roms
+
+$(ROMLIB): roms
+
 %.c: %.rom bin2c.pl
 	$(PERL) bin2c.pl $< > $@ || ( rm -f $@ ; false )
-
-%.$(O): %.c $(HDRS)
-	$(CC) $(AUTODEPS) $(CFLAGS) -DMODULE='$(*F)' -c -o $@ $<
-
-%.i: %.c $(HDRS)
-	$(CC) $(AUTODEPS) $(CFLAGS) -DMODULE='$(*F)' -E -o $@ $<
-
-%.s: %.c $(HDRS)
-	$(CC) $(AUTODEPS) $(CFLAGS) -DMODULE='$(*F)' -S -o $@ $<
 
 $(CLIB): $(LIBOBJS)
 	rm -f $@
@@ -110,18 +81,13 @@ asm: asmsrc
 asmsrc:
 	$(MAKE) -C asmsrc
 
-clean:
-	for d in $(SRCDIRS); do \
-		$(RM_F) $$d/*.$(O) $$d/.*.d $$d/*.lst $$d/*.i $$d/*.s \
-			$$d/*.lst ; \
-	done
-	$(RM_F) $(TARGETS) core $(GENC) $(CLIB) roms/*.c
+CLEAN_SUBDIRS = roms
 
-spotless: clean
-	for d in $(SRCDIRS); do \
-		$(RM_F) $$d/*~ $$d/'.#'* $$d/'#'* $$d/*.bak $$d/*.$$$$$$ ; \
-	done
-	$(RM_F) configure config.status config.log Makefile config/config.h
+clean: clean.common
+	$(RM_F) $(TARGETS) core $(GENC) $(CLIB)
+
+spotless: spotless.common
+	$(RM_F) configure config.status config.log config/config.h
 	$(RM_RF) autoconf/aclocal.m4 autom4te.cache
 
--include .*.d clib/.*.d roms/.*.d
+-include .*.d clib/.*.d

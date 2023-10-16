@@ -27,10 +27,12 @@
 ;;; To auto-initialize this, we need a modified DOS that looks for
 ;;; additional ROM entry points (ABC800 has this, but not ABC80.)
 
-	org ROMSTART
+	.altmacro
 
-	include "abc80.inc"
-	include "auxram.inc"
+#include "z80.inc"
+#include "abc80.inc"
+#include "auxram.inc"
+#include "ufddos.inc"
 
 	defc selcode=60			; ABC-bus select code
 
@@ -57,6 +59,9 @@
 	;; PR: using raw protocol (not a chardev volume?)
 	defc raw_pr = 0
 
+	;; XDx: device entries (secondary hard disk, not enough space in DOS)
+	defc xd_dev = 1
+
 	;; CMD routine if in IEC area?
 	defc have_cmd = LARGE && (ROMSTART == 0x7000)
 	if !have_cmd
@@ -68,8 +73,13 @@
 	;; Device timeout
 	defc timeout = 100		; 100/50 Hz = 2 s
 
-__begin:
-	;; In the IEC area, add the IEC area entry points
+	.globl _org
+	_org = ROMSTART
+
+	.section .text
+	.globl _start
+_start:
+	;; If in the IEC area, add the IEC area entry points
 	;; IEC: jump table follows; simply treat it as PR:
 	if ROMSTART == 0x7000
 	jp c_cmd
@@ -107,7 +117,9 @@ prb_jptable:
 
 	;; Fixed entry points, reserved for future use
 fixfunc:
-	defs 0x4b - (ASMPC - __begin)
+	.org 0x4a, 0xff
+	;; Magic number that this entry point is valid
+	dec a
 	;; Init entry point, same offset as in DOS
 	jp start
 
@@ -660,8 +672,8 @@ prb_setup_buf:
 	push af
 	push bc
 	push hl
-	call 65F4h		; Allocate buffer
-	call 662Bh		; Initialize buffer pointers
+	call DOSALLOCBUF	; Allocate buffer
+	call DOSBUFINIT		; Initialize buffer pointers
 	pop hl
 	pop bc
 	pop af
@@ -673,7 +685,7 @@ prb_empty_buf:			; Returns with A=0, HL->buf
 	push af
 	ex de,hl
 	ld a,(ix+12)
-	call 662Fh		; Returns with HL -> buffer
+	call DOSBUFREINIT	; Returns with HL -> buffer
 	ex de,hl
 	pop af
 	ret
@@ -937,6 +949,11 @@ init:
 	pop hl
 
 	ld de,voldevs
+	;; Are we running with auxram on the stack?
+	bit 7,d
+	jr z,1f
+	ld (STACK),de		; Move down the user stack
+1:
 mk_vols:
 	ld a,(hl)
 	and a
@@ -1184,46 +1201,45 @@ e_cmd_space_overflow:
 
 	endif			; have_cmd
 
+	_device_link = voldevs
 
-	defc need_device_list = console_dev | connul | raw_pr
+	.macro device name:req, jptbl:req
+	defw _device_link
+	_device_link = . - 2
+	defm \name
+	defw \jptbl
+	.endm
 
-	if need_device_list
-device_list:
+	if xd_dev
+xd_device:
+	device "XD0", DOSJPTABLE
+	defb 0x14
+	device "XD1", DOSJPTABLE
+	defb 0x15
+	device "XD2", DOSJPTABLE
+	defb 0x16
+	device "XD3", DOSJPTABLE
+	endif
 
 	if console_dev
 prc_device:
-	if connul | raw_pr
-	defw ASMPC + 7		; Next entry follows
-	else
-	defw voldevs
-	endif
-	defm "PRC"
-	defw prc_jptable
+	device "PRC", prc_jptable
 	endif
 
 	if connul
 con_device:
-	defw ASMPC + 7		; Next entry follows
-	defm "CON"
-	defw con_jptable
+	device "CON", con_jptable
 nul_device:
-	if raw_pr
-	defw ASMPC + 7		; Next entry follows
-	else
-	defw voldevs
-	endif
-	defm "NUL"
-	defw nul_jptable
+	device "NUL", nul_jptable
 	endif
 
 	if raw_pr
 pr_device:
-	defw voldevs
-	defm "PR "
-	defw pr_jptable
+	device "PR ", pr_jptable
 	endif
 
-	endif
+	;; The value to put in the BASIC device link pointer
+device_list = _device_link
 
 	;; Jump table for BASIC functions that are inconsistent
 new_basic_jumps:		; Checksum 9913, 10042
@@ -1243,7 +1259,7 @@ old_basic_jumps:		; Checksum 11273
 	endif
 
 	;; Check for overflow and pad to desired ROM size
-	defs ROMSIZE - ASMPC
+	.org ROMSIZE, 0xff
 __end:
 
 
@@ -1254,12 +1270,11 @@ __end:
 	defc ram_end   = AUXRAM_PRINTNET_END
 	defc ram_start = AUXRAM_PRINTNET_BASE
 
-	section bss
-	org ram_start
+	.globl _bss
+	_bss = AUXRAM_PRINTNET_BASE
+
+	section .bss
 __bss:
-	if !need_device_list
-device_list:
-	endif
 voldevs:
 	defs 7*MAX_VOLS		; Up to 32 volume device entries
 errsp:
@@ -1286,5 +1301,5 @@ C_PRINT:		defs 3	; Compile PRINT
 	endif
 
 ;;; Check for overflow
-	defs (ram_end - ram_start) - ASMPC
+	.org  AUXRAM_PRINTNET_SIZE
 __end_bss:

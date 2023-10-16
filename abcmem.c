@@ -3,11 +3,11 @@
 #include "z80.h"
 #include "debug.h"
 #include "abcio.h"
-#include "rom.h"
 #include "hostfile.h"
 #include "abcfile.h"
 #include "as.h"
 #include "sysload.h"
+#include "roms/roms.h"
 
 /*
  * Common address spaces
@@ -22,6 +22,11 @@ static struct as *xmem_as;    /* Memory space for dumping extended RAM */
 static struct as *mem_as;     /* MEM: (ABC802) - alias to part of RAM */
 
 #define K(x) ((x)*1024)
+#define R(x) { x, sizeof x }
+struct rom {
+    const unsigned char *data;
+    size_t len;
+};
 
 /* 48/80 char ROM patches, *excluding* the line table at address 884 */
 struct patch_location {
@@ -727,6 +732,239 @@ static inline void init_vram_abc800c(void)
 }
 
 /*
+ * ABC80 memory initialization
+ */
+struct romset {
+    struct rom nonv, nv20, nv22;
+};
+static void mem_init_abc80(void)
+{
+    static const struct rom dos_var[] = {
+	R(rom_abc80_no_nvram_ufddos80),
+	R(rom_abc80_nvram_20k_ufddos80),
+	R(rom_abc80_nvram_22k_ufddos80),
+	{ rom_abc80_basicii80 + K(24), K(4) }
+    };
+    static const struct rom print_28_var[] = {
+	R(rom_abc80_no_nvram_print80_28),
+	R(rom_abc80_nvram_20k_print80_28),
+	R(rom_abc80_nvram_22k_print80_28),
+	{ rom_abc80_basicii80 + K(28), K(4) }
+    };
+    static const struct rom print_29_var[] = {
+	R(rom_abc80_no_nvram_print80_29),
+	R(rom_abc80_nvram_20k_print80_29),
+	R(rom_abc80_nvram_22k_print80_29),
+	{ NULL, 0 }
+    };
+    static const struct rom print_30_var[] = {
+	R(rom_abc80_no_nvram_print80_30),
+	R(rom_abc80_nvram_20k_print80_30),
+	R(rom_abc80_nvram_22k_print80_30),
+	{ NULL, 0 }
+    };
+    const struct rom *pr;
+    const struct rom *dos = dos_var;
+    int var_idx = 0;
+    uint8_t * const rom = rom_as->p.data;
+    size_t praddr;
+    unsigned int m;
+    enum memflags flags = opts.memflags;
+
+    if (flags & MEMFL_NOBASIC)
+	opts.basic = BASIC_NONE;
+
+    if (opts.meg80 && opts.kb == 64)
+	opts.kb = 16;	/* MEG80 and 64K are incompatible */
+
+    sys_as = as_new_pagespace("sys", Z80_ADDRESS_LIMIT,
+			      opts.kb == 64 ? 4 : 1, 10);
+    sys_as->flags |= AS_NODUMP_ALL | AS_ONE_MAP;
+    as_point_alias(cpu_as, sys_as, 0);
+
+    if (opts.meg80) {
+	if (init_meg80() < 0)
+	    opts.meg80 = false;
+    }
+    if (opts.kb != 64 && (opts.kb < 1 || opts.kb > 32)) {
+	unsigned int k = opts.meg80 ? 16 : 64;
+	fprintf(stderr, "%s: invalid ABC80 memory size %uK, using %uK\n",
+		program_name, opts.kb, k);
+	opts.kb = k;
+    }
+
+    if (opts.basic == BASIC_II) {
+	if (opts.tkn80 != TKN80_NONE)
+	    opts.tkn80 = TKN80_GEJO; /* Always 30-32K */
+    }
+
+    /* Start by initializing all maps to RAM */
+    for (m = 0; m < sys_as->nmaps; m++)
+	as_set_pages(sys_as, 0, m, ram_as, 0, K(64));
+
+    /* Map 0: default (for < 64K, the only available map) */
+
+    /*
+     * For GeJo TKN80 we need to map the printer ROM at a different
+     * address, which means using a printer ROM with the appropriate
+     * ORG.
+     *
+     * This also applies to 64K users with *any* TKN80, since the
+     * standard is that the VRAM is moved to 30-32K in that
+     * case... assume a user with such a modded machine will have
+     * modded this too.
+     */
+
+    praddr = 0;
+
+    if (opts.praddr) {
+	if (opts.praddr < 28 || opts.praddr > 30) {
+	    fprintf(stderr, "%s: invalid printer ROM address: %uK\n",
+		    program_name, opts.praddr);
+	    praddr = 0;
+	} else {
+	    praddr = opts.praddr << 10;
+	}
+    }
+
+    if (!praddr) {
+	if (opts.tkn80 == TKN80_GEJO ||
+	    (opts.tkn80 != TKN80_NONE && opts.kb == 64)) {
+	    praddr = K(29);
+	} else {
+	    praddr = K(30);
+	}
+    }
+
+    switch (opts.basic) {
+    case BASIC_NONE:
+	break;
+    case BASIC_10042:
+	memcpy(rom, rom_abc80_abc80new, K(16));
+	rom[0x3843] = 0x81;	/* Only byte that differs!! */
+	break;
+    case BASIC_NEW:
+    default:		/* ??? */
+	memcpy(rom, rom_abc80_abc80new,  K(16));
+	break;
+    case BASIC_OLD:
+	memcpy(rom, rom_abc80_abc80old,  K(16));
+	break;
+    case BASIC_II:
+	memcpy(rom, rom_abc80_basicii80, K(24));
+	praddr = K(28);
+	break;
+    }
+
+    as_set_pages(sys_as, 0, 0, rom_as, 0, K(32));
+
+    /*
+     * Hack: emulated "NVRAM", as was part of the MyAB 128K
+     * extension, or available as external cards. Some UFD-DOS
+     * modifications seem to have expected a 2K external RAM at
+     * 20K address.
+     */
+    if (!(flags & MEMFL_NONVRAM)) {
+	size_t nvaddr, nvsize;
+
+	nvaddr = opts.nvram_addr;
+	if (nvaddr < 64)
+	    nvaddr <<= 10;
+	nvaddr &= ~1023;
+	nvsize = opts.nvram_size;
+	if (nvsize < 64)
+	    nvsize <<= 10;
+	nvsize = (nvsize + 1023) & ~1023;
+	if (nvaddr < Z80_ADDRESS_LIMIT) {
+	    if (nvaddr + nvsize > Z80_ADDRESS_LIMIT)
+		nvsize = Z80_ADDRESS_LIMIT - nvaddr;
+
+	    nvram_as = new_ram("nvram", nvsize, 1, NULL);
+	    as_set_pages(sys_as, nvaddr, 0, nvram_as, 0, nvsize);
+	}
+	if (nvaddr <= K(23) && nvaddr+nvsize >= K(24))
+	    var_idx = 2;	/* 22K version */
+	else if (nvaddr <= K(21) && nvaddr+nvsize >= K(22))
+	    var_idx = 1;	/* 20K version */
+	else
+	    var_idx = 0;	/* No nvram version */
+    }
+
+    switch (praddr) {
+    case K(28):
+	pr = print_28_var;
+	break;
+    case K(29):
+	pr = print_29_var;
+	break;
+    case K(30):
+	pr = print_30_var;
+	break;
+    default:
+	pr = NULL;
+	break;
+    }
+
+    if (opts.basic == BASIC_II)
+	var_idx = 3;
+
+    if (!(flags & MEMFL_NODOS)) {
+	dos += var_idx;
+	memcpy(rom+K(24), dos->data, dos->len);
+    }
+    if (!(flags & MEMFL_NOPR) && pr) {
+	pr += var_idx;
+	memcpy(rom+praddr, pr->data, pr->len);
+    }
+
+    /*
+     * Note: leave 80-character VRAM always mapped, there is no
+     * evidence that any of them unmapped the extra video RAM
+     * (why would they?)
+     */
+    switch (opts.tkn80) {
+    case TKN80_NONE:
+	set_vram_1k();
+	break;
+    case TKN80_GEJO:
+	as_set_pages(sys_as, K(30), 0, vram_as, K(0), K(1));
+	break;
+    case TKN80_MYAB:
+	as_set_pages(sys_as, K(22), 0, vram_as, K(0), K(2));
+	break;
+    case TKN80_CAT:
+	as_set_pages(sys_as, K(18), 0, vram_as, K(0), K(2));
+	break;
+    }
+    /* Standard 40-char video RAM */
+    as_set_pages(sys_as, K(31), 0, vram_as, K(1), K(1));
+
+    /*
+     * ABC80 memory grows from the top down. Memory between 32K and
+     * the start of RAM is unmapped. Map it to ROM, which normally
+     * will be initialized to FF here (by not using the null
+     * address space the user can write ROM contents here)
+     */
+    if (opts.kb < 32)
+	as_set_pages(sys_as, K(32), 0, rom_as, K(32), K(32 - opts.kb));
+
+    /*
+     * Adjust ROM for TKN80 if applicable
+     */
+    abc80_mem_setup_mode80(abc80_mem_mode80_p);
+
+    if (opts.kb == 64) {
+	/* Map 1: RAM over ROM areas. Video RAM always at 30K for TKN80. */
+	/* Map 2: video RAM at the end */
+	/* Map 3: all RAM (nothing to do) */
+	size_t vlen = vram_as->len;
+
+	as_set_pages(sys_as, K(32)-vlen, 1, vram_as, 0, vlen);
+	as_set_pages(sys_as, K(64)-vlen, 2, vram_as, 0, vlen);
+    }
+}
+
+/*
  * Set up memory maps.  Note: dump_memory() currently relies on
  * map 7 being all RAM, regardless of if there is an actual
  * map 7 or not.  If this isn't reliable, change this to have a
@@ -745,196 +983,20 @@ void mem_init(enum memflags flags, const char *memfile)
 
     switch (opts.model) {
     case MODEL_ABC80:
-    {
-	const uint8_t *dos = ufddos80;
-	const uint8_t *pr  = print80_30;
-	uint8_t * const rom = rom_as->p.data;
-	size_t prlen, praddr;
-	unsigned int m;
-
-	if (flags & MEMFL_NOBASIC)
-	    opts.basic = BASIC_NONE;
-
-	if (opts.meg80 && opts.kb == 64)
-	    opts.kb = 16;	/* MEG80 and 64K are incompatible */
-
-	sys_as = as_new_pagespace("sys", Z80_ADDRESS_LIMIT,
-				  opts.kb == 64 ? 4 : 1, 10);
-	sys_as->flags |= AS_NODUMP_ALL | AS_ONE_MAP;
-	as_point_alias(cpu_as, sys_as, 0);
-
-	if (opts.meg80) {
-	    if (init_meg80() < 0)
-		opts.meg80 = false;
-	}
-	if (opts.kb != 64 && (opts.kb < 1 || opts.kb > 32)) {
-	    unsigned int k = opts.meg80 ? 16 : 64;
-            fprintf(stderr, "%s: invalid ABC80 memory size %uK, using %uK\n",
-                    program_name, opts.kb, k);
-            opts.kb = k;
-        }
-
-	if (opts.basic == BASIC_II) {
-	    if (opts.tkn80 != TKN80_NONE)
-		opts.tkn80 = TKN80_GEJO; /* Always 30-32K */
-	}
-
-	/* Start by initializing all maps to RAM */
-	for (m = 0; m < sys_as->nmaps; m++)
-	    as_set_pages(sys_as, 0, m, ram_as, 0, K(64));
-
-        /* Map 0: default (for < 64K, the only available map) */
-
-	/*
-	 * For GeJo TKN80 we need to map the printer ROM at a different
-	 * address, which means using a printer ROM with the appropriate
-	 * ORG.
-	 *
-	 * This also applies to 64K users with *any* TKN80, since the
-	 * standard is that the VRAM is moved to 30-32K in that
-	 * case... assume a user with such a modded machine will have
-	 * modded this too.
-	 */
-
-	praddr = 0;
-
-	if (opts.praddr) {
-	    if (opts.praddr < 28 || opts.praddr > 30) {
-		fprintf(stderr, "%s: invalid printer ROM address: %uK\n",
-			program_name, opts.praddr);
-		praddr = 0;
-	    } else {
-		praddr = opts.praddr << 10;
-	    }
-	}
-
-	if (!praddr) {
-	    if (opts.tkn80 == TKN80_GEJO ||
-		(opts.tkn80 != TKN80_NONE && opts.kb == 64)) {
-		praddr = K(29);
-	    } else {
-		praddr = K(30);
-	    }
-	}
-
-	switch (praddr) {
-	case K(28):
-	    pr = print80_28;
-	    prlen = K(2);
-	    break;
-	case K(29):
-	    pr = print80_29;
-	    prlen = K(1);
-	    break;
-	case K(30):
-	    pr = print80_30;
-	    prlen = K(1);
-	    break;
-	default:
-	    pr = NULL;
-	    prlen = 0;
-	    break;
-	}
-
-	switch (opts.basic) {
-	case BASIC_NONE:
-	    break;
-	case BASIC_10042:
-	    memcpy(rom, abc80new, K(16));
-	    rom[0x3843] = 0x81;	/* Only byte that differs!! */
-	    break;
-	case BASIC_NEW:
-	default:		/* ??? */
-	    memcpy(rom, abc80new,  K(16));
-	    break;
-	case BASIC_OLD:
-	    memcpy(rom, abc80old,  K(16));
-	    break;
-	case BASIC_II:
-	    memcpy(rom, basicii80, K(24));
-	    dos = basicii80 + K(24);
-	    pr  = basicii80 + K(28);
-	    prlen  = K(4);
-	    praddr = K(28);
-	    break;
-	}
-
-	as_set_pages(sys_as, 0, 0, rom_as, 0, K(32));
-
-	if (!(flags & MEMFL_NODOS))
-	    memcpy(rom+K(24), dos, K(4));
-	if (!(flags & MEMFL_NOPR) && prlen)
-	    memcpy(rom+praddr, pr, prlen);
-
-	/*
-	 * Hack: map 20-22K as writable. This seems to be consistent
-	 * with (some?) UFD-DOS modifications putting a 2K external
-	 * RAM at this address. Map it still out of the ROM space as
-	 * it would be different from the RAM space on 64K.
-	 */
-	nvram_as = new_ram("nvram", K(2), 1, rom+K(20));
-	nvram_as->flags |= AS_NODUMP_ALL;
-	as_set_pages(sys_as, K(20), 0, nvram_as, K(0), K(2));
-
-	/*
-	 * Note: leave 80-character VRAM always mapped, there is no
-	 * evidence that any of them unmapped the extra video RAM
-	 * (why would they?)
-	 */
-	switch (opts.tkn80) {
-	case TKN80_NONE:
-	    set_vram_1k();
-	    break;
-	case TKN80_GEJO:
-	    as_set_pages(sys_as, K(30), 0, vram_as, K(0), K(1));
-	    break;
-	case TKN80_MYAB:
-	    as_set_pages(sys_as, K(22), 0, vram_as, K(0), K(2));
-	    break;
-	case TKN80_CAT:
-	    as_set_pages(sys_as, K(18), 0, vram_as, K(0), K(2));
-	    break;
-	}
-	/* Standard 40-char video RAM */
-	as_set_pages(sys_as, K(31), 0, vram_as, K(1), K(1));
-
-	/*
-	 * ABC80 memory grows from the top down. Memory between 32K and
-	 * the start of RAM is unmapped. Map it to ROM, which normally
-	 * will be initialized to FF here (by not using the null
-	 * address space the user can write ROM contents here)
-	 */
-        if (opts.kb < 32)
-	    as_set_pages(sys_as, K(32), 0, rom_as, K(32), K(32 - opts.kb));
-
-	/*
-	 * Adjust ROM for TKN80 if applicable
-	 */
-	abc80_mem_setup_mode80(abc80_mem_mode80_p);
-
-	if (opts.kb == 64) {
-	    /* Map 1: RAM over ROM areas. Video RAM always at 30K for TKN80. */
-	    /* Map 2: video RAM at the end */
-	    /* Map 3: all RAM (nothing to do) */
-	    size_t vlen = vram_as->len;
-
-	    as_set_pages(sys_as, K(32)-vlen, 1, vram_as, 0, vlen);
-	    as_set_pages(sys_as, K(64)-vlen, 2, vram_as, 0, vlen);
-	}
-        break;
-    }
+	mem_init_abc80();
+	break;
 
     case MODEL_ABC800C:
 	init_vram_abc800c();
-	mem_init_abc800cm(flags, abc800crom);
+	mem_init_abc800cm(flags, rom_abc800_abc800crom);
         break;
 
     case MODEL_ABC800M:
-	mem_init_abc800cm(flags, abc800mrom);
+	mem_init_abc800cm(flags, rom_abc800_abc800mrom);
 	break;
 
     case MODEL_ABC802:
-	mem_init_abc800(flags, abc802rom);
+	mem_init_abc800(flags, rom_abc800_abc802rom);
 
 	/* For convenience in loading, mostly, but allow dumping */
 	mem_as = as_alias("mem", K(32), ram_as, 0, 0);

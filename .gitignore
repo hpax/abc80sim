@@ -8,8 +8,7 @@
 *.obj
 *.exe
 *.lst
-/*.bin
-/asmsrc/*.bin
+*.bin
 *.lis
 *.err
 *.map
@@ -28,8 +27,9 @@
 *.gz
 *.bz2
 *.xz
-abc*/
-/roms/*.c
+*.s
+*.elf
+/abc*/
 /win
 /autoconf/aclocal.m4
 /autoconf/m4.old/
@@ -41,7 +41,8 @@ abc*/
 /config.log
 /config.status
 /configure
-/Makefile
+Makefile
+common.mk
 /baudtospeed.c
 /helptxt.c
 unused/

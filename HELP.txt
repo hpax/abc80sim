@@ -69,13 +69,16 @@ Options for ABC80 only:
        --tkn80 myab        MyAB TKN80 (video RAM at 22-24K) (default)
        --tkn80 gejo        GeJo TKN80 (video RAM at 30-32K)
        --tkn80 cat         CAT80 (video RAM at 18-20K) *preliminary*
+       --nvram[=addr,size] simulate NVRAM at address addr (default 20K,2K)
+       --no-nvram	   do not simulate NVRAM
        --meg80[=opt,...]   simulate MEG80 SRAM/flash card
                =flash        start with MEG80 active (flash mode)
                =ram          slot 3 contains SRAM
                =rom          slot 3 is write protected (ROM)
                =#,#...       amount of memory (K) in each slot (8-512) [512]
-       --pr=addr           set printer ROM base address in (28k, 29k, 30k)
-                           28K is a 2K ROM with additional features
+       --pr=addr           set printer/network ROM base address to
+			   28K, 29K, or 30K; 28K is a 2K ROM with
+			   additional features *preliminary*
 
 Options for ABC800C/M only:
   --hr                     enable high resolution graphics (default)
@@ -147,12 +150,12 @@ The simulator supports the following hotkeys; the same events can also
 be triggered by outputting the equivalent ASCII byte (lower case!) to
 "magic" I/O port 184 (unless --no-magic is specified.)
 
-  Alt-q    quit the simulator
-  Alt-s    take a screenshot
-  Alt-r    CPU reset
-  Alt-n    send NMI
-  Alt-m    dump memory as currently seen from the CPU
-  Alt-p    dump primary RAM (64K, even nonexistent)
-  Alt-x    dump extended/graphics RAM (if any)
-  Alt-d    dump everything available into a directory, atomically
-  Alt-f    turn faketype on or off
+  Alt-d    (100) dump everything available into a directory, atomically
+  Alt-f    (102) turn faketype on or off (ABC80)
+  Alt-m    (109) dump memory as currently seen from the CPU
+  Alt-n    (110) send NMI
+  Alt-p    (112) dump primary RAM (64K, even nonexistent)
+  Alt-q    (113) quit the simulator
+  Alt-r    (114) CPU reset
+  Alt-s    (115) take a screenshot
+  Alt-x    (120) dump extended/graphics RAM (if any)

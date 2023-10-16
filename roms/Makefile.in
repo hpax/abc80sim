@@ -1,0 +1,35 @@
+#!/usr/bin/make -R -r
+
+top_srcdir      := @top_srcdir@
+srcdir          := @srcdir@
+include $(top_srcdir)/common.mk
+
+ROMLIB		= roms.$(A)
+
+ROMS		= $(shell find . -type f -name \*.rom)
+ROMOBJ		= $(ROMS:.rom=.o)
+
+# Re-invoking $(MAKE) is essential so newly built .rom files can be found
+all:
+	$(MAKE) -C asmsrc
+	$(MAKE) $(ROMLIB) roms.h
+
+roms.h: romhdr.pl $(ROMS)
+	$(PERL) $^ > $@
+
+%.c: %.rom bin2c.pl
+	$(PERL) bin2c.pl $< > $@
+
+$(ROMLIB): $(ROMOBJ)
+	rm -f $@
+	$(AR) cq $@ $^
+	$(RANLIB) $@
+
+CLEAN_PATTERNS += *.c roms.h
+CLEAN_SUBDIRS   = asmsrc
+
+clean: clean.common
+
+spotless: spotless.common
+
+-include $(shell find . -name '.*.d')
