@@ -343,6 +343,13 @@ int main(int argc, char **argv)
 		opts.memflags |= enable ? 0 : MEMFL_NOPR;
 		if (optarg)
 		    opts.praddr = strtoul(optarg, NULL, 0);
+	    } else if (!strcmp(optstr, "nvram")) {
+		opts.memflags &= ~MEMFL_NONVRAM;
+		opts.memflags |= enable ? 0 : MEMFL_NONVRAM;
+		if (optarg) {
+		    sscanf(optarg, "%i,%i",
+			   (int *)&opts.nvram_addr, (int *)&opts.nvram_size);
+		}
             } else if (!strcmp(optstr, "kb")) {
                 opts.kb = strtoul(LONG_ARG(), NULL, 0);
             } else if (!strcmp(optstr, "help")) {

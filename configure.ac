@@ -351,5 +351,5 @@ dnl support ccache
 dnl
 PA_ARG_ENABLED([ccache], [compile with ccache], [CC="ccache $CC"], [])
 
-AC_CONFIG_FILES([Makefile])
+AC_CONFIG_FILES([Makefile roms/Makefile roms/asmsrc/Makefile common.mk])
 AC_OUTPUT

@@ -1,0 +1,73 @@
+# -*- makefile -*-
+#
+# Common Makefile elements
+#
+MAKEFLAGS	+= -R -r
+
+prefix          = @prefix@
+exec_prefix     = @exec_prefix@
+bindir          = @bindir@
+mandir          = @mandir@
+datarootdir     = @datarootdir@
+
+CC		= @CC@
+AUTODEPS        = @AUTODEPS@
+CPPFLAGS	= @CPPFLAGS@ @DEFS@ -I$(top_srcdir)
+CFLAGS		= $(CPPFLAGS) @CFLAGS@
+LDFLAGS		= $(CFLAGS) @LDFLAGS@
+AR              = @AR@
+RANLIB          = @RANLIB@
+LIBOBJS         = @LIBOBJS@
+LIBS		= @LIBS@
+
+Z80_CROSS	= z80-none-elf-
+Z80_CPP		= $(CC) -E -x assembler-with-cpp
+Z80_AS		= $(Z80_CROSS)as
+Z80_LD		= $(Z80_CROSS)ld
+Z80_OBJCOPY	= $(Z80_CROSS)objcopy
+Z80_OBJDUMP	= $(Z80_CROSS)objdump
+Z80_NM		= $(Z80_CROSS)nm
+
+MKDIR		= mkdir
+PERL		= perl
+SED             = sed
+RM_F		= rm -f
+RM_RF		= rm -rf
+
+# For Windows/MinGW use obj and .exe
+O		= @OBJEXT@
+X		= @EXEEXT@
+A               = a
+
+VPATH          := $(srcdir)
+
+.SUFFIXES:
+.SECONDARY:
+.DELETE_ON_ERROR:
+
+_default: all
+
+%.$(O): %.c $(HDRS)
+	$(CC) $(AUTODEPS) $(CFLAGS) -DMODULE='$(*F)' -c -o $@ $<
+
+%.i: %.c $(HDRS)
+	$(CC) $(AUTODEPS) $(CFLAGS) -DMODULE='$(*F)' -E -o $@ $<
+
+%.s: %.c $(HDRS)
+	$(CC) $(AUTODEPS) $(CFLAGS) -DMODULE='$(*F)' -S -o $@ $<
+
+CLEAN_PATTERNS = *.$(O) *.$(A) .*.d *.lst *.i *.s *.lst *.map *.bin *.elf
+clean_find_patterns = \( $(patsubst %,-name '%' -o,$(CLEAN_PATTERNS)) -false \)
+clean.common:
+	for d in $(CLEAN_SUBDIRS); do \
+		if [ -f $$d/Makefile ]; then $(MAKE) -C $$d clean; fi ; \
+	done
+	find . -type f $(clean_find_patterns) -print0 | xargs -0rt $(RM_F)
+
+SPOTLESS_PATTERNS = *~ \#* .\#* *.bak *.$$$$$$ Makefile *.mk
+spotless_find_patterns = \( $(patsubst %,-name '%' -o,$(SPOTLESS_PATTERNS)) -false \)
+spotless.common:
+	for d in $(CLEAN_SUBDIRS); do \
+		if [ -f $$d/Makefile ]; then $(MAKE) -C $$d spotless; fi ; \
+	done
+	find . -type f $(spotless_find_patterns) -print0 | xargs -0rt $(RM_F)

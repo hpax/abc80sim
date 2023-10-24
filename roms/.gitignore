@@ -1,0 +1,5 @@
+*.c
+roms.h
+/abc80/no_nvram/
+/abc80/nvram_20k/
+/abc80/nvram_22k/

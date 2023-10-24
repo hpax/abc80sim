@@ -35,7 +35,8 @@ enum memflags {
     MEMFL_NOBASIC = 1,
     MEMFL_NODOS   = 2,
     MEMFL_NOPR    = 4,
-    MEMFL_NODEV   = MEMFL_NODOS|MEMFL_NOPR
+    MEMFL_NONVRAM = 8,
+    MEMFL_NODEV   = MEMFL_NODOS|MEMFL_NOPR|MEMFL_NONVRAM
 };
 
 enum abc80_basic {
@@ -49,11 +50,13 @@ enum abc80_basic {
 /* System options set on the command line */
 struct opts {
     enum model model;
-    unsigned int kb;	        /* Main memory in kilobytes */
+    unsigned int kb;		/* Main memory in kilobytes */
     enum tkn80 tkn80;		/* ABC80 form of 80 characters */
     bool startup_width40;	/* Start in 40-char mode (if applicable) */
     enum abc80_basic basic;	/* BASIC version (ABC80 only) */
-    unsigned int praddr;	/* Printer ROM base address */
+    unsigned int praddr;	/* Printer ROM base address (ABC80) */
+    unsigned int nvram_addr;	/* NVRAM base address (ABC80) */
+    unsigned int nvram_size;	/* NVRAM size */
     bool headless;		/* Headless, no screen output */
     bool batch;			/* Quit after end of script */
     bool color;			/* Color screen */

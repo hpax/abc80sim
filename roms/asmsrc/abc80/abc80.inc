@@ -5,16 +5,9 @@
 ;; Constants and some function definitions for ABC80
 ;;
 
-;; DOS variables
-defc DOSFD		= 64768	    ;; Current DOS file descriptor
-defc DRVSEL		= 64769	    ;; Selected drive no
-defc DOSBUF0		= 64786	    ;; Pointer to DOSBUF 0
-defc DISKERR		= 64789	    ;; Drive error (if any)
-defc BCSAVE		= 64797	    ;; Register save area
-defc DOSDEFDEV		= 64821	    ;; DOS default device ("   ") in RAM
-
 ;; System variables
 defc CLOCK		= 65008	    ;; Clock (3 bytes)
+defc CLOCK1		= 65009	    ;; Second two bytes of clock
 defc CURY		= 65011	    ;; Row
 defc CURX		= 65012	    ;; Column
 defc KEYFLAG		= 65013	    ;; Bit 7	= key pressed
@@ -61,16 +54,6 @@ defc POKE_LEN		= 128	    ;; Size of POKE_BUF
 ;; Clock info
 defc TICK		= CLOCK	    ;; Fastest ticking byte
 defc HZ			= 50	    ;; Tick frequency
-
-;; DOS subroutines and pointers
-defc DCWAI		= 24672	    ;; Select drive
-defc DW0		= 24675	    ;; Write sector to DOSBUF0
-defc DR0		= 24678	    ;; Read sector from DOSBUF0
-defc DDEVDES		= 24683	    ;; Pointer to DOS device type list
-defc DRDWRET		= 24689	    ;; Pointer to driver hook
-defc DRDWEND		= 25012	    ;; Driver hook exit (when claimed)
-defc DRDWERR		= 25011	    ;; Driver hook exit on error
-defc DGETBUF		= 25098	    ;; Get address of DOSBUF B[7:4]
 
 ;; BASIC subroutines (valid for all BASIC versions)
 defc S_ERROR		= 0x0012    ;; Error routine (A=error)

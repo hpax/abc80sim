@@ -1,6 +1,6 @@
 #!/usr/bin/perl
 ## -----------------------------------------------------------------------
-##   
+##
 ##   Copyright 1998-2013 H. Peter Anvin - All Rights Reserved
 ##
 ##   This program is free software; you can redistribute it and/or modify
@@ -15,8 +15,9 @@
 # bin2c.pl: binary file to C source converter
 #
 
-eval { use bytes; };
-eval { binmode STDIN; };
+use integer;
+use bytes;
+binmode STDIN;
 
 if ( $#ARGV != 0 ) {
     print STDERR "Usage: $0 input_file [tablename] > output_file\n";
@@ -25,10 +26,14 @@ if ( $#ARGV != 0 ) {
 
 ($input_file, $table_name) = @ARGV;
 
-$table_name = $input_file unless (defined($table_name));
-
-$table_name =~ s/\.[^\.]*$//;		# Drop extension
-$table_name =~ s/^.*[^A-Za-z0-9_]//;	# Drop any path prefix
+unless (defined($table_name)) {
+    # This must match romhdr.pl
+    my $n = $input_file;
+    $n =~ s/^(\..)?/rom_/;
+    $n =~ s/\.[A-Za-z0-9]+$//;
+    $n =~ s/[^A-Za-z0-9]+/_/g;
+    $table_name = $n;
+}
 
 open(IN, '<:raw', $input_file)
     or die "$0: unable to open input file $input_file: $!\n";
@@ -40,8 +45,10 @@ while (($n = read(IN, $data, 65536, $total_len)) > 0) {
 }
 close(IN);
 
-print "#include \"../rom.h\"\n\n";
-printf "const uint8_t %s[%d] = {\n", $table_name, $total_len;
+# Prototype to keep the compiler from complaining
+printf "extern const unsigned char %s[%d];\n", $table_name, $total_len;
+
+printf "const unsigned char %s[%d] = {\n", $table_name, $total_len;
 
 $pos = 0;
 $linelen = 8;
