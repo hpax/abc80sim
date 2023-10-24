@@ -161,7 +161,7 @@ static const struct path_option path_options[] = {
     {{"Dd", "-diskdir"}, &disk_path, NULL},
     {{"Df", "-filedir"}, &fileop_path, NULL},
     {{"Ds", "-scrndir"}, &screen_path, NULL},
-    {{"Dd", "-dumpdir"}, &memdump_path, NULL},
+    {{"Du", "-dumpdir"}, &memdump_path, NULL},
     {{"Cp", "-printcmd"}, &lpr_command, NULL},
     {{"Fe", "-consolefile"}, &console_filename, NULL},
     {{"Fm", "-memfile"}, &memfile, NULL},
