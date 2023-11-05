@@ -28,6 +28,8 @@ struct rom {
     size_t len;
 };
 
+#define copyrom(d,r) memcpy((d), r, sizeof r)
+
 /* 48/80 char ROM patches, *excluding* the line table at address 884 */
 struct patch_location {
     uint16_t address;
@@ -634,6 +636,41 @@ static int init_meg80(void)
     return 0;
 }
 
+/* Paged ROM used by Supersmartaid and some other models */
+
+static void ssarom_as_write(struct as *as, size_t faddr, uint8_t v);
+
+static const struct as_ops ssarom_as_ops = {
+    .read  = NULL,
+    .write = ssarom_as_write,
+    .dump  = mem_as_dump,
+    .load  = NULL,
+    .sync  = NULL,
+    .init  = 0xff
+};
+static struct as *ssarom_as;
+
+static void ssarom_as_write(struct as *as, size_t faddr, uint8_t v)
+{
+    (void)v;
+    as_set_map(as, faddr & 1);
+}
+
+static void mem_init_supersmartaid(void)
+{
+    ssarom_as = new_mem("ssarom", K(8), 2, NULL, &ssarom_as_ops);
+
+    memcpy(ssarom_as->p.data+K(0),  rom_abc80_supersmartaid16k+K(0), K(4));
+    memcpy(ssarom_as->p.data+K(4),  rom_abc80_supersmartaid30k+K(0), K(1));
+    memcpy(ssarom_as->p.data+K(8),  rom_abc80_supersmartaid16k+K(4), K(4));
+    memcpy(ssarom_as->p.data+K(12), rom_abc80_supersmartaid30k+K(1), K(1));
+
+    as_set_map(ssarom_as, 0);
+
+    as_set_pages(sys_as, K(16), 0, ssarom_as, 0, K(4));
+    as_set_pages(sys_as, K(28), 0, ssarom_as, K(4), K(1));
+}
+
 /* Common memory initialization for all ABC800 models */
 static void mem_init_abc800(unsigned int flags, const uint8_t *master_rom)
 {
@@ -734,6 +771,7 @@ static inline void init_vram_abc800c(void)
 /*
  * ABC80 memory initialization
  */
+
 struct romset {
     struct rom nonv, nv20, nv22;
 };
@@ -796,6 +834,8 @@ static void mem_init_abc80(void)
     if (opts.basic == BASIC_II) {
 	if (opts.tkn80 != TKN80_NONE)
 	    opts.tkn80 = TKN80_GEJO; /* Always 30-32K */
+	opts.smartaid = SA_NONE;     /* Can't smartaid */
+	flags |= MEMFL_NONVRAM;
     }
 
     /* Start by initializing all maps to RAM */
@@ -803,6 +843,9 @@ static void mem_init_abc80(void)
 	as_set_pages(sys_as, 0, m, ram_as, 0, K(64));
 
     /* Map 0: default (for < 64K, the only available map) */
+
+    /* Lower 32K = ROM (overwritten by VRAM latter) */
+    as_set_pages(sys_as, 0, 0, rom_as, 0, K(32));
 
     /*
      * For GeJo TKN80 we need to map the printer ROM at a different
@@ -829,34 +872,60 @@ static void mem_init_abc80(void)
 
     if (!praddr) {
 	if (opts.tkn80 == TKN80_GEJO ||
-	    (opts.tkn80 != TKN80_NONE && opts.kb == 64)) {
+	    opts.smartaid == SA_SUPERSMARTAID ||
+	    (opts.kb == 64 && opts.tkn80 != TKN80_NONE &&
+	     opts.smartaid != SA_SUPERBASIC)) {
 	    praddr = K(29);
 	} else {
 	    praddr = K(30);
 	}
     }
 
+    switch (opts.smartaid) {
+    case SA_NONE:
+	break;
+    case SA_SUPERBASIC:
+	copyrom(rom+K(16), rom_abc80_superbasic16k);
+	copyrom(rom+K(28), rom_abc80_superbasic28k);
+	if (praddr < K(30))
+	    praddr = 0;
+	break;
+    case SA_SMARTAID3:
+	copyrom(rom+K(16), rom_abc80_smartaid3);
+	break;
+    case SA_SUPERSMARTAID:
+	mem_init_supersmartaid();
+	flags &= ~MEMFL_NONVRAM;
+	opts.nvram_addr = K(20);
+	if (opts.nvram_size <= 64)
+	    opts.nvram_size <<= 10;
+	if (opts.nvram_size < K(2))
+	    opts.nvram_size = K(2);
+	break;
+    case SA_ABC80L:
+	copyrom(rom+K(20), rom_abc80_abc80l);
+	break;
+    }
+
     switch (opts.basic) {
     case BASIC_NONE:
 	break;
     case BASIC_10042:
-	memcpy(rom, rom_abc80_abc80new, K(16));
+	copyrom(rom, rom_abc80_abc80new);
 	rom[0x3843] = 0x81;	/* Only byte that differs!! */
 	break;
     case BASIC_NEW:
     default:		/* ??? */
-	memcpy(rom, rom_abc80_abc80new,  K(16));
+	copyrom(rom, rom_abc80_abc80new);
 	break;
     case BASIC_OLD:
-	memcpy(rom, rom_abc80_abc80old,  K(16));
+	copyrom(rom, rom_abc80_abc80old);
 	break;
     case BASIC_II:
 	memcpy(rom, rom_abc80_basicii80, K(24));
 	praddr = K(28);
 	break;
     }
-
-    as_set_pages(sys_as, 0, 0, rom_as, 0, K(32));
 
     /*
      * Hack: emulated "NVRAM", as was part of the MyAB 128K
@@ -872,7 +941,7 @@ static void mem_init_abc80(void)
 	    nvaddr <<= 10;
 	nvaddr &= ~1023;
 	nvsize = opts.nvram_size;
-	if (nvsize < 64)
+	if (nvsize <= 64)
 	    nvsize <<= 10;
 	nvsize = (nvsize + 1023) & ~1023;
 	if (nvaddr < Z80_ADDRESS_LIMIT) {

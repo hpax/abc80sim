@@ -332,6 +332,15 @@ int main(int argc, char **argv)
 		    opts.basic = BASIC_10042;
 	    } else if (!strcmp(optstr, "basicii") || !strcmp(optstr, "basic2")) {
 		opts.basic = enable ? BASIC_II : BASIC_NEW;
+	    } else if (!strcmp(optstr, "superbasic")) {
+		opts.smartaid = enable ? SA_SUPERBASIC : SA_NONE;
+	    } else if (!strcmp(optstr, "smartaid3") ||
+		       !strcmp(optstr, "smartaid") /* for now */) {
+		opts.smartaid = enable ? SA_SMARTAID3 : SA_NONE;
+	    } else if (!strcmp(optstr, "supersmartaid")) {
+		opts.smartaid = enable ? SA_SUPERSMARTAID : SA_NONE;
+	    } else if (!strcmp(optstr, "abc80l")) {
+		opts.smartaid = enable ? SA_ABC80L : SA_NONE;
             } else if (!strcmp(optstr, "device")) {
                 opts.memflags &= ~MEMFL_NODEV;
                 opts.memflags |= enable ? 0 : MEMFL_NODEV;

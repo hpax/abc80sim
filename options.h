@@ -47,6 +47,15 @@ enum abc80_basic {
     BASIC_II			/* BASIC II (modified ABC800 BASIC) */
 };
 
+/* Enhanced BASIC ROMs for ABC80 */
+enum smartaid {
+    SA_NONE,
+    SA_SUPERBASIC,
+    SA_SMARTAID3,
+    SA_SUPERSMARTAID,
+    SA_ABC80L
+};
+
 /* System options set on the command line */
 struct opts {
     enum model model;
@@ -54,6 +63,7 @@ struct opts {
     enum tkn80 tkn80;		/* ABC80 form of 80 characters */
     bool startup_width40;	/* Start in 40-char mode (if applicable) */
     enum abc80_basic basic;	/* BASIC version (ABC80 only) */
+    enum smartaid smartaid;	/* BASIC enhancement */
     unsigned int praddr;	/* Printer ROM base address (ABC80) */
     unsigned int nvram_addr;	/* NVRAM base address (ABC80) */
     unsigned int nvram_size;	/* NVRAM size */
