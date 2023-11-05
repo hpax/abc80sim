@@ -34,7 +34,7 @@ Options (defaults in brackets):
   -Dd, --diskdir dir       set directory for disk images [abcdisk]
   -Df, --filedir dir       set directory for file sharing [abcdir]
   -Ds, --scrndir dir       set directory for screen shots [.]
-  -Dd, --dumpdir dir       set directory for memory dumps [.]
+  -Du, --dumpdir dir       set directory for memory dumps [.]
   -Cp, --printcmd cmd      set command to launch a print job (see below)
   -Fc, --casfile file      input file for cassette (CAS:)
   -Lc, --caslist file      read list of files for the cassette from a file
