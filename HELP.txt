@@ -79,6 +79,10 @@ Options for ABC80 only:
        --pr=addr           set printer/network ROM base address to
 			   28K, 29K, or 30K; 28K is a 2K ROM with
 			   additional features *preliminary*
+       --smartaid3         load the ROM for Owoco Smartaid III
+       --supersmartaid     load the ROM for Owoco SuperSmartaid
+       --superbasic        load the ROM for Nyfors SuperBASIC
+       --abc80l            load the ROM for ABC80L
 
 Options for ABC800C/M only:
   --hr                     enable high resolution graphics (default)
