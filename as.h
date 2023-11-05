@@ -6,6 +6,7 @@
 #define AS_H
 
 #include "compiler.h"
+#include "trace.h"
 
 struct as;			/* Defined below */
 
@@ -227,9 +228,14 @@ pure_func struct as *get_addrspace(const char *name, size_t len);
  */
 static inline void as_set_map(struct as *as, unsigned int map)
 {
-    assert(map < as->nmaps);
-    as->map  = map;
-    as->base = as->len * map;
+    if (map != as->map) {
+	assert(map < as->nmaps);
+	if (tracing(TRACE_MAP))
+	    fprintf(tracef, "MAP: as %s map %u (was %u)\n",
+		    as->name, map, as->map);
+	as->map  = map;
+	as->base = as->len * map;
+    }
 }
 
 /*
@@ -268,13 +274,7 @@ void as_set_pages(struct as *vas, size_t voffs, unsigned int map,
  *  Alias address space
  */
 struct as *as_new_aliasspace(const char *name, size_t len);
-static inline void
-as_point_alias(struct as *alias_as, struct as *parent_as, size_t offs)
-{
-    alias_as->p.parent_as = parent_as;
-    alias_as->ops = parent_as->ops;
-    alias_as->base = offs;
-}
+void as_point_alias(struct as *alias_as, struct as *parent_as, size_t offs);
 struct as *as_alias(const char *name, size_t len, struct as *parent_as,
 		    size_t offs, enum as_flags flags);
 

@@ -71,6 +71,7 @@ Options for ABC80 only:
        --tkn80 cat         CAT80 (video RAM at 18-20K) *preliminary*
        --nvram[=addr,size] simulate NVRAM at address addr (default 20K,2K)
        --no-nvram	   do not simulate NVRAM
+  -Fn, --nvramfile file    backing store file for NVRAM to make persistent
        --meg80[=opt,...]   simulate MEG80 SRAM/flash card
                =flash        start with MEG80 active (flash mode)
                =ram          slot 3 contains SRAM

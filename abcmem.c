@@ -658,17 +658,17 @@ static void ssarom_as_write(struct as *as, size_t faddr, uint8_t v)
 
 static void mem_init_supersmartaid(void)
 {
-    ssarom_as = new_mem("ssarom", K(8), 2, NULL, &ssarom_as_ops);
+    ssarom_as = new_mem("ssarom", K(5), 2, NULL, &ssarom_as_ops);
 
-    memcpy(ssarom_as->p.data+K(0),  rom_abc80_supersmartaid16k+K(0), K(4));
-    memcpy(ssarom_as->p.data+K(4),  rom_abc80_supersmartaid30k+K(0), K(1));
-    memcpy(ssarom_as->p.data+K(8),  rom_abc80_supersmartaid16k+K(4), K(4));
-    memcpy(ssarom_as->p.data+K(12), rom_abc80_supersmartaid30k+K(1), K(1));
+    memcpy(ssarom_as->p.data+K(0), rom_abc80_supersmartaid16k+K(0), K(4));
+    memcpy(ssarom_as->p.data+K(4), rom_abc80_supersmartaid30k+K(0), K(1));
+    memcpy(ssarom_as->p.data+K(5), rom_abc80_supersmartaid16k+K(4), K(4));
+    memcpy(ssarom_as->p.data+K(9), rom_abc80_supersmartaid30k+K(1), K(1));
 
     as_set_map(ssarom_as, 0);
 
     as_set_pages(sys_as, K(16), 0, ssarom_as, 0, K(4));
-    as_set_pages(sys_as, K(28), 0, ssarom_as, K(4), K(1));
+    as_set_pages(sys_as, K(30), 0, ssarom_as, K(4), K(1));
 }
 
 /* Common memory initialization for all ABC800 models */
@@ -933,6 +933,8 @@ static void mem_init_abc80(void)
      * modifications seem to have expected a 2K external RAM at
      * 20K address.
      */
+    var_idx = 0;	/* No nvram version */
+
     if (!(flags & MEMFL_NONVRAM)) {
 	size_t nvaddr, nvsize;
 
@@ -948,15 +950,25 @@ static void mem_init_abc80(void)
 	    if (nvaddr + nvsize > Z80_ADDRESS_LIMIT)
 		nvsize = Z80_ADDRESS_LIMIT - nvaddr;
 
-	    nvram_as = new_ram("nvram", nvsize, 1, NULL);
+	    char *nvram_buf = NULL;
+
+	    if (opts.nvramfile) {
+		struct host_file *hf;
+
+		hf = open_host_file(HF_BINARY, NULL, opts.nvramfile,
+				    O_RDWR|O_CREAT);
+		if (hf)
+		    nvram_buf = map_file(hf, nvsize);
+	    }
+
+	    nvram_as = new_ram("nvram", nvsize, 1, nvram_buf);
 	    as_set_pages(sys_as, nvaddr, 0, nvram_as, 0, nvsize);
+
+	    if (nvaddr <= K(23) && nvaddr+nvsize >= K(24))
+		var_idx = 2;	/* 22K version */
+	    else if (nvaddr <= K(21) && nvaddr+nvsize >= K(22))
+		var_idx = 1;	/* 20K version */
 	}
-	if (nvaddr <= K(23) && nvaddr+nvsize >= K(24))
-	    var_idx = 2;	/* 22K version */
-	else if (nvaddr <= K(21) && nvaddr+nvsize >= K(22))
-	    var_idx = 1;	/* 20K version */
-	else
-	    var_idx = 0;	/* No nvram version */
     }
 
     switch (praddr) {

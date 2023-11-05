@@ -67,6 +67,7 @@ struct opts {
     unsigned int praddr;	/* Printer ROM base address (ABC80) */
     unsigned int nvram_addr;	/* NVRAM base address (ABC80) */
     unsigned int nvram_size;	/* NVRAM size */
+    char *nvramfile;		/* NVRAM backing store */
     bool headless;		/* Headless, no screen output */
     bool batch;			/* Quit after end of script */
     bool color;			/* Color screen */

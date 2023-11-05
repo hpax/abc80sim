@@ -172,6 +172,7 @@ static const struct path_option path_options[] = {
     {{"Fs", "-scriptfile"}, &script_files, add_file_to_list},
     {{"Ls", "-scriptlist"}, &script_files, add_list_to_list},
     {{"Fo", "-outputfile"}, &opts.outputfile, NULL},
+    {{"Fn", "-nvramfile"}, &opts.nvramfile, NULL},
     {{"FS", "-server"}, &server_ports, add_file_to_list},
     {{"LS", "-serverlist"}, &server_ports, add_file_to_list}
 };

@@ -113,6 +113,11 @@ struct as *as_new_space(const char *name, const struct as_ops *ops,
     as->next   = addrspaces;
     addrspaces = as;
 
+    if (tracing(TRACE_MAP)) {
+	fprintf(tracef, "MAP: new as %s len 0x%zx maps %u\n",
+		as->name, as->len, as->nmaps);
+    }
+
     return as;
 }
 
@@ -206,6 +211,11 @@ struct as *new_rom(const char *name, size_t len, unsigned int nmaps, void *buf)
  *  Paged memory space
  * ------------------------------------------------------------------------- */
 
+
+/* -------------------------------------------------------------------------
+ *  Paged memory space
+ * ------------------------------------------------------------------------- */
+
 static struct asoffs page_as_translate(struct asoffs vso)
 {
     struct asoffs pso;
@@ -229,6 +239,12 @@ void as_set_pages(struct as *vas, size_t voffs, unsigned int map,
 
     pages = len >> vas->grain;
     p += ((map * vas->len) + voffs) >> vas->grain;
+
+    if (tracing(TRACE_MAP)) {
+	fprintf(tracef, "MAP: as %s map %u offs 0x%zx len 0x%zx -> "
+		"as %s offs 0x%zx\n",
+		vas->name, map, voffs, len, pas->name, poffs);
+    }
 
     while (pages--) {
 	p->as = pas;
@@ -282,6 +298,18 @@ struct as *as_new_aliasspace(const char *name, size_t len)
     as->flags |= AS_ALIAS;
 
     return as;
+}
+
+void as_point_alias(struct as *alias_as, struct as *parent_as, size_t offs)
+{
+    alias_as->p.parent_as = parent_as;
+    alias_as->ops = parent_as->ops;
+    alias_as->base = offs;
+
+    if (tracing(TRACE_MAP)) {
+	fprintf(tracef, "MAP: as %s = as %s offs 0x%zx\n",
+		alias_as->name, parent_as->name, offs);
+    }
 }
 
 /* -------------------------------------------------------------------------
