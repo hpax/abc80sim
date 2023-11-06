@@ -303,8 +303,9 @@ static void do_sbc_word_flags(int a, int b, int result)
      * up the flag values in the above tables.
      */
 
-    f = (REG_F | SUBTRACT_MASK) & ~(SIGN_MASK | ZERO_MASK | HALF_CARRY_MASK
-                                    | OVERFLOW_MASK | CARRY_MASK);
+    f = (REG_F | SUBTRACT_MASK) &
+	~(SIGN_MASK | ZERO_MASK | HALF_CARRY_MASK
+	  | OVERFLOW_MASK | CARRY_MASK);
 
     index = ((a & 0x8800) >> 9) | ((b & 0x8800) >> 10) |
         ((result & 0x8800) >> 11);
@@ -1217,7 +1218,8 @@ static void do_int(void)
 
     switch (z80_state.interrupt_mode) {
     case 0:
-        /* We blithly assume we are fed an RST instruction */
+        /* We blithly assume we are fed an RST instruction, otherwise
+	   this is totally wrong... */
         do_di();
         REG_SP -= 2;
         mem_write_word(REG_SP, REG_PC);
@@ -1250,8 +1252,9 @@ static void do_int(void)
 
     if (tracing(TRACE_CPU | TRACE_IO)) {
         fprintf(tracef, "[%12" PRIu64 "] INT: "
-                "vector 0x%02x (%3d) I=%02x PC=%04x -> %04x\n",
-                when, i_vector, i_vector, REG_I, old_pc, REG_PC);
+                "im%u vector 0x%02x (%3d) I=%02x PC=%04x -> %04x\n",
+		when, z80_state.interrupt_mode,
+                i_vector, i_vector, REG_I, old_pc, REG_PC);
     }
 
     rfsh();
@@ -2244,8 +2247,8 @@ static void do_ED_instruction(regpair * ix)
      * ED 40-7F duplicate:
      *   NEG       at ED4C, ED54, ED5C, ED64, ED6C, ED74, ED7C
      *   NOP       at ED77, ED7F
-     *   RETN      at ED55, ED65, ED75
-     *   RETI      at ED5D, ED6D, ED7D
+     *   RETN      at ED45, ED55, ED65, ED75, ED5D, ED6D, ED7D
+     *   RETI      at ED4D (same as RETN for the CPU itself)
      *   IM ?      at ED4E, ED6E
      *   IM 0      at ED66
      *   IM 1      at ED76
@@ -2448,21 +2451,16 @@ static void do_ED_instruction(regpair * ix)
         break;
 
     case 0x4D:                 /* reti */
-    case 0x5D:
-    case 0x6D:
-    case 0x7D:
-        {
-            REG_PC = mem_read_word(REG_SP);
-            REG_SP += 2;
-            z80_state.iff1 = z80_state.iff2;
-            z80_state.signal_eoi = true;        /* Send EOI before next instruction */
-        }
-        break;
+	z80_state.signal_eoi = true;        /* Send EOI before next instruction */
+	/* fall through */
 
     case 0x45:                 /* retn */
     case 0x55:
     case 0x65:
     case 0x75:
+    case 0x5D:
+    case 0x6D:
+    case 0x7D:
         REG_PC = mem_read_word(REG_SP);
         REG_SP += 2;
         z80_state.iff1 = z80_state.iff2;
