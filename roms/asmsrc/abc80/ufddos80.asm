@@ -1255,7 +1255,11 @@ setup_stack:	pop de			; Copy return address
                 ret c                   ; 6590 .    d8
                 ld (BASICERR),a         ; 6591 2..  32 0f fe
                 ld (_DOSBUF1+3),a       ; 6594 2..  32 03 f6
-                jp autostart_setup      ; 6597 .=h  c3 3d 68
+		ret
+		;; Unreachable
+		rst 56
+		rst 56
+
 .L659a:         ;; 659a <- 6582 65ea
                 ld (DOSERRDEF),hl       ; 659a "3.  22 33 fd
                 ld hl,F0_DRVSEL         ; 659d !A.  21 41 fd
@@ -1685,19 +1689,13 @@ setup_memvars:
                 ld (DOSBUFS),hl         ; 6819 "..  22 12 fd
 		ld hl,STACK_BASE
 		ld (STACK),hl
-		ret                     ; 681c .    c9
-try_init_rom:   ;; 681d <- 6869
-		;; L = 0x4a on entry
-		ld c,(hl)		; 0x3d = DEC A - used as magic number
-		inc l
-		ld a,(hl)
-		inc h
-		cp 0xc3			; 0xc3 = JP
-		ret nz
-		add a,c			; Verify 0x3d + 0xc3 = 0
-		ret nz
-		dec h
-		jp (hl)
+
+autostart_setup: ;; 683d <- 6597
+                ld hl,autostart_cmd     ; 683d !.o  21 9b 6f
+                ld de,LINE_BUF          ; 6840 .@.  11 40 fe
+                ld bc,autostart_cmd_len ; 6843 ...  01 14 00
+                ldir                    ; 6846 ..   ed b0
+                ret                     ; 6848 .    c9
 
 		.org 0x82b, 0xff
 ;;; Make space for a 15-byte IX map on the stack,
@@ -1713,12 +1711,6 @@ tmpixmap:       ;; 682b <- 67ac 67b5 67da
                 add hl,sp               ; 683a 9    39
                 ld sp,hl                ; 683b .    f9
                 ret                     ; 683c .    c9
-autostart_setup: ;; 683d <- 6597
-                ld hl,autostart_cmd     ; 683d !.o  21 9b 6f
-                ld de,LINE_BUF          ; 6840 .@.  11 40 fe
-                ld bc,autostart_cmd_len ; 6843 ...  01 14 00
-                ldir                    ; 6846 ..   ed b0
-                ret                     ; 6848 .    c9
 autostart:      ;; 6849 <- 686f
 		ld hl,(STACK)
 		ld sp,hl
@@ -1727,7 +1719,24 @@ autostart:      ;; 6849 <- 686f
                 call S_CHECKCTRLC       ; Clears ctrl-C, returns with A = 0
 		ld (iy+14),1            ; Command mode
                 ld hl,LINE_BUF          ; 6854 !@.  21 40 fe
-                jp S_RUNCMD		; 6858 ...  c2 f4 00
+		bit 0,(iy-7)		; Only autostart if BASICERR.SYS open
+		jp z,S_NEW		; Otherwise NEW
+		jp S_RUNCMD		; 6858 ...  c2 f4 00
+
+try_init_rom:   ;; 681d <- 6869
+		;; L = 0x4a on entry
+		ld c,(hl)		; 0x3d = DEC A - used as magic number
+		inc l
+		ld a,(hl)
+		inc h
+		cp 0xc3			; 0xc3 = JP
+		ret nz
+		add a,c			; Verify 0x3d + 0xc3 = 0
+		ret nz
+		dec h
+		jp (hl)
+
+		;; .org 0x85e, 0xff
 _INIT80:        ;; 685e <- 604b
                 ld (iy+42),0            ; 685e .6*. fd 36 2a 00
                 call dosinit80          ; 6862 .Ce  cd 43 65
