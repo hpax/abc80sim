@@ -861,12 +861,13 @@ static void mem_init_abc80(void)
     praddr = 0;
 
     if (opts.praddr) {
-	if (opts.praddr < 28 || opts.praddr > 30) {
+	if (opts.praddr < 64)
+	    opts.praddr <<= 10;
+	praddr = opts.praddr;
+	if (praddr < K(28) || praddr > K(30) || (praddr & 1023)) {
 	    fprintf(stderr, "%s: invalid printer ROM address: %uK\n",
-		    program_name, opts.praddr);
+		    program_name, opts.praddr >> 10);
 	    praddr = 0;
-	} else {
-	    praddr = opts.praddr << 10;
 	}
     }
 
@@ -880,6 +881,13 @@ static void mem_init_abc80(void)
 	    praddr = K(30);
 	}
     }
+
+    if (opts.nvram_addr < 64)
+	opts.nvram_addr <<= 10;
+    opts.nvram_addr &= ~1023;
+    if (opts.nvram_size < 1024)
+	opts.nvram_size <<= 10;
+    opts.nvram_size = (opts.nvram_size + 1023) & ~1023;
 
     switch (opts.smartaid) {
     case SA_NONE:
@@ -896,9 +904,9 @@ static void mem_init_abc80(void)
     case SA_SUPERSMARTAID:
 	mem_init_supersmartaid();
 	flags &= ~MEMFL_NONVRAM;
+	if (opts.nvram_addr == K(22))
+	    opts.nvram_size += K(2);
 	opts.nvram_addr = K(20);
-	if (opts.nvram_size <= 64)
-	    opts.nvram_size <<= 10;
 	if (opts.nvram_size < K(2))
 	    opts.nvram_size = K(2);
 	break;
@@ -936,32 +944,32 @@ static void mem_init_abc80(void)
     var_idx = 0;	/* No nvram version */
 
     if (!(flags & MEMFL_NONVRAM)) {
-	size_t nvaddr, nvsize;
+	size_t nvaddr = opts.nvram_addr;
+	size_t nvsize = opts.nvram_size;
 
-	nvaddr = opts.nvram_addr;
-	if (nvaddr < 64)
-	    nvaddr <<= 10;
-	nvaddr &= ~1023;
-	nvsize = opts.nvram_size;
-	if (nvsize <= 64)
-	    nvsize <<= 10;
-	nvsize = (nvsize + 1023) & ~1023;
-	if (nvaddr < Z80_ADDRESS_LIMIT) {
-	    if (nvaddr + nvsize > Z80_ADDRESS_LIMIT)
-		nvsize = Z80_ADDRESS_LIMIT - nvaddr;
+	if (nvaddr >= Z80_ADDRESS_LIMIT) {
+	    nvsize = 0;
+	} else if (nvaddr + nvsize > Z80_ADDRESS_LIMIT) {
+	    nvsize = Z80_ADDRESS_LIMIT - nvaddr;
+	}
 
-	    char *nvram_buf = NULL;
+	if (nvsize) {
+	    nvram_as = new_ram("nvram", nvsize, 1, NULL);
 
 	    if (opts.nvramfile) {
 		struct host_file *hf;
 
 		hf = open_host_file(HF_BINARY, NULL, opts.nvramfile,
 				    O_RDWR|O_CREAT);
-		if (hf)
-		    nvram_buf = map_file(hf, nvsize);
+		if (hf) {
+		    uint8_t *data = map_file(hf, nvsize);
+		    if (data) {
+			free(nvram_as->p.data);
+			nvram_as->p.data = data;
+		    }
+		}
 	    }
 
-	    nvram_as = new_ram("nvram", nvsize, 1, nvram_buf);
 	    as_set_pages(sys_as, nvaddr, 0, nvram_as, 0, nvsize);
 
 	    if (nvaddr <= K(23) && nvaddr+nvsize >= K(24))
