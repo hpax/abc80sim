@@ -1201,11 +1201,12 @@ e_cmd_space_overflow:
 
 	endif			; have_cmd
 
-	_device_link = voldevs
+	;; The value to put in the BASIC device link pointer
+device_list = 3000f
 
 	.macro device name:req, jptbl:req
-	defw _device_link
-	_device_link = . - 2
+3000:
+	defw 3000f
 	defm \name
 	defw \jptbl
 	.endm
@@ -1237,9 +1238,6 @@ nul_device:
 pr_device:
 	device "PR ", pr_jptable
 	endif
-
-	;; The value to put in the BASIC device link pointer
-device_list = _device_link
 
 	;; Jump table for BASIC functions that are inconsistent
 new_basic_jumps:		; Checksum 9913, 10042
@@ -1276,6 +1274,7 @@ __end:
 	section .bss
 __bss:
 voldevs:
+3000:				; Part of the device linked list
 	defs 7*MAX_VOLS		; Up to 32 volume device entries
 errsp:
 	defs 2			; SP rollback on error return
