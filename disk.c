@@ -101,8 +101,18 @@ static struct ctl_state hd_state = {
     .name = "hd"
 };
 
+/* Nonstandard second hard disk; sometimes useful */
+static struct ctl_state xd_state = {
+    .clustshift = 5,
+    .newaddr = true,            /* Actually irrelevant for clustshift = 5 */
+    .maxsectors = (239 * 32 - 1) * 32,     /* Maximum supported by UFD-DOS */
+    .c = 238, .h = 16, .s = 64,
+    .name = "xd"
+};
+
 static struct ctl_state *const sel_to_state[64] = {
     [36] = &hd_state,
+    [37] = &xd_state,
     [44] = &mf_state,
     [45] = &mo_state,
     [46] = &sf_state,
