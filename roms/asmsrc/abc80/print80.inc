@@ -73,6 +73,49 @@
 	;; Device timeout
 	defc timeout = 100		; 100/50 Hz = 2 s
 
+	;; Command opcodes
+	NET_OPEN_A	= 0xa0
+	NET_OPEN_B	= 0xa1
+	NET_PREP_A	= 0xa2
+	NET_PREP_B	= 0xa3
+	NET_INPUT	= 0xa4
+	NET_GET		= 0xa5
+	NET_PRINT	= 0xa6
+	NET_CLOSE	= 0xa7
+	NET_CLOSALL	= 0xa8
+	NET_INIT	= 0xa9
+	NET_RENAME	= 0xaa
+	NET_DELETE	= 0xab
+	NET_PREAD	= 0xac
+	NET_PWRITE	= 0xad
+	NET_BLKSIZE	= 0xae
+	NET_INITSZ	= 0xaf
+	NET_SEEK0	= 0xb0
+	NET_SEEK1	= 0xb1
+	NET_SEEK2	= 0xb2
+	NET_SEEK3	= 0xb3
+	NET_SEEK4	= 0xb4
+	NET_SEEK5	= 0xb5
+	NET_SEEK6	= 0xb6
+	NET_SEEK7	= 0xb7
+	NET_SEEK8	= 0xb8
+	NET_PUT		= 0xb9
+	NET_LISTVOL	= 0xba
+	NET_CMD		= 0xbb
+
+	;; Framing bytes
+	NET_SOF		= 0xff
+	NET_EOF		= 0xef
+
+	;; Special commands for printing and debug
+	NET_PRSTX	= 0xf3	; Begin print data mode
+	NET_PRETX	= 0xef	; End print data mode
+	NET_PREND	= 0xfd	; End print job
+	NET_PRFF	= 0xfe	; Escape FF
+
+	;; Special command for debug console
+	NET_CON		= 0xc0
+
 	.globl _org
 	_org = ROMSTART
 
@@ -152,13 +195,13 @@ pr_print:
 pr_print_loop:
 	ld a,b
 	or c
-	ld a,0EFh
+	ld a,NET_PRETX
 	jr z,done_esc
 	ld a,(hl)
 	call send_byte
 	inc a
 	jr nz,pr_not_ff
-	ld a,0FEh
+	ld a,NET_PRFF
 	call send_byte
 pr_not_ff:
 	dec bc
@@ -167,7 +210,7 @@ pr_not_ff:
 
 pr_close:
 	call select
-	ld a,0FDh
+	ld a,NET_PREOJ
 	jr done_esc
 
 	endif
@@ -215,19 +258,19 @@ done:
 	if pra_dev
 
 pra_open:
-	ld a,0xA0
+	ld a,NET_OPEN_A
 	jr prx_open
 pra_prepare:
-	ld a,0xA2
+	ld a,NET_PREP_A
 	jr prx_open
 
 	endif
 
 prb_prepare:
-	ld a,0xA3
+	ld a,NET_PREP_B
 	jr prb_open_prepare
 prb_open:
-	ld a,0xA1
+	ld a,NET_OPEN_B
 prb_open_prepare:
 	call prb_setup_buf
 
@@ -363,7 +406,7 @@ crlf:
 
 prx_rename:
 	call select
-	ld a,0xAA
+	ld a,NET_RENAME
 	call send_cmd
 	ex de,hl			; HL -> new filename
 	ld bc,11
@@ -392,7 +435,7 @@ pra_close:
 	else
 	ld (ix+5),b
 	endif
-	ld a,0xA7
+	ld a,NET_CLOSE
 prx_simple_command:			; Just command and response, no data
 	call send_cmd
 prx_reply_done:				; Reply, then done
@@ -401,7 +444,7 @@ done2:
 	jp done
 
 prx_delete:
-	ld a,0xAB
+	ld a,NET_DELETE
 	call select
 	jr prx_simple_command
 
@@ -415,7 +458,7 @@ pra_print:
 	endif
 
 output_common:
-	ld a,0xA6
+	ld a,NET_PRINT
 prx_length_command:
 	call send_cmd
 	call send_word
@@ -426,7 +469,7 @@ prx_length_command:
 
 pra_input:
 	call select
-	ld a,0xA4			; INPUT
+	ld a,NET_INPUT			; INPUT
 
 	endif
 
@@ -466,7 +509,7 @@ prbr_protoerr:
 prb_rdblk:
 	call select
 prb_rdblk_nosel:
-	ld a,0xA5
+	ld a,NET_GET
 	call send_cmd
 	ld b,253
 	ld a,b
@@ -878,9 +921,9 @@ prc_jptable:
 
 prc_print:
 	call select
-	ld a,0xFF
+	ld a,NET_SOF
 	call send_byte
-	ld a,0xc0
+	ld a,NET_CON
 	call send_byte
 
 prc_print_loop:
@@ -929,11 +972,11 @@ init:
 	ld sp,hl
 	push hl
 
-	ld a,0xA9		; CLOSE ALL NO REPLY
+	ld a,NET_INIT
 	call send_cmd
 	call recv_reply
 
-	ld a,0xBA		; LIST VOLUMES
+	ld a,NET_LISTVOL
 	pop hl
 	push hl
 	ld bc,4*MAX_VOLS+1	; B=0
@@ -1220,6 +1263,7 @@ xd_device:
 	device "XD2", DOSJPTABLE
 	defb 0x16
 	device "XD3", DOSJPTABLE
+	defb 0x17
 	endif
 
 	if console_dev
