@@ -1338,7 +1338,7 @@ old_basic_jumps:		; Checksum 11273
 	endif
 
 	;; Check for overflow and pad to desired ROM size
-//	.org ROMSIZE, 0xff
+	.org ROMSIZE, 0xff
 __end:
 
 
