@@ -122,6 +122,11 @@ defc IX_BLKWR		= 0x088a + 3*6
 defc IX_KILL		= 0x088a + 3*7
 defc IX_NAME		= 0x088a + 3*8
 
+;; DOS entry point for random file access (Q0$ interface)
+defc Q0S_SETFILE	= 0x6ffa    ;; Select file and set up Q0$
+defc Q0S_READ		= 0x6ffc    ;; Read block into Q0$
+defc Q0S_WRITE		= 0x6ffe    ;; Write block from Q0$
+
 ;; Entry points in the IEC ROM
 defc IEC_CCMD		= 0x7000    ;; Compile CMD to byte code
 defc IEC_ECMD		= 0x7003    ;; Execute CMD byte code

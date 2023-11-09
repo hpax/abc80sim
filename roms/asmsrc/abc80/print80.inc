@@ -60,7 +60,7 @@
 	defc raw_pr = 0
 
 	;; XDx: device entries (secondary hard disk, not enough space in DOS)
-	defc xd_dev = 1
+	defc xd_dev = LARGE
 
 	;; CMD routine if in IEC area?
 	defc have_cmd = LARGE && (ROMSTART == 0x7000)
@@ -104,14 +104,13 @@
 	NET_CMD		= 0xbb
 
 	;; Framing bytes
-	NET_SOF		= 0xff
-	NET_EOF		= 0xef
+	NET_SOF		= 0xff		; Start of frame (command byte follows)
+	NET_EOF		= 0xef		; End of frame
 
 	;; Special commands for printing and debug
-	NET_PRSTX	= 0xf3	; Begin print data mode
-	NET_PRETX	= 0xef	; End print data mode
-	NET_PREND	= 0xfd	; End print job
-	NET_PRFF	= 0xfe	; Escape FF
+	NET_PR		= 0xf3		; Begin print data mode
+	NET_PRCLOSE	= 0xfd		; End print job
+	NET_PRFF	= 0xfe		; Escape FF
 
 	;; Special command for debug console
 	NET_CON		= 0xc0
@@ -509,15 +508,12 @@ prbr_protoerr:
 prb_rdblk:
 	call select
 prb_rdblk_nosel:
-	ld a,NET_GET
-	call send_cmd
-	ld b,253
-	ld a,b
-	call send_byte
-	xor a
-	call send_byte
+	ld a,NET_PREAD
+	call send_cmd_blkno
 	call recv_reply
+	;; Get returned data size (two bytes, should be 253)
 	call recv_byte
+	ld b,253		; Block size (needed for DJNZ loop below too)
 	cp b
 	jr nz,prbr_protoerr
 	call recv_byte
@@ -585,10 +581,10 @@ pbi_err:
 	scf
 	jr pbi_return
 pbi_overlong:
-	ld a,128 + 20	        ; Line too long
+	ld a,128 + 20		; Line too long
 	jr pbi_err
 pbi_badchar:
-	ld a,128 + 58	        ; Bad character
+	ld a,128 + 58		; Bad character
 	jr pbi_err
 pbi_lf:				; Convert to CR and EOL, but don't eat LF
 	ld (hl),13
@@ -701,11 +697,11 @@ pbp_allbuf:
 
 	;; Get the address of the DOS file description corresponding
 	;; to the allocated buffer.
-	;; Returns with B = 0, C = DOSBUF*16, HL = DOS file description
+	;; Returns with B = 0, C = DOSBUF*16, HL = DOS file description+1
 prb_dosfd:
 	ld b,0
 	ld c,(ix+12)
-	ld hl,0xFD41
+	ld hl,DOSFD0 + 1
 	add hl,bc
 	ret
 
@@ -717,6 +713,11 @@ prb_setup_buf:
 	push hl
 	call DOSALLOCBUF	; Allocate buffer
 	call DOSBUFINIT		; Initialize buffer pointers
+	call prb_dosfd
+	inc hl			; Next block number <- 1
+	ld (hl),1
+	inc hl
+	ld (hl),a		; A = 0
 	pop hl
 	pop bc
 	pop af
@@ -753,6 +754,24 @@ send_cmd:
 	pop bc
 	ret
 
+	;; Send a command header, A = command, then the block
+	;; number taken from the DOS file descriptor. Clobbers
+	;; BC and HL, and increments the block number.
+send_cmd_blkno:
+	call send_cmd
+	call prb_dosfd
+	inc hl
+	ld c,(hl)
+	inc hl
+	ld b,(hl)
+	inc bc			; Next block
+	ld (hl),b
+	dec hl
+	ld (hl),c
+	dec bc			; Point back to the original block
+	dec bc			; DOS block numbers are 1-based
+	;; Fall through
+
 	;; Send a word in BC, preserves AF
 send_word:
 	push af
@@ -763,18 +782,18 @@ send_word:
 	pop af
 	ret
 
-	;; Send FF + byte; reset running checksum
+	;; Send FF + byte; reset running checksum to FF
 	;; Returns with CF = 0!
 send_esc:
 	push af
-	ld a,0FFh
+	ld a,NET_SOF
 	call send_byte
 	ld (ram_csum),a
 	pop af
 	;; Fall through
 
 	;; Send a single byte and add to running checksum
-	;; Returns with CF = 0!
+	;; Returns with A unchanged and CF = 0
 send_byte:
 	push hl
 	ld l,a
@@ -789,19 +808,38 @@ send_byte:
 	pop hl
 	ret
 
-	;; Send a buffer HL->data BC=count
-	;; On return HL advanced, BC=0, A clobbered
+	;; Send a buffer HL->data, BC=count
+	;; On return HL advanced, BC=0, AF clobbered
+	;; and ram_csum updated
 	;;
-	; XXX: USB is fast enough that INIR/OTIR should be possible
+	;; This assumes the interface is either fast enough or
+	;; buffered enough that it is not necessary to wait for
+	;; tx space after each individual transmit.
+	;;
 send_buf:
-	ld a,b
-	or c
+	ld a,c
+	or b
 	ret z
-	ld a,(hl)
-	call send_byte
-	dec bc
-	inc hl
-	jr send_buf
+	push de
+	in a,(1)
+	and 2
+	call z,wait_for_tx
+	ld a,(ram_csum)
+	ld d,b			; High part of byte count
+	inc d			; To be able to use ZF after DEC
+	ld b,c			; Low part of byte count
+	ld c,0			; Port
+1:
+	add a,(hl)		; Update checksum
+	outi			; Send byte, update B, HL
+	jr nz,1b		; ZF = 1 if last iteration
+
+	dec d			; Additional 256-byte blocks?
+	jr nz,1b
+
+	ld (ram_csum),a
+	pop de
+	ret
 
 	;; Receive a byte.  Return with C flag on timeout.
 recv_byte:
@@ -854,7 +892,7 @@ done4:
 	jp done
 
 send_endframe:
-	ld a,0EFh		; End of frame
+	ld a,NET_EOF		; End of frame
 	call send_byte
 	ld a,(ram_csum)
 	neg			; Total checksum = 0
