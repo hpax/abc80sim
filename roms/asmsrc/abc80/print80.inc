@@ -70,6 +70,9 @@
 	defc e_iec = ERR_8
 	endif
 
+	;; Allocate memory from the BASIC stack?
+	defc use_stack = AUXRAM_PRINTNET_BASE >= 0x8000
+
 	;; Device timeout
 	defc timeout = 100		; 100/50 Hz = 2 s
 
@@ -479,10 +482,9 @@ pra_input:
 input_command:
 	call send_cmd
 	call recv_reply
-	call recv_byte
-	ld e,a
-	call recv_byte
-	ld d,a
+	ex de,hl
+	call recv_word
+	ex de,hl
 	; Now HL -> target buf; DE -> expected byte count;
 	; BC -> buffer size
 prai_loop:
@@ -511,20 +513,17 @@ prb_rdblk_nosel:
 	ld a,NET_PREAD
 	call send_cmd_blkno
 	call recv_reply
-	;; Get returned data size (two bytes, should be 253)
-	call recv_byte
-	ld b,253		; Block size (needed for DJNZ loop below too)
-	cp b
-	jr nz,prbr_protoerr
-	call recv_byte
-	and a
-	jr nz,prbr_protoerr
 	call prb_getbufaddr
-	push hl
+	ex de,hl
+	call recv_word
+	sbc hl,bc
+	jr nz,prbr_protoerr
+	ld b,c
+	push de
 prbr_recv:
 	call recv_byte
-	ld (hl),a
-	inc hl
+	ld (de),a
+	inc de
 	djnz prbr_recv
 	pop hl			; HL -> buf address
 	jp done_ok
@@ -633,17 +632,16 @@ pbi_eofbuf:
 	ld (hl),a
 	ret
 
-	; Write a binary output block.  Similar to
-	; pra_print, but with a few different buffer
-	; management bits.
+	; Write a binary output block.
 prb_wrblk:
 	call select
+	ld a,NET_PWRITE
+	call send_cmd_blkno
 	call prb_getbufaddr
 	ld bc,253
-	call output_common
+	call send_buf
 	call prb_empty_buf
-done3:
-	jp done
+	jp recv_reply
 
 	;; Blocking PRINT without converting to ABC-DOS text format.
 	;; This simply stuffs a buffer full of the PRINT contents;
@@ -734,10 +732,12 @@ prb_empty_buf:			; Returns with A=0, HL->buf
 	pop af
 	ret
 
-;;; Load the address of the start of the current buffer into HL
+;;; Load the address of the start of the current buffer into HL,
+;;; and the buffer size (253) into BC.
 prb_getbufaddr:
 	ld l,3
 	ld h,(ix+9)
+	ld bc,253
 	ret
 
 	;; Send a command header, A = command
@@ -841,15 +841,25 @@ send_buf:
 	pop de
 	ret
 
-	;; Receive a byte.  Return with C flag on timeout.
+	;; Receive a byte into A. On timeout bail to ERR 42.
+	;; Always returns with CF=0.
 recv_byte:
-	;; Optimistically...
+	;; Optimistically, assume data is there already
 	in a,(1)
 	and 0Dh
 	cp 09h
 	call nz,wait_for_rx
-	in a,(0)		; Data immediately available
-	ret			; C=0 already
+	in a,(0)		; Read data
+	ret
+
+	;; Receive a word into HL. Clobbers A.
+	;; Always returns with CF=0.
+recv_word:
+	call recv_byte
+	ld l,a
+	call recv_byte
+	ld h,a
+	ret
 
 	;; This routine waits until the status bit given in A is zero;
 	;; if the the high bits of the status are anything other than
@@ -1031,26 +1041,28 @@ init:
 
 	ld de,voldevs
 	;; Are we running with auxram on the stack?
-	bit 7,d
-	jr z,1f
+	.if use_stack
 	ld (STACK),de		; Move down the user stack
-1:
-mk_vols:
+	.endif
+
+mk_vols:			; B = 0 on entry here
 	ld a,(hl)
 	and a
-	jr z,link_volumes		; Done
+	jp z,done		; Done
+	;; Otherwise A = voltype
 	inc hl
 	push hl
-	ld hl,7
-	add hl,de
-	ex de,hl
+	ld l,e
+	ld h,d
+	ld de,(DEVLIST)
+	ld (DEVLIST),hl
 	ld (hl),e
 	inc hl
 	ld (hl),d
 	inc hl
 	ex de,hl
 	pop hl
-	ld bc,3			; Copy volume name
+	ld c,3			; Copy volume name
 	ldir
 
 	if pra_dev
@@ -1068,19 +1080,6 @@ have_voltype:
 	ld (de),a
 	inc de
 	jr mk_vols
-
-link_volumes:
-	;;  A = 0 here
-	ld hl,-7
-	add hl,de
-	ld de,(DEVLIST)
-	ld (hl),e
-	inc hl
-	ld (hl),d
-	ld hl,device_list
-	ld (DEVLIST),hl
-
-	jp done
 
 notforme:
 	ld a,128+52		; Ej till denna enhet
@@ -1339,7 +1338,7 @@ old_basic_jumps:		; Checksum 11273
 	endif
 
 	;; Check for overflow and pad to desired ROM size
-	.org ROMSIZE, 0xff
+//	.org ROMSIZE, 0xff
 __end:
 
 
