@@ -225,7 +225,7 @@ static unsigned int pr_send(struct abcprint *me, const void *buf,
 static unsigned int send_response(struct abcprint *me)
 {
     char err_txt[8];
-    const char *what = NULL;
+    const char *what = err_txt;
     uint8_t status = me->response->status;
 
     if (tracing(TRACE_PR)) {
@@ -235,7 +235,6 @@ static unsigned int send_response(struct abcprint *me)
 	    what = "fail";	/* Default failure for this operation */
 	} else if (status & 0x80) {
 	    snprintf(err_txt, sizeof err_txt, "err %u", status & 0x7f);
-	    what = err_txt;
 	} else {
 	    /* Successful return but with extra status, normally a bitmask */
 	    snprintf(err_txt, sizeof err_txt, "ok %02x", status);
