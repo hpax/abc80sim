@@ -1,4 +1,4 @@
-Usage: abc80 [options] [[[memspace][@start],]romfile...]
+Usage: abc80 [options] [[[memspace][@addr][+bytes][,format]=]romfile...]
 
 Simulate a microcomputer from the Luxor ABC80/800 series.
 Most long options can be prefixed with --no- to negate.
@@ -119,6 +119,7 @@ Fileserver ports can be specified as:
 Memory spaces for loading data files or Alt-d data dumps:
 
 	cpu	memory as seen by CPU (default)
+	io	I/O ports
 	null	discard
 	rom	BASIC, DOS, option ROM, printer ROM, etc.; on ABC80 with
 		TKN80 loads into both rom40 and rom80 space for the first 16K.

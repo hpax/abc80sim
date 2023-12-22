@@ -1,7 +1,9 @@
 /*
  * Load a file into memory. The syntax is:
  *
- * [[memspace][@address][,format],]filename
+ * [[:]memspace][@address][+bytes][,format][,=]filename
+ *
+ * The use of = before the filename is strongly recommended.
  *
  * If "format" is unspecified, this code will automatically try to detect
  * one of Intel Hex, S-records, or binary.
@@ -29,11 +31,13 @@ static size_t load_data(struct as *as, size_t offs,
     }
 }
 
-static int load_ihex(FILE *file, struct as *as, size_t offset)
+#define LOAD_ERR SIZE_MAX
+
+static size_t load_ihex(FILE *file, size_t len, struct as *as, size_t offset)
 {
     int c;
     int hval = 0;
-    int bytes = 0;
+    size_t bytes = 0;
     int left = 0;
     int lpos = 0;
     uint8_t ldata[255+5];	/* Record data including metadata */
@@ -43,89 +47,84 @@ static int load_ihex(FILE *file, struct as *as, size_t offset)
 
     rewind(file);
 
-    while (1) {
+    while (bytes < len) {
 	if (ferror(file))
-	    return -1;
+	    goto invalid;
 
 	c = fgetc(file);
 
 	/* End of line/end of file? */
 	if (is_eoln(c) || is_eof(c)) {
 	    if (lpos > 0) {
-		unsigned int len = ldata[0];
+		if (lpos < 1+4*2) /* Must have :ccaaaatt at minimum */
+		    goto invalid;
+
+		unsigned int rlen = ldata[0];
 		size_t laddr = (ldata[1] << 8) + ldata[2];
 		uint8_t ltype = ldata[3];
 
 		if (csum)
-		    return -1;	/* Invalid checksum */
+		    goto invalid;
 
 		if (left)
-		    return -1;	/* Truncated record */
+		    goto invalid;
 
 		switch (ltype) {
 		case 0:		/* Data */
 		{
 		    size_t addr = laddr + baseaddr;
-		    load_data(as, addr + offset, ldata+4, len);
-		    bytes += len;
+		    if (rlen > len - bytes)
+			rlen = len - bytes;
+		    load_data(as, addr + offset, ldata+4, rlen);
+		    bytes += rlen;
 		    break;
 		}
 
 		case 1:		/* End of file */
-		    return (len == 0) ? bytes : -1;
+		    len = bytes;
+		    break;
 
 		case 2:		/* Segment address */
 		    if (len != 2)
-			return -1;
+			goto invalid;
 		    baseaddr = laddr << 4;
 		    break;
 
 		case 4:		/* Linear address */
 		    if (len != 2)
-			return -1;
+			goto invalid;
 		    baseaddr = laddr << 16;
 		    break;
 
 		case 3:		/* Start address CS:IP */
 		case 5:		/* Start address linear */
 		    if (len != 4)
-			return -1;
+			goto invalid;
 		    /* Otherwise ignore */
 		    break;
 
 		default:	/* Unknown record type */
-		    return -1;
+		    goto invalid;
 		}
 	    }
 
 	    if (is_eof(c))
-		return bytes;	/* Done! */
+		len = bytes;	/* Done! */
 
 	    lpos = 0;
-	    continue;
-	}
-
-	/* Whitespace or similar? */
-	if (is_white(c))
-	    continue;
-
-	/* All other control characters -> invalid, even in apparent comment */
-	if (c < ' ')
-	    return -1;
-
-	/* Skip this line (comment?) */
-	if (lpos < 0)
-	    continue;
-
-	/* Seems line a comment? */
-	if (c == ';' || c == '#') {
+	} else if (is_white(c)) {
+	    /* Skip whitespace or similar */
+	} else if (c < ' ') {
+	    /* All other control characters invalid, even in comment */
+	    goto invalid;
+	} else if (lpos < 0) {
+	    /* Skipping a comment */
+	} else if (c == ';' || c == '#') {
+	    /* Start of comment */
 	    lpos = -1;
-	    continue;
-	}
-
-	if (!lpos) {
+	} else if (!lpos++) {
 	    if (c != ':')
-		return -1;	/* Invalid */
+		goto invalid;	/* Invalid */
 	    hval = 0;
 	    left = 5;		/* Length of header+checksum in bytes */
 	    csum = 0;
@@ -133,33 +132,39 @@ static int load_ihex(FILE *file, struct as *as, size_t offset)
 	} else {
 	    int hdig = hexval(c);
 
-	    if (hdig < 0)
-		return hdig;	/* Invalid */
+	    if (hdig < 0 || !left)
+		goto invalid;
 
-	    hval = (hval << 4) + hdig;
+	    /*
+	     * The ! here is correct, as this is the byte count including
+	     * this one, *including* the leading :
+	     */
+	    if (!(lpos & 1)) {
+		hval = hdig << 4;
+	    } else {
+		/* Byte complete */
 
-	    if (lpos & 1)
-		continue;	/* Middle of a byte */
-
-	    if (!left)
-		return -1;	/* Overrun */
-
-	    *p++ = hval;
-	    csum += hval;
-	    left--;
-	    if (lpos == 2)
-		left += hval; /* Add data length to bytes needed */
-	    hval = 0;
+		hval += hdig;
+		*p++ = hval;
+		csum += hval;
+		left--;
+		if (lpos == 3)	  /* After :cc */
+		    left += hval; /* Add data length to bytes needed */
+		hval = 0;
+	    }
 	}
-	lpos++;
     }
+    return bytes;
+
+ invalid:
+    return LOAD_ERR;
 }
 
-static int load_srec(FILE *file, struct as *as, size_t offset)
+static size_t load_srec(FILE *file, size_t len, struct as *as, size_t offset)
 {
     int c;
-    int hval = 0;
-    int bytes = 0;
+    uint8_t hval = 0;
+    size_t bytes = 0;
     int left = 0;
     int lpos = 0;
     uint8_t ldata[255+7];	/* Record data including metadata */
@@ -168,35 +173,39 @@ static int load_srec(FILE *file, struct as *as, size_t offset)
 
     rewind(file);
 
-    while (1) {
+    while (bytes < len) {
 	if (ferror(file))
-	    return -1;
+	    break;
 
 	c = fgetc(file);
 
 	/* End of line/end of file? */
 	if (is_eoln(c) || is_eof(c)) {
 	    if (lpos > 0) {
+		if (lpos < 4)
+		    goto invalid;
+		
 		static const int addrlen[10] =
 		    { 2, 2, 3, 4, 2, 2, 3, 4, 3, 4 };
 		unsigned int ltype = p[0];
-		int len = p[1];
-		int alen = addrlen[p[0]];
+		unsigned int rlen = p[1];
+		unsigned int alen = addrlen[p[0]];
 		size_t addr = 0;
 		const uint8_t *dp;
 
 		if (left)
-		    return -1;	/* Truncated record */
+		    goto invalid;	/* Truncated record */
 
-		len -= alen + 1; /* Count data bytes only */
-		if (len < 0) {
+		rlen -= alen + 1;	/* Count data bytes only */
+		if (rlen < alen + 1)
 		    /* Record too short: need minimum address + checksum */
-		    return -1;
-		}
+		    goto invalid;
+
+		rlen -= alen + 1;
 
 		/* Note: type is not included in the checksum */
 		if (csum - ltype != 0xff)
-		    return -1;	/* Invalid checksum */
+		    goto invalid; /* Invalid checksum */
 
 		dp = ldata+2;	/* Address field */
 		addr = 0;
@@ -214,98 +223,97 @@ static int load_srec(FILE *file, struct as *as, size_t offset)
 		case 2:
 		case 3:
 		    /* Data record */
-		    load_data(as, addr + offset, dp, len);
-		    bytes += len;
+		    if (rlen > len - bytes)
+			rlen = len - bytes;
+		    load_data(as, addr + offset, dp, rlen);
+		    bytes += rlen;
 		    break;
 		case 7:
 		case 8:
 		case 9:
 		    /* Start of program, also end of file */
-		    return bytes;
+		    len = bytes;
+		    break;
 		}
 	    }
 
 	    if (is_eof(c))
-		return bytes;	/* Done! */
+		len = bytes;	/* End of file */
 
 	    lpos = 0;
-	    continue;
-	}
-
-	/* Whitespace or similar? */
-	if (is_white(c))
-	    continue;
-
-	/* All other control characters -> invalid, even in apparent comment */
-	if (c < ' ')
-	    return -1;
-
-	/* Skip this line (comment?) */
-	if (lpos < 0)
-	    continue;
-
-	/* Seems line a comment? */
-	if (c == ';' || c == '#') {
+	} else if (is_white(c)) {
+	    /* Whitespace or similar - do nothing */
+	} else if (c < ' ') {
+	    /* All other control characters invalid, even in comment */
+	    goto invalid;
+	} else if (lpos < 0) {
+	    /* Skipping a comment */
+	} else if (c == ';' || c == '#') {
+	    /* Start of comment */
 	    lpos = -1;
-	    continue;
-	}
-
-	if (!lpos) {
+	} else if (!lpos++) {
 	    if (c != 'S')
-		return -1;	/* Invalid */
-	    hval = 0;
+		goto invalid;
+	    hval = 0;		/* S acts like a leading zero */
 	    left = 2;		/* Type and byte count */
 	    csum = 0;
 	    p = ldata;
 	} else {
 	    int hdig = hexval(c);
 
-	    if (hdig < 0)
-		return hdig;	/* Invalid */
-
-	    hval = (hval << 4) + hdig;
+	    /* Not a hex digit, or beyond the end of the record */
+	    if (hdig < 0 || !left)
+		goto invalid;
 
 	    /*
-	     * The ! here is correct. The first "byte" is the type,
-	     * which has only one digit.
+	     * Note that lpos here is the number of bytes including this one,
+	     * and including the leading S, which effectively functions as
+	     * a leading zero for the type.
 	     */
-	    if (!(lpos & 1))
-		continue;	/* Middle of a byte */
+	    if (lpos & 1) {
+		hval = hdig << 4;
+	    } else {
+		/* Byte complete */
 
-	    if (!left)
-		return -1;	/* Overrun */
-
-	    *p++ = hval;
-	    csum += hval;
-	    left--;
-	    if (lpos == 3)
-		left += hval;	/* Add byte count for rest of record */
-
-	    hval = 0;
+		hval += hdig;
+		*p++ = hval;
+		csum += hval;
+		left--;
+		if (lpos == 4)      /* After Stcc where t = type, cc = count */
+		    left += hval;   /* Add byte count for rest of record */
+	    }
 	}
-	lpos++;
     }
+
+    return bytes;
+
+ invalid:
+    return LOAD_ERR;
 }
 
-static int load_bin(FILE *file, struct as *as, size_t addr)
+static size_t load_bin(FILE *file, size_t len, struct as *as, size_t addr)
 {
     int c;
-    int bytes = 0;
+    size_t bytes = 0;
 
     rewind(file);
 
-    while (1) {
-	if (ferror(file))
-	    return -1;
+    while (bytes < len) {
 	c = fgetc(file);
-	if (c == EOF)
-	    return bytes;
+	if (ferror(file))
+	    goto invalid;
+	if (c < 0)		/* EOF */
+	    break;
 	do_as_load(as, addr++, c);
 	bytes++;
     }
+    return bytes;
+
+ invalid:
+    return LOAD_ERR;
 }
 
-typedef int (*load_func)(FILE *file, struct as *as, size_t addr);
+typedef size_t (*load_func)(FILE *file, size_t len, struct as *as, size_t addr);
 
 struct file_format {
     const char *name;
@@ -321,18 +329,18 @@ static const struct file_format file_formats[] =
 };
 
 /* Iterates through the loaders until one succeeds */
-static int load_any(FILE *file, struct as *as, size_t addr)
+static size_t load_any(FILE *file, size_t len, struct as *as, size_t addr)
 {
     const struct file_format *fmt;
-    int bytes = -1;
+    size_t bytes = LOAD_ERR;
 
     for (fmt = file_formats; fmt->loader; fmt++) {
 	/* Validate the file contents by loading to null */
-	if (fmt->loader(file, null_as, addr) < 0)
-	    continue;
+	bytes = fmt->loader(file, len, null_as, addr);
+	if (bytes != LOAD_ERR)
+	    bytes = fmt->loader(file, len, as, addr);
 
-	bytes = fmt->loader(file, as, addr);
-	if (bytes >= 0)
+	if (bytes && bytes != LOAD_ERR)
 	    break;
     }
     return bytes;
@@ -342,64 +350,101 @@ int load_sysfile(const char *filespec)
 {
     FILE *f;
     const char *p = filespec;
-    const char *comma;
-    struct as *as;
+    struct as *as = NULL;
     load_func loader = NULL;
     size_t addr = 0;
-    int rv;
+    size_t spn;
+    size_t len = SIZE_MAX;
+    const char *filename = NULL;
+    char c;
+    int commas = 0;
 
-    as = get_addrspace("cpu", 3);
+    while ((c = *p++)) {
+	spn = strcspn(p, "+@,=");
+	char *ep = (char *)p + spn;
 
-    while ((comma = strchr(p, ','))) {
-	struct as *wms;
-	const struct file_format *fmt;
-	size_t len = comma-p;
-	const char *at = strchr(p, '@');
-
-	if (at && at < comma) {
-	    char *ep;
-	    addr = strtoul(at+1, &ep, 0);
-	    if (ep != comma)
-		return -1;
-	    len = at-p;
-	}
-
-	wms = get_addrspace(p, len);
-	if (wms) {
-	    as = wms;
-	    goto next;
-	}
-
-	fmt = file_formats;
-	do {
-	    if (!strncmp(fmt->name, p, len) && !fmt->name[len]) {
-		loader = fmt->loader;
-		goto next;
+	switch (c) {
+	case '@':
+	    addr = strtoul(p, &ep, 0);
+	    break;
+	case '+':
+	    len = strtoul(p, &ep, 0);
+	    break;
+	case ',':
+	{
+	    if (commas++) {
+		/* Already seen a comma, must be filename [double comma] */
+		filename = p;
+		break;
 	    }
-	} while ((fmt++)->loader);
+	    if (!*p)		/* Empty format: autodetect */
+		break;
 
-	/* Doesn't match anything, assume it is actually the filename */
-	break;
+	    const struct file_format *fmt;
+	    for (fmt = file_formats; fmt->loader; fmt++) {
+		if (!strncmp(fmt->name, p, spn) && !fmt->name[spn]) {
+		    loader = fmt->loader;
+		    break;
+		}
+	    }
 
-    next:
-	p = comma+1;
-	continue;
+	    if (!loader) {
+		/* Not a valid format name, may be the filename */
+		if (strchr(p, '='))
+		    goto parse_err;
+		filename = p;
+	    }
+	    break;
+	}
+	case '=':
+	    filename = p;
+	    break;
+	default:
+	    p--;
+	    spn++;
+	    if (as)
+		goto parse_err;
+	    as = get_addrspace(p, spn);
+	    if (!as) {
+		/* Not a valid address space name, maybe the filename? */
+		if (strchr(p, '='))
+		    goto parse_err;
+		filename = p;
+	    }
+	    break;
+	}
+
+	if (filename)
+	    break;
+	
+	if (ep != p + spn)
+	    goto parse_err;
+	p = ep;
     }
 
-    if (!as)
-	return -1;		/* No memspace, and "cpu" undefined */
+    if (!as) {
+	as = get_addrspace("cpu", 3);
+	if (!as)
+	    goto parse_err;	/* No memspace, and "cpu" undefined */
+    }
 
-    f = fopen(p, "rb");
+    f = fopen(filename, "rb");
     if (!f) {
 	fprintf(stderr, "Can't open file: %s: %s\n",
-		p, strerror(errno));
+		filename, strerror(errno));
 	return -1;
     }
 
     if (!loader)
-	rv = load_any(f, as, addr);
-    else
-	rv = loader(f, as, addr);
+	loader = load_any;
+
+    len = loader(f, len, as, addr);
+
+    int rv = 0;
+    if (len == LOAD_ERR) {
+	fprintf(stderr, "%s: Invalid file format\n", filename);
+	rv = -1;
+    }
 
     fclose(f);
 
@@ -407,6 +452,10 @@ int load_sysfile(const char *filespec)
     as_sync();
 
     return rv;
+
+ parse_err:
+    fprintf(stderr, "Invalid load file spec: %s\n", filespec);
+    return -1;
 }
 
 
