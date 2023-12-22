@@ -1,6 +1,7 @@
 #include "compiler.h"
 
 #include "z80.h"
+#include "as.h"
 #include "z80irq.h"
 #include "screen.h"
 #include "abcio.h"
@@ -521,28 +522,35 @@ void keyboard_up(void)
 }
 
 /*
- * These functions are the interface to the Z80 core
+ * Implementation of the I/O port space as an as
  */
-void z80_out(uint16_t port, uint8_t value)
+static struct as *io_as;
+static void io_out(struct as *as, size_t offs, uint8_t v)
 {
+    uint16_t port = offs;
     const struct out_port *op = &outport[port & PORT_MASK];
+    uint8_t sel;
+
+    (void)as;
 
     if (tracing(TRACE_IO)) {
+	sel = abcbus_select;
         fprintf(tracef, "OUT: port %02x:%02x (%3d) sel 0x%02x (%2d) "
                 "data 0x%02x (%3d) PC=%04x\n",
                 port >> 8, port & 0xff, port & 0xff,
-		abcbus_select, abcbus_select,
-                value, value, REG_LAST_PC);
+		sel, sel, v, v, REG_LAST_PC);
     }
-    check_watchpoint_byte(port, Z80_OTWPT);
 
-    op->out(port & op->valid, value);
+    op->out(port & op->valid, v);
 }
 
-uint8_t z80_in(uint16_t port)
+static uint8_t io_in(struct as *as, size_t offs)
 {
+    uint16_t port = offs;
     const struct in_port *ip = &inport[port & PORT_MASK];
     uint8_t sel, v;
+
+    (void)as;
 
     sel = abcbus_select;
     v = ip->in(port & ip->valid);
@@ -553,13 +561,39 @@ uint8_t z80_in(uint16_t port)
                 port >> 8, port & 0xff, port & 0xff,
 		sel, sel, v, v, REG_LAST_PC);
     }
-    check_watchpoint_byte(port, Z80_INWPT);
 
+    return v;
+}
+
+static const struct as_ops io_as_ops = {
+    .read  = io_in,
+    .write = io_out,
+    .dump  = NULL,
+    .load  = io_out,
+    .sync  = NULL
+};
+
+/*
+ * These functions are the interface to the Z80 core
+ */
+void z80_out(uint16_t port, uint8_t v)
+{
+    check_watchpoint_byte(port, Z80_OTWPT);
+    do_as_write(io_as, port, v);
+}
+
+uint8_t z80_in(uint16_t port)
+{
+    uint8_t v = do_as_read(io_as, port);
+    check_watchpoint_byte(port, Z80_INWPT);
     return v;
 }
 
 void io_init(void)
 {
+    io_as = as_new_space("io", &io_as_ops, 65536, 1);
+    io_as->flags |= AS_NOLOAD|AS_NODUMP;
+
     register_ioport(0, 0, ~0, NULL, NULL);
 
     if (is_abc80()) {
