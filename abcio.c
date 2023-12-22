@@ -592,7 +592,7 @@ uint8_t z80_in(uint16_t port)
 void io_init(void)
 {
     io_as = as_new_space("io", &io_as_ops, 65536, 1);
-    io_as->flags |= AS_NOLOAD|AS_NODUMP;
+    io_as->flags |= AS_NODUMP;
 
     register_ioport(0, 0, ~0, NULL, NULL);
 
