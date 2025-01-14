@@ -4,38 +4,9 @@
 
 #include "abcfile.h"
 #include "hostfile.h"           /* For host_strip_path() */
+#include "charset.h"
 
 #include <wchar.h>
-
-static const wchar_t my_tolower[256] =
-    L"\000\001\002\003\004\005\006\007\010\011\012\013\014\015\016\017"
-    L"\020\021\022\023\024\025\026\027\030\031\032\033\034\035\036\037"
-    L" !\"#¤%&'()*+,-./0123456789:;<=>?"
-    L"éabcdefghijklmnopqrstuvwxyzäöåü_"
-    L"éabcdefghijklmnopqrstuvwxyzäöåü\377"
-    L"\200\201\202\203\204\205\206\207\210\211\212\213\214\215\216\217"
-    L"\220\221\222\223\224\225\226\227\230\231\232\233\234\235\236\237"
-    L"\240\241\242\243\244\245\246\247\250\251\252\253\254\255\256\257"
-    L"\260\261\262\263\264\265\266\267\270\271\272\273\274\275\276\277"
-    L"\300\301\302\303\304\305\306\307\310\311\312\313\314\315\316\317"
-    L"\320\321\322\323\324\325\326\327\330\331\332\333\334\335\336\337"
-    L"\340\341\342\343\344\345\346\347\350\351\352\353\354\355\356\357"
-    L"\360\361\362\363\364\365\366\367\370\371\372\373\374\375\376\377";
-
-static const wchar_t my_toupper[256] =
-    L"\000\001\002\003\004\005\006\007\010\011\012\013\014\015\016\017"
-    L"\020\021\022\023\024\025\026\027\030\031\032\033\034\035\036\037"
-    L" !\"#¤%&'()*+,-./0123456789:;<=>?"
-    L"ÉABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÅÜ_"
-    L"ÉABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÅÜ\377"
-    L"\200\201\202\203\204\205\206\207\210\211\212\213\214\215\216\217"
-    L"\220\221\222\223\224\225\226\227\230\231\232\233\234\235\236\237"
-    L"\240\241\242\243\244\245\246\247\250\251\252\253\254\255\256\257"
-    L"\260\261\262\263\264\265\266\267\270\271\272\273\274\275\276\277"
-    L"\300\301\302\303\304\305\306\307\310\311\312\313\314\315\316\317"
-    L"\320\321\322\323\324\325\326\327\330\331\332\333\334\335\336\337"
-    L"\340\341\342\343\344\345\346\347\350\351\352\353\354\355\356\357"
-    L"\360\361\362\363\364\365\366\367\370\371\372\373\374\375\376\377";
 
 static void unmangle(char *dst, const char *src, const wchar_t *table)
 {
@@ -64,17 +35,17 @@ static void unmangle(char *dst, const char *src, const wchar_t *table)
 
 void unmangle_filename(char *dst, const char *src)
 {
-    unmangle(dst, src, my_tolower);
+    unmangle(dst, src, abc_to_unicode_lc_tbl);
 }
 
 void mangle_filename(char *dst, const char *src)
 {
     static const wchar_t srcset[] =
-        L"0123456789_."
+        L"0123456789."
         L"ÉABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÅÜÆØ"
         L"éabcdefghijklmnopqrstuvwxyzäöåüæø";
     static const char dstset[] =
-        "0123456789_."
+        "0123456789."
         "@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^[\\"
         "@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^[\\";
     char *d;
@@ -157,37 +128,30 @@ int mangle_for_readdir(char *dst, const char *src)
 }
 
 /*
- * Return length (always 3) for OK, 0 for failure
- *
  * Similar to mangle_filename(), but for volume names; the input must
- * be _VOL in upper case with the first character being alphabetic
- * [A-ZÄÖÅ]; only 1-3 characters allowed.
+ * be VOL in with the first character being alphabetic [A-ZÄÖÅ]; only
+ * 1-3 characters allowed. If uconly is set, the name must be in upper
+ * case.
  */
-int mangle_volname(char *dst, const char *src)
+enum volname_ok mangle_volname(char *dst, const char *src)
 {
     char mangle_buf[12];
     unmangled_name unmangle_buf;
 
     mangle_filename(mangle_buf, src);
 
-    if (mangle_buf[0] != '_')
-	return 0;
+    if (mangle_buf[0] < 'A' || mangle_buf[0] > ']')
+	return VOL_ERR;
 
-    if (mangle_buf[1] < 'A' || mangle_buf[1] > ']')
-	return 0;
+    if (memcmp(mangle_buf+3, "        ", 8))
+	return VOL_ERR;
 
-    if (memcmp(mangle_buf+4, "       ", 7))
-	return 0;
+    unmangle(unmangle_buf, mangle_buf, abc_to_unicode_uc_tbl);
 
-    unmangle(unmangle_buf, mangle_buf, my_toupper);
-
-    if (strcmp(unmangle_buf, src))
-	return 0;		/* Not round-trippable */
-
-    memcpy(dst, mangle_buf+1, 3);
+    memcpy(dst, mangle_buf, 3);
     dst[3] = '\0';
 
-    return 3;
+    return strcmp(unmangle_buf, src) ? VOL_ONEWAY : VOL_OK;
 }
 
 /*

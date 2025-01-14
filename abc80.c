@@ -16,6 +16,8 @@
 #include "sysload.h"
 #include "random.h"
 #include "nstime.h"
+#include "charset.h"
+#include "abcfile.h"
 
 #include <SDL_main.h>
 #include <SDL_thread.h>
@@ -160,6 +162,7 @@ static const struct path_option path_options[] = {
     {{"Ft", "-tracefile"}, &tracefile, NULL},
     {{"Dd", "-diskdir"}, &disk_path, NULL},
     {{"Df", "-filedir"}, &fileop_path, NULL},
+    {{"Dv", "-voldir"}, &voldir_path, NULL},
     {{"Ds", "-scrndir"}, &screen_path, NULL},
     {{"Du", "-dumpdir"}, &memdump_path, NULL},
     {{"Cp", "-printcmd"}, &lpr_command, NULL},
@@ -210,6 +213,23 @@ found:
     return 0;
 }
 
+static void parse_volname(char *dst, char *src)
+{
+    char *ep;
+
+    if (!src || !*src)
+	return;
+
+    ep = strchr(src, '\0');
+    if (ep[-1] == ':')
+	ep[-1] = '\0';
+
+    if (mangle_volname(dst, src) > VOL_ONEWAY) {
+	fprintf(stderr, "%s: invalid device name: %s\n", program_name, src);
+	usage();
+    }
+}
+
 /* Default options */
 struct opts opts = {
     .model		= MODEL_ABC80,
@@ -222,6 +242,8 @@ struct opts opts = {
     .hr                 = true,
     .color		= true,
     .magic              = true,
+    .filedir_net        = true,
+    .net_pr             = true,
     .faketype		= A_AUTO,
     .memflags           = MEMFL_DEFAULT,
 };
@@ -420,6 +442,15 @@ int main(int argc, char **argv)
 		    opts.meg80_config = optarg;
 	    } else if (!strcmp(optstr, "console")) {
 		opts.console = enable;
+		parse_volname(opts.console_dev, optarg);
+	    } else if (!strcmp(optstr, "netdev")) {
+		opts.filedir_net = enable;
+		parse_volname(opts.filedir_dev, optarg);
+	    } else if (!strcmp(optstr, "netpr")) {
+		opts.net_pr = enable;
+		parse_volname(opts.net_pr_dev,optarg);
+	    } else if (!strcmp(optstr, "netlegacy")) {
+		opts.net_legacy = enable;
 	    } else if (!strcmp(optstr, "headless")) {
 		opts.headless = enable;
 	    } else if (!strcmp(optstr, "batch")) {

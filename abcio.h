@@ -100,8 +100,9 @@ enum abc800_irq {
 };
 
 /* Directory and filenames */
-extern const char *fileop_path, *disk_path, *screen_path, *memdump_path,
-    *cas_path;
+extern const char *fileop_path, *voldir_path;
+extern const char *disk_path, *cas_path;
+extern const char *screen_path, *memdump_path;
 extern struct file_list cas_files;
 extern struct file_list script_files;
 

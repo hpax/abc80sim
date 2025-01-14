@@ -13,6 +13,7 @@ include $(top_srcdir)/common.mk
 
 GENC = baudtospeed.c helptxt.c
 SRCS = abc80.c clock.c sdlscrn.c fgcolor.c screenshot.c \
+	charset.c \
 	z80.c z80irq.c as.c mem.c abcmem.c abcio.c debug.c \
 	abcfont.c disk.c rtc.c simprint.c print.c fileop.c z80dasm.c \
 	nstime.c hostfile.c console.c cas.c abcfile.c filelist.c \

@@ -23,7 +23,12 @@ struct abcdata {
 void unmangle_filename(char *out, const char *in);
 void mangle_filename(char *dst, const char *src);
 int mangle_for_readdir(char *dst, const char *src);
-int mangle_volname(char *dst, const char *src);
+enum volname_ok {
+    VOL_OK,			/* Valid volume name */
+    VOL_ONEWAY,			/* Valid volume name, but not invertible */
+    VOL_ERR			/* Invalid volume name */
+};
+enum volname_ok mangle_volname(char *dst, const char *src);
 unsigned int init_abcdata(struct abcdata *abc, const void *data, size_t len);
 bool get_abc_block(void *block, struct abcdata *abc);
 pure_func int strcmp_abc(const char *s1, const char *s2);

@@ -18,7 +18,7 @@ Options (defaults in brackets):
        --device            reverts the --no-device option
        --no-dos            no disk operating system ROM
        --dos               reverts the --no-dos option
-       --no-pr             no printer extension ROM
+       --no-pr             no printer/network extension ROM
        --pr                reverts the --no-pr option
   -t,  --trace event,...   trace various events (see "--trace help")
   -Ft, --tracefile file    redirect trace output to a file
@@ -32,7 +32,7 @@ Options (defaults in brackets):
   -H,  --headless          run headless (no screen/keyboard support)
   -B,  --batch             quit after scripts have been executed
   -Dd, --diskdir dir       set directory for disk images [abcdisk]
-  -Df, --filedir dir       set directory for file sharing [abcdir]
+  -Df, --filedir dir       set default directory for file sharing [abcdir]
   -Ds, --scrndir dir       set directory for screen shots [.]
   -Du, --dumpdir dir       set directory for memory dumps [.]
   -Cp, --printcmd cmd      set command to launch a print job (see below)
@@ -42,8 +42,6 @@ Options (defaults in brackets):
   -Cs, --scriptcmd cmd     command line to auto-type on startup
   -Fs, --scriptfile file   script file to auto-type on startup
   -Ls, --scriptlist file   read list of script files
-  -e,  --console           enable console output device (PRC:)
-  -Fe, --consolefile file  enable console output device to a file
   -o,  --output            print text screen on exit
   -Fo, --outputfile        print text screen on exit to a file
        --detach            detach from console (default for --server)
@@ -53,6 +51,7 @@ Options (defaults in brackets):
        --mf# file          mount file as drive MF#: (0-7)
        --sf# file          mount file as drive SF#: (0-7)
        --hd# file          mount file as drive HD#: (0-7)
+       --xd# file          mount file as drive XD#: (0-7)
 
 Options for ABC80 only:
   -k,  --kb #              set the memory size K (1-32, 64) [64, 16 with MEG80]
@@ -70,7 +69,7 @@ Options for ABC80 only:
        --tkn80 gejo        GeJo TKN80 (video RAM at 30-32K)
        --tkn80 cat         CAT80 (video RAM at 18-20K) *preliminary*
        --nvram[=addr,size] simulate NVRAM at address addr (default 20K,2K)
-       --no-nvram	   do not simulate NVRAM
+       --no-nvram          do not simulate NVRAM
   -Fn, --nvramfile file    backing store file for NVRAM to make persistent
        --meg80[=opt,...]   simulate MEG80 SRAM/flash card
                =flash        start with MEG80 active (flash mode)
@@ -78,8 +77,8 @@ Options for ABC80 only:
                =rom          slot 3 is write protected (ROM)
                =#,#...       amount of memory (K) in each slot (8-512) [512]
        --pr=addr           set printer/network ROM base address to
-			   28K, 29K, or 30K; 28K is a 2K ROM with
-			   additional features *preliminary*
+                           28K, 29K, or 30K; 28K is a 2K ROM with
+                           additional features *preliminary*
        --smartaid3         load the ROM for Owoco Smartaid III
        --supersmartaid     load the ROM for Owoco SuperSmartaid
        --superbasic        load the ROM for Nyfors SuperBASIC
@@ -92,64 +91,79 @@ Options for ABC800C/M only:
 Options for ABC802 only:
   -Fm, --memfile file      load a file into the ABC802 MEM: device
 
-Option for fileserver only:
+Options for networking (currently for ABC80 or fileserver only):
+  -Dv, --voldir dir        set directory for additional volumes [= filedir]
+			     this directory is searched for directories
+			     with names of the form "_XXX" to be
+			     exported as device volume XXX:
+       --netdev[=dev]      export files in filedir as volume DEV: [NET:] (def.)
+       --no-netdev         do not export files in filedir
+       --netlegacy         export legacy PRA: and PRB: devices aliasing netdev
+       --no-netlegacy      do not export legacy devices (default)
+       --netpr[=dev]       export printers as DEV: [PR:] (default)
+       --no-netpr          do not export printers
+  -e,  --console[=dev]     enable console output device [PRC:]
+       --no-console	   disable console output device (default)
+  -Fe, --consolefile file  file for console device output
+
+Options for fileserver only:
        --baud baudrate     set serial port speed [19200]
-       --retry[=delay]	   if the port is closed, try to re-open it
-       --pidfile file	   write daemon process ID to a file
+       --retry[=delay]     if the port is closed, try to re-open it
+       --pidfile file      write daemon process ID to a file
 
 Fileserver ports can be specified as:
 
-	--server tcp[46][:[hostname][:[port]]
-	                   listen on a TCP/IP network socket, optionally
-			   restricted to a specific local host name and
-			   IPv4 or IPv6 only. The port defaults to 4680.
-	--server serial:device[:[baud]]
-	                   read from a specific serial port device, optionally
-			   with a baud rate specified
-	--server fd:rfd[,wfd]
-			   read and write from specific file descriptors
-			   prepared by the calling process (generally best
-			   used with --no-detach.)
-	--server device
-		           legacy alias for --server serial:device:
+        --server tcp[46][:[hostname][:[port]]
+                           listen on a TCP/IP network socket, optionally
+                           restricted to a specific local host name and
+                           IPv4 or IPv6 only. The port defaults to 4680.
+        --server serial:device[:[baud]]
+                           read from a specific serial port device, optionally
+                           with a baud rate specified
+        --server fd:rfd[,wfd]
+                           read and write from specific file descriptors
+                           prepared by the calling process (generally best
+                           used with --no-detach.)
+        --server device
+                           legacy alias for --server serial:device:
 
-	The --server and --serverlist options can be given multiple
-	times.
+        The --server and --serverlist options can be given multiple
+        times.
 
 Memory spaces for loading data files or Alt-d data dumps:
 
-	cpu	memory as seen by CPU (default)
-	io	I/O ports
-	null	discard
-	rom	BASIC, DOS, option ROM, printer ROM, etc.; on ABC80 with
-		TKN80 loads into both rom40 and rom80 space for the first 16K.
-	rom40	40-character BASIC ROM (ABC80/ABC800C)
-	rom80	80-character BASIC ROM (ABC80 with TKN80/ABC800M/802/806)
-	ram	regular working memory; includes paged-out memory
-		ABC80 > 32K, ABC802 etc.
-	vram	text video memory
-	xmem	extended RAM of any kind (MEG80 for ABC80,
-		graphics for ABC800C/800M, MEM for ABC802)
-	fgram	fine graphics RAM (ABC800C/800M with HR graphics)
-	mem	MEM area of RAM (ABC802)
-	sram	SRAM (ABC80 with MEG80)
-	flash	Flash memory (ABC80 with MEG80)
+        cpu     memory as seen by CPU (default)
+        io      I/O ports
+        null    discard
+        rom     BASIC, DOS, option ROM, printer ROM, etc.; on ABC80 with
+                TKN80 loads into both rom40 and rom80 space for the first 16K.
+        rom40   40-character BASIC ROM (ABC80/ABC800C)
+        rom80   80-character BASIC ROM (ABC80 with TKN80/ABC800M/802/806)
+        ram     regular working memory; includes paged-out memory
+                ABC80 > 32K, ABC802 etc.
+        vram    text video memory
+        xmem    extended RAM of any kind (MEG80 for ABC80,
+                graphics for ABC800C/800M, MEM for ABC802)
+        fgram   fine graphics RAM (ABC800C/800M with HR graphics)
+        mem     MEM area of RAM (ABC802)
+        sram    SRAM (ABC80 with MEG80)
+        flash   Flash memory (ABC80 with MEG80)
 
 The --printcmd command to launch a print job uses the following syntax
 to specify the command line arguments:
 
-	*	- replaced by the path to the file to print
-	?	- replaced by the name of the printer if any
-		  (if the user specified "LIST PR:FOO" this will
-		  expand to the string "foo" without quotation marks)
-		  This is only available with PUN80 emulation, currently
-		  only available on ABC80.
-	?{a|b}	- if a printer name is specified, expand to "a",
-		  otherwise (meaning ? would expand to the empty
-		  string) expand to "b". If "b" is empty the | is
-		  optional. This is used to adjust command line
-		  options that may depend on if a printer name is
-		  present or not, e.g. the -P option to lpr on Unix.
+        *       - replaced by the path to the file to print
+        ?       - replaced by the name of the printer if any
+                  (if the user specified "LIST PR:FOO" this will
+                  expand to the string "foo" without quotation marks)
+                  This is only available with PUN80 emulation, currently
+                  only available on ABC80.
+        ?{a|b}  - if a printer name is specified, expand to "a",
+                  otherwise (meaning ? would expand to the empty
+                  string) expand to "b". If "b" is empty the | is
+                  optional. This is used to adjust command line
+                  options that may depend on if a printer name is
+                  present or not, e.g. the -P option to lpr on Unix.
 
 
 The simulator supports the following hotkeys; the same events can also

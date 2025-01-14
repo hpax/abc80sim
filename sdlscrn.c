@@ -12,6 +12,7 @@
 #include "abcio.h"
 #include "nstime.h"
 #include "trace.h"
+#include "charset.h"
 
 #define TS_WIDTH  80
 #define TS_HEIGHT 24
@@ -872,57 +873,17 @@ static int sym_to_abc(const SDL_keysym *ks)
     }
 
     if (abcsym < 0) {
-	switch (ks->unicode) {
-	case L' ':
-	    abcsym = ' ' & ctlmask;
+	abcsym = unicode_to_abc(ks->unicode);
+	switch (abcsym) {
+	case ' ':
+	    abcsym &= ctlmask;
 	    break;
-	case L'¤':
-	    abcsym = '$';
-	    break;
-	case L'É':
-	    abcsym = '@';
-	    break;
-	case L'Å':
-	    abcsym = ']';
-	    break;
-	case L'Ä':
-	    abcsym = '[';
-	    break;
-	case L'Ö':
-	    abcsym = '\\';
-	    break;
-	case L'Ü':
-	    abcsym = '^';
-	    break;
-	case L'é':
-	    abcsym = '`';
-	    break;
-	case L'å':
-	    abcsym = '}';
-	    break;
-	case L'ä':
-	    abcsym = '{';
-	    break;
-	case L'ö':
-	    abcsym = '|';
-	    break;
-	case L'ü':
-	    abcsym = '~';
-	    break;
-	case L'<':
-	case L'>':
-	    abcsym = (kshift & KSH_CTRL) ? 127 : ks->unicode;
-	    break;
-	case L'§':
-	case L'½':
-	    abcsym = 127;
+	case '<':
+	case '>':
+	    if (kshift & KSH_CTRL)
+		abcsym = 127;
 	    break;
 	default:
-	    /* ks->unicode invalid can't be distinguished from NUL, sadly */
-	    if (ks->unicode > 0 && ks->unicode <= 255)
-		abcsym = ks->unicode;
-	    else
-		abcsym = -1;
 	    break;
 	}
     }

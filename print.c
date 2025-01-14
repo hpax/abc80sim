@@ -22,9 +22,7 @@
 #include "hostfile.h"
 #include "print.h"
 #include "trace.h"
-
-#include <wchar.h>
-#include <locale.h>
+#include "charset.h"
 
 #ifdef _WIN32
 const char *lpr_command = "notepad /p?{t \"?\"} \"*\"";
@@ -131,23 +129,6 @@ static int printer_close_default(struct abcprint *me)
     return printer_close(me, &me->prfile, "");
 }
 
-static const wchar_t abc_to_unicode[256] =
-    L"\000\001\002\003\004\005\006\007\010\011\012\013\014\015\016\017"
-    L"\020\021\022\023\024\025\026\027\030\031\032\033\034\035\036\037"
-    L" !\"#¤%&\'()*+,-./0123456789:;<=>?"
-    L"ÉABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÅÜ_"
-    L"éabcdefghijklmnopqrstuvwxyzäöåü\x25a0"
-    L"\x20ac\x25a1\x201a\x0192\x201e\x2026\x2020\x2021"
-    L"\x02c6\x2030\x0160\x2039\x0152\x2190\x017d\x2192"
-    L"\x2191\x2018\x2019\x201c\x201d\x2022\x2013\x2014"
-    L"\x02dc\x2122\x0161\x203a\x0153\x2193\x017e\x0178"
-    L"\240\241\242\243$\245\246\247\250\251\252\253\254\255\256\257"
-    L"\260\261\262\263\264\265\266\267\270\271\272\273\274\275\276\277"
-    L"\300\301\302\303[]\306\307\310@\312\313\314\315\316\317"
-    L"\320\321\322\323\324\325\\\327\330\331\332\333^\335\336\337"
-    L"\340\341\342\343{}\346\347\350`\352\353\354\355\356\357"
-    L"\360\361\362\363\364\365|\367\370\371\372\373~\375\376\377";
-
 int printer_write(struct abcprint *me,
 		  struct host_file **hfp, const char *prname,
 		  const char *data, size_t len)
@@ -189,7 +170,7 @@ int printer_write(struct abcprint *me,
 	    if (c == '\r')
 		continue;
 #endif
-	    putwc(abc_to_unicode[c], hf->f);
+	    putwc(abc_to_unicode(c), hf->f);
 	}
     }
     return 0;

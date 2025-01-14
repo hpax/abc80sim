@@ -4,8 +4,10 @@
 #include "trace.h"
 #include "print.h"
 #include "ilog2.h"
+#include "options.h"
 
 const char *fileop_path = "abcdir";
+const char *voldir_path = NULL;
 
 #define USE_FILEOP_PR	1
 #define LEGACY_PRA_PRB	1
@@ -34,7 +36,24 @@ static void add_volume(struct abcprint *me, const char *name,
 		       int mode, int prio, const char *path,
 		       const struct chardev *dev)
 {
-    struct volume *vol = &me->volumes[me->vols++];
+    struct volume *vol;
+
+    /* Look to see if this volume already exists */
+    vol = get_volume(me, name);
+
+    if (!vol) {
+	if (me->vols >= MAX_VOLS)
+	    return;			/* Full */
+
+	vol = &me->volumes[me->vols++];
+    } else {
+	if (prio <= vol->prio) {
+	    /* Lower or equal priority */
+	    return;
+	}
+	if (vol->path)
+	    free((char *)vol->path);
+    }
 
     memcpy(vol->name, name, 3);
     vol->mode = mode;
@@ -54,68 +73,64 @@ static void cleanup_volumes(struct abcprint *me)
 }
 
 static const struct chardev chardev_pr;
+static const struct chardev chardev_console;
 
 /* Scan for volumes */
 static void init_volumes(struct abcprint *me)
 {
     struct host_file *hf;
-    struct volume *vol;
 
     cleanup_volumes(me);	/* In case this is being re-executed */
-
-    if (!fileop_path || !*fileop_path)
-	return;
-
     me->vols = 0;
 
-    /* Default volumes */
-    add_volume(me, "NET", 2, 1, fileop_path, NULL);
-#if LEGACY_PRA_PRB
-    /* Legacy volumes */
-    add_volume(me, "PRA", 1, 1, fileop_path, NULL);
-    add_volume(me, "PRB", 2, 1, fileop_path, NULL);
-#endif
-#if USE_FILEOP_PR
-    add_volume(me, "PR ", 1, 1, NULL, &chardev_pr);
-#endif
+    if (opts.filedir_net && fileop_path && *fileop_path) {
+	if (opts.filedir_dev[0] <= ' ')
+	    memcpy(opts.filedir_dev, "NET", 4);
+	add_volume(me, opts.filedir_dev, 2, 1, fileop_path, NULL);
 
-    hf = open_host_file(HF_DIRECTORY, NULL, fileop_path, 0);
+	if (opts.net_legacy) {
+	    /* Legacy volumes */
+	    add_volume(me, "PRA", 1, 1, fileop_path, NULL);
+	    add_volume(me, "PRB", 2, 1, fileop_path, NULL);
+	}
+    }
+
+    if (opts.net_pr) {
+	if (opts.net_pr_dev[0] <= ' ')
+	    memcpy(opts.net_pr_dev, "PR ", 4);
+	add_volume(me, opts.net_pr_dev, 1, 1, NULL, &chardev_pr);
+    }
+
+    if (opts.console) {
+	if (opts.console_dev[0] <= ' ')
+	    memcpy(opts.console_dev, "PRC", 4);
+	add_volume(me, opts.console_dev, 1, 1, NULL, &chardev_console);
+    }
+
+    if (!voldir_path)
+	voldir_path = fileop_path;
+
+    hf = open_host_file(HF_DIRECTORY, NULL, voldir_path, 0);
     if (hf) {
 	struct dirent *de;
 	while ((de = read_dir(hf))) {
+	    char *path;
 	    char volname[16];
 	    struct stat st;
 	    const int prio = 2;	/* Explicit volume */
 	    const int mode = 2;	/* Binary */
 
-	    if (!mangle_volname(volname, de->d_name))
-		continue;
+	    if (de->d_name[0] != '_' ||
+		mangle_volname(volname, de->d_name+1) > VOL_ONEWAY)
+		continue;	/* Invalid volume name */
 
-	    if (stat_file(fileop_path, de->d_name, &st) ||
+	    if (stat_file(voldir_path, de->d_name, &st) ||
 		!S_ISDIR(st.st_mode))
 		continue;	/* Not a directory */
 
-	    /*
-	     * Did this volume already exist? Let a low priority override
-	     * a higher priority, and if the priority is the same, the
-	     * mode.
-	     */
-	    vol = get_volume(me, volname);
-	    if (!vol) {
-		if (me->vols >= MAX_VOLS)
-		    continue;	/* Already full */
-
-		vol = &me->volumes[me->vols++];
-	    }
-
-	    if (prio > vol->prio) {
-		memcpy(vol->name, volname, 4);
-		if (vol->path)
-		    free((void *)vol->path);
-		vol->path = concat_path(fileop_path, de->d_name);
-		vol->mode = mode;
-		vol->dev  = NULL;
-	    }
+	    path = concat_path(voldir_path, de->d_name);
+	    add_volume(me, volname, mode, prio, path, NULL);
+	    free(path);
 	}
     }
 }
@@ -1256,4 +1271,24 @@ static const struct chardev chardev_pr = {
     .open  = chardev_pr_open,
     .write = chardev_pr_write,
     .close = chardev_pr_close,
+};
+
+/*
+ * Functions for the console device (PRC:)
+ */
+static int chardev_console_write(struct abcprint *me, struct fileop_file *ff,
+				 const void *data, size_t len)
+{
+    (void)me;
+    (void)ff;
+
+    if (console_file) {
+	fwrite(data, 1, len, console_file);
+	fflush(console_file);
+    }
+    return 0;
+}
+
+static const struct chardev chardev_console = {
+    .write = chardev_console_write,
 };
