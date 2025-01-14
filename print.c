@@ -211,7 +211,7 @@ void abcprint_reset(struct abcprint *me)
 
 struct abcprint *abcprint_init(send_func send_data, void *pvt)
 {
-    struct abcprint *me = calloc(sizeof *me, 1);
+    struct abcprint *me = calloc(1, sizeof *me);
     if (!me)
 	return NULL;
 

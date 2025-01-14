@@ -136,7 +136,7 @@ struct host_file *open_host_file(enum host_file_mode mode, const char *dir,
         return NULL;
     }
 
-    hf = calloc(sizeof *hf, 1);
+    hf = calloc(1, sizeof *hf);
     if (!hf)
         return NULL;
 
