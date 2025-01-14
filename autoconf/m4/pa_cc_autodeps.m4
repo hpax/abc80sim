@@ -5,6 +5,9 @@ dnl If the C compiler supports -MMD -MF, add a suitable rule to AUTODEPS
 dnl XXX: fix languages
 dnl --------------------------------------------------------------------------
 AC_DEFUN([PA_CC_AUTODEPS],
+[PA_ARG_BOOL(dependency-tracking,
+[source dependency tracking],
+[yes],
 [AC_MSG_CHECKING([if $CC supports automatic dependency generation])
  pa_add_flags__old_flags="$CPPFLAGS"
  rm -f conftest.dep
@@ -20,5 +23,5 @@ AC_DEFUN([PA_CC_AUTODEPS],
    AUTODEPS='-MMD -MF @S|@(@D)/.@S|@(@F).d'],
   [AC_MSG_RESULT([no])
    AUTODEPS=''])
- CPPFLAGS="$pa_add_flags__old_flags"
- AC_SUBST([AUTODEPS])])
+  CPPFLAGS="$pa_add_flags__old_flags"])
+AC_SUBST([AUTODEPS])])
