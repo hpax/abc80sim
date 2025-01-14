@@ -1,18 +1,33 @@
-;;; -*- asm -*-
-;
-;;; Simple option ROM for printer for ABC80; this is not authentic, but
-;;; uses a hardware interface implementable with an FT232H USB module.
-;;; It is (hopefully) at least similar to an ABC80 printer interface.
-;
+;; -*- mode: asm; comment-column: 40; -*-
+;;;
+;;; Option ROM/driver for the PUN80 network card. It is based on a
+;;; FT232H USB chip operating in CPU client mode (a future version may
+;;; instead be using EPP/MEM mode in order to be able to detect
+;;; over- or underruns.
+;;;
+;;; It is not currently implemented, but in general it is probably safe
+;;; to assume that the communication channel is much faster than Z80 and
+;;; the ABC-bus, so OTIR/INIR of a full block should be possible.
+;;;
+;;; This is also emulated by abc80sim and MAX80.
+;;;
 ;;; - ABC-bus select code 60 decimal;
 ;;;   OUT 0 - (OUT)  output data
 ;;;   IN  0 - (INP)  input data
-;;;   IN  1 - (STAT) bit 0 - Rx data available
-;;;                  bit 1 - Tx space available
-;;;                  bit 2 - USB suspended (not ready)
-;;;                  bit 3 - USB configured (host ready)
+;;;   IN  1 - (STAT) bit 0    - Rx data available
+;;;                  bit 1    - Tx space available
+;;;                  bit 2    - USB suspended (not ready)
+;;;                  bit 3    - USB configured (host ready)
+;;;                  bits 4-7 - Reserved for error bits; not yet
+;;;			        implemented by any hardware version.
+;;;			        These bits will be sticky, 0 active
+;;;			        for backwards compatibility as they read
+;;;				as 1 on all current implementations.
+;;;			bit 4 - Rx underrun
+;;;			bit 5 - Tx overrun
 ;;;   OUT 2 - (C1)   flush Tx buffer immediately
 ;;;   OUT 3 - (C2)   discard all input - only supported in some hw versions
+;;;   OUT 4 - (C3)   reserved for clearing error status
 ;;;
 
 ;;;
@@ -21,11 +36,15 @@
 ;;;
 ;;; FF FE is used to represent an FF character in the printer stream,
 ;;; and FF FD is send on CLOSE (end of job).
-;;; For other escape sequences, see print.c.
+;;;
+;;; See abcprint.txt for a full desciption of the protocol.
 ;;;
 
-;;; To auto-initialize this, we need a modified DOS that looks for
-;;; additional ROM entry points (ABC800 has this, but not ABC80.)
+;;;
+;;; This requires a modified UFD-DOS to support autostart and random
+;;; access files. The modifications are relatively modest, but does
+;;; prevent using it with an unmodified DOS.
+;;;
 
 	.altmacro
 
@@ -34,12 +53,11 @@
 #include "auxram.inc"
 #include "ufddos.inc"
 
-	defc selcode=60			; ABC-bus select code
+	;; Search for PUN80 device(s) between these select codes
+	defc selcode_min=58
+	defc selcode_max=62
 
 	defc LARGE=(ROMSIZE >= 2048)
-
-	;; Maximum number of remote volumes
-	defc MAX_VOLS = 32
 
 	;; Console device, probably doesn't fit anymore
 	defc console_dev = LARGE
@@ -50,16 +68,20 @@
 	;; ABC800-style CON: and NUL: devices
 	defc connul = LARGE
 
-	;; Quicklib routine
+	;; Quicklib routine (LIST DEV:)
 	defc quicklib = 1
 
 	;; Return real error codes or always zero?
 	defc return_real_errors = 0	; Match UFD-DOS 80
 
 	;; PR: using raw protocol (not a chardev volume?)
+	;; This MAY be compatible with an actual parallel
+	;; printer card, but I have not found any documentation
+	;; so I can't find any documentation.
 	defc raw_pr = 0
 
-	;; XDx: device entries (secondary hard disk, not enough space in DOS)
+	;; XDx: device entries (secondary hard disk; UFD-DOS does
+	;; not have enough space to patch in the file list entries)
 	defc xd_dev = LARGE
 
 	;; CMD routine if in IEC area?
@@ -75,6 +97,15 @@
 
 	;; Device timeout
 	defc timeout = 100		; 100/50 Hz = 2 s
+
+	;; Size for each volume record
+	;; Bytes 0-6: BASIC device record
+	;; Byte 7: select code
+	VOL_SIZE	= 8
+
+	;; Address of temporary buffer used during initialization only
+	INITBUF		= PCODE_BUF
+	INITBUF_SIZE	= PCODE_SIZE
 
 	;; Command opcodes
 	NET_OPEN_A	= 0xa0
@@ -118,6 +149,30 @@
 	;; Special command for debug console
 	NET_CON		= 0xc0
 
+	;; File map entries
+#define FM_NEXTL	(ix+0)
+#define FM_NEXTH	(ix+1)
+#define FM_FILENO	(ix+2)
+#define FM_DEVL		(ix+3)
+#define FM_DEVH		(ix+4)
+#define FM_ISOPEN	(ix+5)
+#define FM_NEXTCHAR	(ix+6)
+#define FM_MAXCHAR	(ix+7)
+#define FM_BUFL		(ix+8)
+#define FM_BUFH		(ix+9)
+#define FM_CHARPTRL	(ix+10)
+#define FM_CHARPTRH	(ix+11)
+#define FM_DOSFILENO	(ix+12)
+#define FM_BUFFREE	(ix+13)
+#define FM_STATUS	(ix+14)
+	;; Status flags:
+	;; Bit 7 = 1: buffer data written
+	;; Bit 0 = 1: buffer flushed
+
+
+	;; Not for this device
+	defc notforme = ERR_52
+
 	.globl _org
 	_org = ROMSTART
 
@@ -160,7 +215,8 @@ prb_jptable:
 	jp prx_delete			; DELETE
 	jp prx_rename			; RENAME
 
-	;; Fixed entry points, reserved for future use
+	;; Fixed entry points, reserved for future use and/or
+	;; additional space if we really need it...
 fixfunc:
 	.org 0x4a, 0xff
 	;; Magic number that this entry point is valid
@@ -190,7 +246,7 @@ pra_jptable:
 	if raw_pr
 
 pr_print:
-	call select
+	call select_ix
 	ld a,0F3h			; Printer data
 	call send_esc
 
@@ -211,27 +267,35 @@ pr_not_ff:
 	jr pr_print_loop
 
 pr_close:
-	call select
+	call select_ix
 	ld a,NET_PREOJ
 	jr done_esc
 
 	endif
 
-	;; Select the current device, and save the stack pointer
-	;; to allow for an error unwind. This should be called from the
-	;; topmost stack so that a RET on error returns to BASIC;
-	;; if called in a nested context that context will be returned
-	;; to on error. After an error the carry flag is set and only
-	;; A is defined.
-select:
+	;; Select the device for the volume of an open file
+	;; with a specific IX and save the stack pointer to
+	;; allow for an error unwind. This should be called from the
+	;; topmost stack so that a RET on error returns to BASIC; if
+	;; called in a nested context that context will be returned to
+	;; on error. After an error the carry flag is set and only A
+	;; is defined.
+	;;
+	;; The SELECT system variable is not set; from examining other
+	;; device ROMs it seems to only ever be used by the BASIC
+	;; IN/OUT instructions.
+select_ix:
 	ld (errsp),sp
+	push hl
 	push af
-	ld a,(SELECT)			; Old select code
-	ld (ram_select),a		; Save old select code
-	ld a,selcode			; Select code
-	ld (SELECT),a			; Is this correct?
+	ld l,FM_DEVL
+	ld h,FM_DEVH
+	inc hl				; Skip jump table ptr
+	inc hl
+	ld a,(hl)
 	out (1),a
 	pop af
+	pop hl
 	ret
 
 done_esc:
@@ -240,14 +304,8 @@ done_ok:
 	xor a
 done:
 	ld sp,(errsp)	; Restore stack
-	inc sp		; Drop return address from select
+	inc sp		; Drop return address from select_ix
 	inc sp
-
-	push af
-	ld a,(ram_select)
-	ld (SELECT),a
-	out (1),a
-	pop af
 
 	rlca	; CF <- bit 7
 	if return_real_errors
@@ -284,7 +342,7 @@ prx_open:
 	if pra_dev			; Handled by prb_setup_buf
 	ld (ix+7),132			; Line length, seems to be standard?
 	endif
-	call select
+	call select_ix
 	push af				; Save command code
 	call send_cmd			; Returns with CF = 0
 	ld l,(ix+3)			; Get volume name
@@ -335,13 +393,6 @@ nohazbuf:
 	;; -------- Show library listing on screen --------
 
 prx_quicklib:
-	;; Restore the original select code in memory. It isn't
-	;; necessary to send the select code to the bus, because
-	;; the subsequent I/O operations will do that for us.
-
-	ld a,(ram_select)	; Restore original select code
-	ld (SELECT),a
-
 	call crlf
 	ld (ix+6),22		; 22 lines before wait
 ql_getline:
@@ -407,7 +458,7 @@ crlf:
 	endif			; quicklib
 
 prx_rename:
-	call select
+	call select_ix
 	ld a,NET_RENAME
 	call send_cmd
 	ex de,hl			; HL -> new filename
@@ -416,7 +467,7 @@ prx_rename:
 	jr prx_reply_done
 
 prb_close:
-	call select
+	call select_ix
 	xor a
 	cp (ix+14)
 	jr z,pbc_noflush
@@ -447,13 +498,13 @@ done2:
 
 prx_delete:
 	ld a,NET_DELETE
-	call select
+	call select_ix
 	jr prx_simple_command
 
 	if pra_dev
 
 pra_print:
-	call select
+	call select_ix
 	call output_common
 	jr done2
 
@@ -470,7 +521,7 @@ prx_length_command:
 	if pra_dev
 
 pra_input:
-	call select
+	call select_ix
 	ld a,NET_INPUT			; INPUT
 
 	endif
@@ -478,7 +529,9 @@ pra_input:
 	;; This routine can be called to handle a command with a
 	;; reply + len + data response.
 	;; HL -> target_buf, A = command, BC = buffer size
-	; XXX: USB is fast enough that INIR/OTIR should be possible
+	;; On exit, HL -> one byte past the last byte actually written
+	;; to the buffer.
+	;; XXX: USB is fast enough that INIR/OTIR should be possible
 input_command:
 	call send_cmd
 	call recv_reply
@@ -492,14 +545,13 @@ prai_loop:
 	or e
 	ret z
 	dec de
+	call recv_byte
+	ex af,af'
 	ld a,b
 	or c
-	jr nz,prai_space
-	ld hl,ram_dummy
-	inc c
-prai_space:
+	jr z,prai_loop		; Buffer full, discard rest
+	ex af,af'
 	dec bc
-	call recv_byte
 	ld (hl),a
 	inc hl
 	jr prai_loop
@@ -508,7 +560,7 @@ prbr_protoerr:
 	jr done2
 
 prb_rdblk:
-	call select
+	call select_ix
 prb_rdblk_nosel:
 	ld a,NET_PREAD
 	call send_cmd_blkno
@@ -634,7 +686,7 @@ pbi_eofbuf:
 
 	; Write a binary output block.
 prb_wrblk:
-	call select
+	call select_ix
 	ld a,NET_PWRITE
 	call send_cmd_blkno
 	call prb_getbufaddr
@@ -968,7 +1020,7 @@ prc_jptable:
 	jp notforme			; RENAME
 
 prc_print:
-	call select
+	call select_ix
 	ld a,NET_SOF
 	call send_byte
 	ld a,NET_CON
@@ -1008,82 +1060,122 @@ is_new_basic:
 
 	endif
 
-	call init		; Unwind to here on error or return
-	ld hl,__end + INIT_OFFS	; Where to search next
-	ret
-
 init:
-	call select
+	ld hl,INITBUF
+	ld de,voldefs_end-1
+	ld bc,(MAX_VOLS << 8)+selcode_min
 
-	ld hl,-256
-	add hl,sp
-	ld sp,hl
+init_next:
+	ld a,c
+	out (1),a
+
+	push bc
+	push de
 	push hl
 
+	;; Check for ready bits, also serves as presence check
+	in a,(1)
+	and 0Ch			; Ready bits
+	cp 08h			; Ready, not suspended
+
+	;; Set up an error return from recv_reply
+	call z,do_init
+	;; Error or not present
+	pop hl
+	pop de
+done_dev:			; Volume processed
+	pop bc
+	ld a,c
+	inc c
+	cp selcode_max
+	jr nz,init_next		; Next device
+	jr done_devs
+
+do_init:
+	push hl			; Dummy stack field for done
 	ld a,NET_INIT
 	call send_cmd
 	call recv_reply
 
 	ld a,NET_LISTVOL
-	pop hl
-	push hl
-	ld bc,4*MAX_VOLS+1	; B=0
-	call input_command
-	pop hl
+	ld bc,4*MAX_VOLS
+	call input_command      ; Always returns with A=0
+	ld (hl),a		; Make sure to null-terminate the buffer
+	pop hl			; Drop dummy stack field
+	pop hl			; Drop do_init error return address
 
 	;; Create device list entries
-	;; HL -> CRAD here, A = 0
-	push hl
-	ld bc,4*MAX_VOLS
-	add hl,bc
-	ld (hl),b		; Make sure it is null-terminated on overflow
 	pop hl
+	pop de
+	pop bc
 
-	ld de,voldevs
-	;; Are we running with auxram on the stack?
-	.if use_stack
-	ld (STACK),de		; Move down the user stack
-	.endif
-
-mk_vols:			; B = 0 on entry here
+mk_vols:
+	push bc
 	ld a,(hl)
 	and a
-	jp z,done		; Done
-	;; Otherwise A = voltype
-	inc hl
-	push hl
-	ld l,e
-	ld h,d
-	ld de,(DEVLIST)
-	ld (DEVLIST),hl
+	jr z,done_dev		; End of list
+
+	ex de,hl
+	ld (hl),c		; Current select code
+	dec hl
+	ld (hl),prb_jptable >> 8
+	dec hl
+
+	;; A = voltype
+
+	.if pra_dev
+	;; This requires pra_jptable and prb_jptable have the same upper bytes
+	dec a
+	ld (hl),pra_jptable & 0xff
+	jr z,have_voltype
+	.endif
+	ld (hl),prb_jptable & 0xff
+have_voltype:
+	dec hl
+
+	ex de,hl
+	ld bc,3
+	add hl,bc		; C <- 0
+	lddr			; Copy volume name
+	dec de			; Skip link for now
+	dec de
+	ld c,4
+	add hl,bc
+
+	pop bc
+	djnz mk_vols
+
+	;; If we get here, we are out of volume space and
+	;; cannot continue with any further devices
+
+done_devs:
+	ld a,MAX_VOLS
+	sub b
+	jr z,no_volumes
+
+	;; Create linked list
+	ld b,a
+	ld hl,(DEVLIST)		; First entry links to previous list
+	ex de,hl
+	inc hl			; Point to the first byte of the first entry
+	.if use_stack
+	ld (STACK),hl
+	.endif
+link_list:
+	push hl			; Save address of current entry
 	ld (hl),e
 	inc hl
 	ld (hl),d
-	inc hl
-	ex de,hl
-	pop hl
-	ld c,3			; Copy volume name
-	ldir
+	ld de,VOL_SIZE-1
+	add hl,de
+	pop de			; ... as the link target for the next
+	djnz link_list
 
-	if pra_dev
-	;; This requires pra_jptable and prb_jptable have the same upper bytes
-	dec a			; Z = 1 if A = 1 = text/PRA
-	ld a,pra_jptable & 0xff
-	jr z,have_voltype
-	endif
+	ld hl,device_list
+	ld (DEVLIST),hl
 
-	ld a,prb_jptable & 0xff
-have_voltype:
-	ld (de),a
-	inc de
-	ld a,prb_jptable >> 8
-	ld (de),a
-	inc de
-	jr mk_vols
-
-notforme:
-	ld a,128+52		; Ej till denna enhet
-	scf
+no_volumes:
+	ld hl, __text + ROMSIZE	; Next ROM search address
 	ret
 
 	if connul
@@ -1097,9 +1189,12 @@ con_open:
 	;; Fall through
 
 	endif
+
+	.if connul || raw_pr || console_dev
 trivial:			; Trivially successful call
 	xor a			; A <- 0  carry <- 0
 	ret
+	.endif
 
 	if connul
 
@@ -1261,7 +1356,7 @@ e_cmd_done:
 	ld b,d
 	pop de
 
-	call select
+	call select_ix
 	ld a,0BBh		; GENERIC COMMAND
 	call prx_length_command
 	jp done
@@ -1338,7 +1433,7 @@ old_basic_jumps:		; Checksum 11273
 	endif
 
 	;; Check for overflow and pad to desired ROM size
-	.org ROMSIZE, 0xff
+;	.org ROMSIZE, 0xff
 __end:
 
 
@@ -1352,25 +1447,18 @@ __end:
 	.globl _bss
 	_bss = AUXRAM_PRINTNET_BASE
 
-	section .bss
-__bss:
-voldevs:
-3000:				; Part of the device linked list
-	defs 7*MAX_VOLS		; Up to 32 volume device entries
+	section .bss.atend
+__bss_atend:
 errsp:
 	defs 2			; SP rollback on error return
 e_cmd_buf_ptr:
 	defs 2			; Current data buffer pointer
-ram_select:
-	defs 1			; Previous select code
 ram_csum:
 	defs 1			; Running output checksum
 ram_cmd:
 	defs 1			; Latest sent command
 ram_serial:
 	defs 1			; Latest serial number (must be immediately after ram_cmd)
-ram_dummy:
-	defs 1			; Scratch byte
 basic_jumps:
 	if have_cmd
 CHECK_STACK_SPACE:	defs 3	; Check space on stack
@@ -1379,7 +1467,22 @@ FLOAT_TO_STR:		defs 3	; Float to string
 c_cmd:				; Compile CMD = same as PRINT
 C_PRINT:		defs 3	; Compile PRINT
 	endif
-
-;;; Check for overflow
-	.org  AUXRAM_PRINTNET_SIZE
 __end_bss:
+	defc __bss_atend_size = . - __bss_atend
+
+	section .bss
+
+	defc vol_max_space = (AUXRAM_PRINTNET_SIZE - __bss_atend_size)
+	defc MAX_VOLS = vol_max_space / VOL_SIZE
+__bss:
+	.space (vol_max_space % VOL_SIZE)
+voldefs:
+	.space MAX_VOLS * (VOL_SIZE-1)
+voldefs_last:
+3000:
+	.space VOL_SIZE
+voldefs_end:
+
+	.if (MAX_VOLS*4) >= INITBUF_SIZE
+	.error "INITBUF_SIZE too small"
+	.endif
