@@ -444,7 +444,7 @@ static inline bool const_func even_parity(uint8_t value)
     return !(__popcnt(value) & 1);
 #elif defined(__GNUC__) && (defined(__i386__) || defined(__x86_64__))
     bool out;
-    asm("test %0,%0" : "=@ccp" (out) : "q" (value));
+    asm("test %1,%1" : "=@ccp" (out) : "q" (value));
     return out;
 #else
     value ^= (value << 4);
