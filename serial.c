@@ -131,96 +131,14 @@ static int config_port(int fd, unsigned long baud, enum flowctrl flowctrl)
 
 #elif defined(HAVE_TERMIOS_H)
 
+#include "baudtospeed.h"
+
 /*
  * POSIX systems
  */
 # ifdef HAVE_SYS_IOCTL_H
 #  include <sys/ioctl.h>
 # endif
-
-# ifdef __linux__
-/*
- * Linux has been able to set arbitrary speeds for ages, but glibc never
- * caught up.  Our own mini-implementation of termios...
- */
-#include <asm/termbits.h>	/* struct termios2 */
-#include <linux/serial.h>	/* struct serial_struct */
-
-#ifndef TCGETS2			/* On PowerPC kernel termios == termios2 */
-typedef struct termios my_termios;
-# define TCGETS2  TCGETS
-# define TCSETS2  TCSETS
-#else
-typedef struct termios2 my_termios;
-#endif
-
-/* Do nonstandard initialization: set port to minimal latency */
-static int mytcsetup(int fd)
-{
-    struct serial_struct ss;
-    int rv;
-
-    memset(&ss, 0, sizeof ss);
-
-    rv = ioctl(fd, TIOCGSERIAL, &ss);
-    if (rv)
-	return rv;
-
-    ss.flags |= ASYNC_LOW_LATENCY;
-
-    return ioctl(fd, TIOCSSERIAL, &ss);
-}
-
-static int mytcgetattr(int fd, my_termios *tio)
-{
-    return ioctl(fd, TCGETS2, tio);
-}
-
-static int mytcsetattr(int fd, const my_termios *tio)
-{
-    return ioctl(fd, TCSETS2, tio);
-}
-
-static int mycfsetbaud(my_termios *tio, unsigned long baud)
-{
-    tio->c_cflag &= ~(CBAUD | CIBAUD);
-    tio->c_cflag |= BOTHER;
-    tio->c_ispeed = tio->c_ospeed = baud;
-    return 0;
-}
-
-static int mytcflush(int fd, int queue)
-{
-    return ioctl(fd, TCFLSH, queue);
-}
-
-# else /* not Linux */
-
-#  include "baudtospeed.h"
-
-typedef struct termios my_termios;
-
-static int mytcsetup(int fd)
-{
-    (void)fd;
-    return 0;
-}
-
-# define mytcgetattr(x,y) tcgetattr(x, y)
-# define mytcsetattr(x,y) tcsetattr(x, TCSANOW, y)
-# define mytcflush(x,y)   tcflush(x, y)
-
-static int mycfsetbaud(my_termios *tio, unsigned long baud)
-{
-    speed_t speed = baudtospeed(baud);
-    if (speed == B0) {
-	errno = EINVAL;
-	return -1;
-    }
-    return cfsetospeed(tio, speed) | cfsetispeed(tio, speed);
-}
-
-# endif /* not Linux */
 
 #ifdef CRTSCTS
 /* All good */
@@ -232,11 +150,9 @@ static int mycfsetbaud(my_termios *tio, unsigned long baud)
 
 static int config_port(int fd, unsigned long baud, enum flowctrl flowctrl)
 {
-    my_termios tio;
+    struct termios tio;
 
-    mytcsetup(fd);		/* Ignore failures here */
-
-    if (mytcgetattr(fd, &tio))
+    if (tcgetattr(fd, &tio))
 	return -1;
 
     tio.c_iflag &= ~(IGNBRK | BRKINT | PARMRK | ISTRIP
@@ -263,14 +179,11 @@ static int config_port(int fd, unsigned long baud, enum flowctrl flowctrl)
     }
 
     if (baud) {
-	if (mycfsetbaud(&tio, baud))
-	  return -1;
+	if (cfsetospeed(&tio, baud) || cfsetispeed(&tio, baud))
+	    return -1;
     }
 
-    if (mytcsetattr(fd, &tio))
-	return -1;
-
-    return mytcflush(fd, TCIOFLUSH);
+    return tcsetattr(fd, TCSANOW, &tio);
 }
 
 #else
