@@ -46,6 +46,8 @@ enum z80_regnums {
     Z80_IR,
     Z80_REG_NUM
 };
+
+/* The beginning of this structure must follow z80_regnums */
 struct z80_state_struct {
     regpair af;
     regpair bc;
@@ -63,7 +65,11 @@ struct z80_state_struct {
 
     regpair ir;
 
-    regpair last_pc;		/* PC of last started instruction */
+    /* 0 if no DD or FD prefix on this instruction, otherwise
+     * REG_IX - REG_HL (DD) or REG_IY - REG_HL (FD).
+     */
+    uint8_t ixreg;
+    int8_t  ixdisp;		/* Displacement byte for (Ixy+n) */
 
     uint8_t rctr;		/* counter part of REG_R */
 
@@ -76,8 +82,20 @@ struct z80_state_struct {
 
     atomic_uint uncond;		/* Unconditional events: NMI, reset */
     uint64_t tc;                /* T-state (clock cycle) counter */
+
+    /*
+     * These reflect the values at the beginning of the last executed
+     * instruction.
+     */
+    struct {
+	regpair  pc;		/* PC of last started instruction */
+	uint64_t tc;		/* tc at the beginning of an instruction */
+    } init;
 };
 extern struct z80_state_struct z80_state;
+
+/* Use a regnum to access a register */
+#define REG(x) (*(&z80_state.af + (x)))
 
 /* Unconditional events, can be triggered asynchronously */
 enum uncond {
@@ -110,7 +128,6 @@ enum uncond {
 
 #define REG_SP		z80_state.sp.w
 #define REG_PC		z80_state.pc.w
-#define REG_LAST_PC	z80_state.last_pc.w
 
 #define REG_AF		z80_state.af.w
 #define REG_BC		z80_state.bc.w
@@ -123,14 +140,24 @@ enum uncond {
 #define REG_HLx		z80_state.hlx.w
 
 #define REG_IX		z80_state.ix.w
+#define REG_IXL		z80_state.ix.b.l
+#define REG_IXH		z80_state.ix.b.h
 #define REG_IY		z80_state.iy.w
+#define REG_IYL		z80_state.iy.b.l
+#define REG_IYH		z80_state.iy.b.h
 
 #define REG_IR		z80_state.ir.w
 
 #define REG_I		z80_state.ir.b.h
 #define REG_R		z80_state.ir.b.l
 
-#define TSTATE	z80_state.tc
+/* Meta-registers */
+#define IXREG		z80_state.ixreg
+#define IXDISP		z80_state.ixdisp
+#define TSTATE		z80_state.tc
+#define TSTATE_INIT	z80_state.init.tc
+#define REG_LAST_PC	z80_state.init.pc.w
+
 
 /* Get/set the R register and update REG_R; this speeds up the counter */
 static inline uint16_t z80_get_ir(void)
