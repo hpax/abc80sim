@@ -57,6 +57,7 @@ AC_HEADER_STDBOOL
 AC_CHECK_HEADERS(inttypes.h)
 AC_CHECK_HEADERS(stdnoreturn.h)
 AC_CHECK_HEADERS(stdatomic.h)
+AC_CHECK_HEADERS(stdbit.h)
 
 dnl Force gcc and gcc-compatible compilers treat signed integers
 dnl as 2's complement
@@ -91,6 +92,13 @@ dnl SDL headers
 AC_CHECK_HEADERS(SDL.h)
 AC_CHECK_HEADERS(png.h)
 
+dnl Bitwise operations
+PA_ADD_HEADERS(stdbit.h)
+PA_HAVE_FUNC(__builtin_parity, (0))
+PA_HAVE_FUNC(stdc_count_ones, (0))
+PA_HAVE_FUNC(__builtin_popcnt, (0))
+PA_HAVE_FUNC(__popcnt, (0))
+
 dnl x86 compiler intrinsics
 PA_ADD_CPPFLAGS(-mrdrnd)
 PA_ADD_CPPFLAGS(-mrdseed)
@@ -111,6 +119,12 @@ PA_HAVE_FUNC(_rdseed64_step, (NULL))
 PA_HAVE_FUNC(__pause, ())
 PA_HAVE_FUNC(_mm_pause, ())
 PA_HAVE_FUNC(__builtin_ia32_pause, ())
+PA_HAVE_FUNC(__builtin_parity, (0))
+PA_HAVE_FUNC(__builtin_popcnt, (0))
+
+PA_HAVE_FUNC(_bittest, (NULL, 0))
+PA_HAVE_FUNC(_bittestandset, (NULL, 0))
+PA_HAVE_FUNC(_bittestandreset, (NULL, 0))
 
 dnl Bit operation intrinsics - the naming here is insanely redundant
 PA_HAVE_FUNC(__lzcnt32, (1))

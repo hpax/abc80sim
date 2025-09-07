@@ -47,6 +47,10 @@
 #include <inttypes.h>
 #include <stdatomic.h>
 
+#ifdef HAVE_STDBIT_H
+#include <stdbit.h>
+#endif
+
 #ifdef HAVE_FCNTL_H
 #include <fcntl.h>
 #endif
