@@ -292,7 +292,7 @@ static unsigned long long get_process_id(void)
 int main(int argc, char **argv)
 {
     char **option;
-    const char *optstr;
+    char *optstr;
     char optchr;
     enum autobool detach = A_AUTO; /* Default to true for --server */
     SDL_Thread *cpu_thread;
