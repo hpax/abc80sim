@@ -36,20 +36,17 @@
 
 /* These header files should pretty much always be included... */
 #include <assert.h>
-#include <stddef.h>
-#include <stdlib.h>
-#include <stdarg.h>
-#include <stdio.h>
-#include <limits.h>
 #include <errno.h>
-#include <time.h>
-#include <math.h>
 #include <inttypes.h>
+#include <limits.h>
+#include <math.h>
+#include <stdarg.h>
 #include <stdatomic.h>
-
-#ifdef HAVE_STDBIT_H
-#include <stdbit.h>
-#endif
+#include <stddef.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
 
 #ifdef HAVE_FCNTL_H
 #include <fcntl.h>
@@ -99,12 +96,45 @@
 #include <cpuid.h>
 #endif
 
-#ifndef NOT_USING_SDL
-#include <SDL.h>                /* This includes endian definitions */
+#ifdef HAVE_STDBIT_H
+
+/* C23 */
+#include <stdbit.h>
+#define WORDS_LITTLEENDIAN	(__STDC_ENDIAN_NATIVE__ == ___STDC_ENDIAN_LITTLE__)
+#define WORDS_BIGENDIAN		(__STDC_ENDIAN_NATIVE__ == ___STDC_ENDIAN_BIG__)
+
+#elif defined(_WIN32)
+
+/* Windows is always littleendian */
+#define WORDS_LITTLEENDIAN	1
+#define WORDS_BIGENDIAN		0
+
+#else
+
+#ifdef HAVE_ENDIAN_H
+#include <endian.h>		/* POSIX */
+#elif defined(HAVE_MACHINE_ENDIAN_H)
+#include <machine/endian.h>	/* Some BSDs */
+#elif defined(HAVE_SYS_ENDIAN_H)
+#include <sys/endian.h>		/* Some other BSDs */
+#endif
+
+#ifdef BYTE_ORDER
+#define WORDS_LITTLEENDIAN	(BYTE_ORDER == LITTLE_ENDIAN)
+#define WORDS_BIGENDIAN		(BYTE_ORDER == BIG_ENDIAN)
+#elif defined(__BYTE_ORDER__)
+/* gcc et al */
+#define WORDS_LITTLEENDIAN	(__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
+#define WORDS_BIGENDIAN		(__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__)
+#elif !defined(NOT_USING_SDL)
+
+#include <SDL.h>		/* Last resort... */
 
 #define WORDS_LITTLEENDIAN	(SDL_BYTEORDER == SDL_LIL_ENDIAN)
 #define WORDS_BIGENDIAN		(SDL_BYTEORDER == SDL_BIG_ENDIAN)
-#endif /* NOT_USING_SDL */
+
+#endif
+#endif
 
 #ifndef __cplusplus             /* C++ has false, true, bool as keywords */
 # ifdef HAVE_STDBOOL_H
@@ -282,9 +312,6 @@ typedef int socklen_t;
 #define is_constant(x) false
 #endif
 
-/* Useful construct */
-#define ARRAY_SIZE(x) ((sizeof x)/(sizeof *(x)))
-
 /* min() and max(): useful, pre-defined on Windows */
 #ifndef min
 # define min(x,y) ((x)<(y)?(x):(y))
@@ -313,6 +340,16 @@ typedef int socklen_t;
 #ifdef typeof
 # define HAVE_TYPEOF 1
 #endif
+
+/*
+ * Useful array-handling constructs. Don't know how to do these without
+ * typeof() or auto/__auto_type; fortunately it is supported by all major
+ * compilers these days.
+ */
+#define ARRAY_SIZE(x)	((sizeof x)/(sizeof *(x)))
+#define ARRAY_END(x)	(&(x)[ARRAY_SIZE(x)])
+#define ARRAY_FOREACH(v,a) \
+    for (typeof(*(a)) v = (a); v < ARRAY_END(a); v++)
 
 /* This is like offsetof(), but takes an object rather than a type. */
 #ifndef offsetin

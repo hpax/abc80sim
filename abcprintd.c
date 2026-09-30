@@ -16,6 +16,7 @@
 #include "trace.h"
 #include "options.h"
 
+#include <SDL.h>
 #include <signal.h>
 #include <setjmp.h>
 

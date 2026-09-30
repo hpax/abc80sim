@@ -54,10 +54,12 @@ AC_C_RESTRICT
 AC_TYPE_SIZE_T
 
 AC_HEADER_STDBOOL
-AC_CHECK_HEADERS(inttypes.h)
-AC_CHECK_HEADERS(stdnoreturn.h)
-AC_CHECK_HEADERS(stdatomic.h)
-AC_CHECK_HEADERS(stdbit.h)
+AC_CHECK_HEADERS_ONCE(inttypes.h)
+AC_CHECK_HEADERS_ONCE(stdnoreturn.h)
+AC_CHECK_HEADERS_ONCE(stdatomic.h)
+AC_CHECK_HEADERS_ONCE(endian.h)
+AC_CHECK_HEADERS_ONCE(sys/endian.h)
+AC_CHECK_HEADERS_ONCE(machine/endian.h)
 
 dnl Force gcc and gcc-compatible compilers treat signed integers
 dnl as 2's complement
@@ -94,10 +96,10 @@ AC_CHECK_HEADERS(png.h)
 
 dnl Bitwise operations
 PA_ADD_HEADERS(stdbit.h)
-PA_HAVE_FUNC(__builtin_parity, (0))
-PA_HAVE_FUNC(stdc_count_ones, (0))
-PA_HAVE_FUNC(__builtin_popcnt, (0))
-PA_HAVE_FUNC(__popcnt, (0))
+PA_HAVE_FUNC(stdc_count_ones, (0U))
+PA_HAVE_FUNC(__builtin_parity, (0U))
+PA_HAVE_FUNC(__builtin_popcount, (0U))
+PA_HAVE_FUNC(__popcnt, (0U))
 
 dnl x86 compiler intrinsics
 PA_ADD_CPPFLAGS(-mrdrnd)
@@ -127,6 +129,8 @@ PA_HAVE_FUNC(_bittestandset, (NULL, 0))
 PA_HAVE_FUNC(_bittestandreset, (NULL, 0))
 
 dnl Bit operation intrinsics - the naming here is insanely redundant
+PA_HAVE_FUNC(stdc_leading_zeros, (1U))
+PA_HAVE_FUNC(stdc_first_leading_one, (1U))
 PA_HAVE_FUNC(__lzcnt32, (1))
 PA_HAVE_FUNC(__lzcnt, (1))
 PA_HAVE_FUNC(_lzcnt_u32, (1))
@@ -158,23 +162,23 @@ PA_HAVE_FUNC(_BitScanReverse64, (1))
 dnl System headers
 PA_ADD_HEADERS(windows.h)
 
-AC_CHECK_HEADERS(dirent.h)
-AC_CHECK_HEADERS(sys/types.h)
-AC_CHECK_HEADERS(sys/stat.h)
-AC_CHECK_HEADERS(sys/file.h)
-AC_CHECK_HEADERS(sys/time.h)
-AC_CHECK_HEADERS(sys/ioctl.h)
-AC_CHECK_HEADERS(unistd.h)
-AC_CHECK_HEADERS(fcntl.h)
-AC_CHECK_HEADERS(paths.h)
+AC_CHECK_HEADERS_ONCE(dirent.h)
+AC_CHECK_HEADERS_ONCE(sys/types.h)
+AC_CHECK_HEADERS_ONCE(sys/stat.h)
+AC_CHECK_HEADERS_ONCE(sys/file.h)
+AC_CHECK_HEADERS_ONCE(sys/time.h)
+AC_CHECK_HEADERS_ONCE(sys/ioctl.h)
+AC_CHECK_HEADERS_ONCE(unistd.h)
+AC_CHECK_HEADERS_ONCE(fcntl.h)
+AC_CHECK_HEADERS_ONCE(paths.h)
 
-AC_CHECK_HEADERS(io.h)
-AC_CHECK_HEADERS(direct.h)
-AC_CHECK_HEADERS(synchapi.h)
-AC_CHECK_HEADERS(mmsystem.h)
-AC_CHECK_HEADERS(timeapi.h)
-AC_CHECK_HEADERS(process.h)
-AC_CHECK_HEADERS(share.h)
+AC_CHECK_HEADERS_ONCE(io.h)
+AC_CHECK_HEADERS_ONCE(direct.h)
+AC_CHECK_HEADERS_ONCE(synchapi.h)
+AC_CHECK_HEADERS_ONCE(mmsystem.h)
+AC_CHECK_HEADERS_ONCE(timeapi.h)
+AC_CHECK_HEADERS_ONCE(process.h)
+AC_CHECK_HEADERS_ONCE(share.h)
 
 AC_CHECK_TYPES(ssize_t)
 AC_CHECK_TYPES(ptrdiff_t)
