@@ -4,9 +4,9 @@
 #include "compiler.h"
 #include <wchar.h>
 
-extern const wchar_t abc_to_unicode_tbl[256];
-extern const wchar_t abc_to_unicode_uc_tbl[256];
-extern const wchar_t abc_to_unicode_lc_tbl[256];
+extern const wchar_t abc_to_unicode_tbl[257];
+extern const wchar_t abc_to_unicode_uc_tbl[257];
+extern const wchar_t abc_to_unicode_lc_tbl[257];
 
 static inline wchar_t abc_to_unicode(uint8_t c)
 {
