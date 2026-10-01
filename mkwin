@@ -14,9 +14,8 @@ cd win/"$project-$ver"
 cp ../../abc80.exe .
 todos < ../../HELP.txt > HELP.txt
 todos < ../../README > README.txt
-for d in SDL.dll libwinpthread-1.dll libpng16-16.dll zlib1.dll; do
+for d in SDL3.dll libwinpthread-1.dll libpng16-16.dll zlib1.dll; do
     cp "$dlldir"/"$d" .
 done
 cd ..
 zip -9r -o "$project-$ver-win64.zip" "$project-$ver"
-

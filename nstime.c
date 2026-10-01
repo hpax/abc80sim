@@ -12,7 +12,7 @@
 #include <unistd.h>
 #endif
 
-#include <SDL.h>
+#include <SDL3/SDL.h>
 
 #ifdef _WIN32
 

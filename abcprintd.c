@@ -16,7 +16,7 @@
 #include "trace.h"
 #include "options.h"
 
-#include <SDL.h>
+#include <SDL3/SDL.h>
 #include <signal.h>
 #include <setjmp.h>
 
@@ -87,9 +87,9 @@ static bool errno_is_resume(int err)
 }
 
 struct client_sync {
-    SDL_mutex   *m_launch;
-    SDL_mutex   *m_quit;
-    SDL_cond    *c_quit;
+    SDL_Mutex     *m_launch;
+    SDL_Mutex     *m_quit;
+    SDL_Condition *c_quit;
     struct client_thread *list;
     struct client_thread *reap;
     unsigned int count;			/* Active thread counter */
@@ -173,7 +173,7 @@ static int abcprint_launch_thread(void *selfp)
     SDL_LockMutex(client.m_quit);
     self->reap  = client.reap;
     client.reap = self;
-    SDL_CondSignal(client.c_quit);
+    SDL_SignalCondition(client.c_quit);
     SDL_UnlockMutex(client.m_quit);
 
     return rv;			/* Reaper will unlock client.m_quitting */
@@ -189,7 +189,7 @@ abcprint_start_thread(const struct client_thread *ctparm)
     *ct = *ctparm;
 
     SDL_LockMutex(client.m_launch);
-    ct->tp = SDL_CreateThread(abcprint_launch_thread, ct);
+    ct->tp = SDL_CreateThread(abcprint_launch_thread, "pun80-client", ct);
     if (ct->tp) {
 	client.count++;
     } else {
@@ -295,7 +295,7 @@ int abcprint_run_servers(struct file_list *ports, unsigned long baud)
 
     client.m_launch = SDL_CreateMutex();
     client.m_quit   = SDL_CreateMutex();
-    client.c_quit   = SDL_CreateCond();
+    client.c_quit   = SDL_CreateCondition();
 
     SDL_LockMutex(client.m_quit);
 
@@ -381,7 +381,7 @@ int abcprint_run_servers(struct file_list *ports, unsigned long baud)
 	    break;
 
 	if (!client.reap)
-	    SDL_CondWait(client.c_quit, client.m_quit);
+	    SDL_WaitCondition(client.c_quit, client.m_quit);
 
 	while (client.reap) {
 	    struct client_thread *victim = client.reap;

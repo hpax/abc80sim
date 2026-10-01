@@ -7,7 +7,7 @@
 
 #include "compiler.h"
 
-#include <SDL.h>
+#include <SDL3/SDL.h>
 
 #include "trace.h"
 #include "z80irq.h"

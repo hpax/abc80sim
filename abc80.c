@@ -19,8 +19,8 @@
 #include "charset.h"
 #include "abcfile.h"
 
-#include <SDL_main.h>
-#include <SDL_thread.h>
+#include <SDL3/SDL_main.h>
+#include <SDL3/SDL_thread.h>
 
 static int z80_thread(void *);
 
@@ -661,7 +661,7 @@ int main(int argc, char **argv)
     /*
      * Off we go...
      */
-    cpu_thread = SDL_CreateThread(z80_thread, NULL);
+    cpu_thread = SDL_CreateThread(z80_thread, "z80", NULL);
     event_loop();               /* Handling external events and screen */
     atomic_store(&z80_quit, true);
     SDL_WaitThread(cpu_thread, NULL);

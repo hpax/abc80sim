@@ -76,12 +76,11 @@ PA_ADD_CFLAGS([-fno-common])
 dnl gcc stack protector; also needed for MinGW to build dirent.h correctly...
 PA_ADD_CFLAGS([-fstack-protector])
 
-dnl See if we can find sdl-config
-AC_CHECK_TOOL([SDL_CONFIG], [sdl-config], [false])
-AS_IF(["$SDL_CONFIG" --cflags >/dev/null 2>&1],
-      [CPPFLAGS="$CPPFLAGS `"$SDL_CONFIG" --cflags`"
-       LIBS="$LIBS `"$SDL_CONFIG" --libs`"],
-      [AC_MSG_WARN([sdl-config not found or not functional, this is probably bad news])])
+dnl SDL3
+PKG_PROG_PKG_CONFIG
+PKG_CHECK_MODULES([SDL3], [sdl3])
+CPPFLAGS="$CPPFLAGS $SDL3_CFLAGS"
+LIBS="$LIBS $SDL3_LIBS"
 
 dnl Hack: on windows, build as a console app but create abc80win.exe
 pa_libs_win="`echo "$LIBS" | sed -e 's/-mwindows//'`"
@@ -91,7 +90,7 @@ AS_IF([test x"$LIBS" != x"$pa_libs_win"],
       ])
 
 dnl SDL headers
-AC_CHECK_HEADERS(SDL.h)
+AC_CHECK_HEADERS(SDL3/SDL.h)
 AC_CHECK_HEADERS(png.h)
 
 dnl Bitwise operations

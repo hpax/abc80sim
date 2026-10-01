@@ -2,8 +2,7 @@
 #define SCREENSHOT_H
 
 #include "compiler.h"
-#include <SDL.h>
 
-int screenshot(SDL_Surface *, const char *);
+int screenshot(const uint32_t *, unsigned int, unsigned int, const char *);
 
 #endif

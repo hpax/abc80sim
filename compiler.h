@@ -128,7 +128,7 @@
 #define WORDS_BIGENDIAN		(__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__)
 #elif !defined(NOT_USING_SDL)
 
-#include <SDL.h>		/* Last resort... */
+#include <SDL3/SDL.h>		/* Last resort... */
 
 #define WORDS_LITTLEENDIAN	(SDL_BYTEORDER == SDL_LIL_ENDIAN)
 #define WORDS_BIGENDIAN		(SDL_BYTEORDER == SDL_BIG_ENDIAN)

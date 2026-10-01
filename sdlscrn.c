@@ -2,6 +2,8 @@
  * sdlscrn.c
  *
  * ABC80/802 screen emulation (40x24/80x24)
+ *
+ * Copyright (C) 2026 H. Peter Anvin <hpa@zytor.com>
  */
 
 #include "compiler.h"
@@ -49,9 +51,9 @@ static struct argb {
 };
 
 /* Mutexes for interaction with the CPU thread */
-static SDL_mutex *screen_mutex;	/* Lock screen operation */
-static SDL_mutex *magic_mutex;	/* "Magic" operation started */
-static SDL_cond	 *magic_done;	/* "Magic" operation finished */
+static SDL_Mutex *screen_mutex;	/* Lock screen operation */
+static SDL_Mutex *magic_mutex;		/* "Magic" operation started */
+static SDL_Condition *magic_done;	/* "Magic" operation finished */
 
 #define VRAM_SIZE  2048
 #define VRAM_MASK  (VRAM_SIZE-1)
@@ -105,15 +107,17 @@ struct xy {
 };
 static struct xy addr_to_xy_tbl[2][2048];
 
-/* A local abstraction of a drawing surface */
+/* A local framebuffer used for rendering and screenshots */
 struct surface {
-    SDL_Surface *surf;		/* SDL_Surface object */
-    Uint32 colors[NCOLORS];
-    int lock_count;		/* Lock nesting count */
-    uint64_t updated;		/* Time stamp of last update */
+    uint32_t pixels[PX_WIDTH * PX_HEIGHT];
+    uint32_t colors[NCOLORS];
 };
 
-static struct surface rscreen;	/* The "physical" screen surface */
+static struct surface rscreen;
+static SDL_Window *screen_window;
+static SDL_Renderer *screen_renderer;
+static SDL_Texture *screen_texture;
+static Uint32 user_event_base;
 
 /*
  * Give the x,y coordinates for a given location in shadow video RAM
@@ -156,25 +160,6 @@ static inline unsigned int screenoffs(uint8_t y, uint8_t x, bool m40)
 static inline uint8_t screendata(uint8_t y, uint8_t x)
 {
     return vdu.vram[(screenoffs(y, x, vdu.mode40) + vdu.startaddr) & VRAM_MASK];
-}
-
-/*
- * Prevent/allow screen refresh
- */
-static void lock_screen(struct surface *s)
-{
-    if (!s->lock_count++)
-	SDL_LockSurface(s->surf);
-}
-
-static void unlock_screen(struct surface *s)
-{
-    if (s->lock_count > 0)
-	SDL_UnlockSurface(s->surf);
-    else if (unlikely(s->lock_count < 0))
-	abort();		/* SHOULD NEVER HAPPEN */
-
-    s->lock_count--;
 }
 
 /*
@@ -383,7 +368,7 @@ put_screen(struct surface *s, unsigned int tx, unsigned int ty, bool blink)
     for (i = 0; i < 4; i++)
 	fg_color[i] = s->colors[fgcolor[vdu.fgctl & 0x7f][i]];
 
-    pixelp = ((uint32_t *) s->surf->pixels) +
+    pixelp = s->pixels +
 	(ty * PX_WIDTH * FONT_YSIZE * FONT_YDUP) +
 	(tx * FONT_XSIZE * FONT_XDUP);
 
@@ -503,7 +488,7 @@ static void interpolate_screen(struct surface *s)
     /* Total logical lines */
     const size_t lxheight = TS_HEIGHT*FONT_YSIZE;
 
-    p0 = (uint32_t *)s->surf->pixels;
+    p0 = s->pixels;
     p1 = p0 + pxwidth;
     p2 = p1 + pxwidth;
 
@@ -576,10 +561,18 @@ static void interpolate_screen(struct surface *s)
 
 static void update_screen(struct surface *s)
 {
-    if (s->lock_count > 0)
+    if (!screen_renderer || !screen_texture)
 	return;
 
-    SDL_Flip(s->surf);
+    if (!SDL_UpdateTexture(screen_texture, NULL, s->pixels,
+			   PX_WIDTH * sizeof s->pixels[0]) ||
+	!SDL_RenderClear(screen_renderer) ||
+	!SDL_RenderTexture(screen_renderer, screen_texture, NULL, NULL)) {
+	fprintf(stderr, "%s: screen update failed: %s\n",
+		program_name, SDL_GetError());
+	return;
+    }
+    SDL_RenderPresent(screen_renderer);
 }
 
 /*
@@ -591,16 +584,14 @@ static void refresh_screen(struct surface *s, bool force_blink)
     unsigned int x, y;
     bool blink;
 
-    if (unlikely(!s || !s->surf))
+    if (unlikely(!s))
 	    return;		/* Nothing to do */
 
-    SDL_mutexP(screen_mutex);
+    SDL_LockMutex(screen_mutex);
     vdu = xfr;
-    SDL_mutexV(screen_mutex);
+    SDL_UnlockMutex(screen_mutex);
 
     blink = force_blink | vdu.blink_on;
-
-    lock_screen(s);
 
     make_attributes();
     for (y = 0; y < TS_HEIGHT; y++)
@@ -609,7 +600,6 @@ static void refresh_screen(struct surface *s, bool force_blink)
 
     interpolate_screen(s);
 
-    unlock_screen(s);
     update_screen(s);
 }
 
@@ -621,25 +611,19 @@ void setmode40(bool m40)
 	abc80_mem_mode80(!m40);
 }
 
-/*
- * Wrap an SDL_Surface in our local stuff
- */
 static struct surface *init_surface(struct surface *s)
 {
     int i;
 
-    if (unlikely(!s || !s->surf))
+    if (unlikely(!s))
 	return NULL;
 
-    /* Convert colors to preferred machine representation */
     for (i = 0; i < NCOLORS; i++) {
-	s->colors[i] = SDL_MapRGB(s->surf->format,
-				  rgbcolors[i].r, rgbcolors[i].g,
-				  rgbcolors[i].b);
+	s->colors[i] = UINT32_C(0xff000000) |
+	    ((uint32_t)rgbcolors[i].r << 16) |
+	    ((uint32_t)rgbcolors[i].g << 8) |
+	    rgbcolors[i].b;
     }
-
-    /* Surface is unlocked */
-    s->lock_count = 0;
 
     return s;
 }
@@ -651,14 +635,12 @@ void abc_screenshot(const char *path)
 {
     struct surface s;
 
-    s.surf = SDL_CreateRGBSurface(SDL_SWSURFACE, PX_WIDTH, PX_HEIGHT, 32,
-				  0x00ff0000, 0x0000ff00, 0x000000ff, 0);
+    memset(&s, 0, sizeof s);
     if (!init_surface(&s))
 	return;
     refresh_screen(&s, true);	/* Always snapshot with blink on */
 
-    screenshot(s.surf, path);
-    SDL_FreeSurface(s.surf);
+    screenshot(s.pixels, PX_WIDTH, PX_HEIGHT, path);
 }
 
 /*
@@ -683,9 +665,9 @@ void dump_txt_screen(const char *path, const char *file)
 	f = hf->f;
     }
 
-    SDL_mutexP(screen_mutex);
+    SDL_LockMutex(screen_mutex);
     vdu = cpu;
-    SDL_mutexV(screen_mutex);
+    SDL_UnlockMutex(screen_mutex);
 
     make_attributes();
     for (ty = 0; ty < TS_HEIGHT; ty++) {
@@ -710,9 +692,8 @@ void dump_txt_screen(const char *path, const char *file)
     }
 }
 
-/* SDL_USEREVENT <= type < SDL_NUMEVENTS */
 enum user_event {
-    UEV_MAGIC = SDL_USEREVENT,
+    UEV_MAGIC,
     UEV_REFRESH_SCREEN,
     UEV_ENABLE_KEYBOARD,
     UEV_END
@@ -723,51 +704,50 @@ enum user_event {
  */
 void screen_init(bool width40, bool color)
 {
-    int window = 1;		/* True = run in a window */
-    int debug = 1;		/* False = force clean shutdown */
     int i, x, y;
-    Uint32 sdlinit;
+    Uint32 sdlinit = opts.headless ? SDL_INIT_EVENTS : SDL_INIT_VIDEO;
 
-    atexit(SDL_Quit);
-
-    sdlinit = SDL_INIT_TIMER;
-    /*
-     * The event subsystem is part of the video subsystem, so we need
-     * it even for headless operation.
-     */
-    sdlinit |= SDL_INIT_VIDEO;
-
-    if (debug)
-	    sdlinit |= SDL_INIT_NOPARACHUTE;
-
-    if (SDL_Init(sdlinit))
+    if (!SDL_Init(sdlinit)) {
+	fprintf(stderr, "%s: unable to initialize SDL: %s\n",
+		program_name, SDL_GetError());
 	return;
-
-    assert((int)UEV_END <= (int)SDL_NUMEVENTS);
-
-    if (!opts.headless) {
-	rscreen.surf = SDL_SetVideoMode(PX_WIDTH, PX_HEIGHT, 32,
-					SDL_HWSURFACE | SDL_DOUBLEBUF |
-					(window ? 0 : SDL_FULLSCREEN));
-
-	/* No mouse cursor in full screen mode */
-	if (!window)
-	    SDL_ShowCursor(SDL_DISABLE);
-	if (!init_surface(&rscreen))
-	    return;
-
-	/* Enable keyboard decoding */
-	SDL_EnableUNICODE(1);
-
-	/* Enable keyboard repeat */
-	SDL_EnableKeyRepeat(SDL_DEFAULT_REPEAT_DELAY,
-			    SDL_DEFAULT_REPEAT_INTERVAL);
     }
 
-    /* Create interlock mutexes */
+    user_event_base = SDL_RegisterEvents(UEV_END);
+    if (!user_event_base) {
+	fprintf(stderr, "%s: unable to register SDL events: %s\n",
+		program_name, SDL_GetError());
+	return;
+    }
+
     screen_mutex = SDL_CreateMutex();
-    magic_mutex	 = SDL_CreateMutex();
-    magic_done	 = SDL_CreateCond();
+    magic_mutex  = SDL_CreateMutex();
+    magic_done   = SDL_CreateCondition();
+    if (!screen_mutex || !magic_mutex || !magic_done) {
+	fprintf(stderr, "%s: unable to create SDL synchronization objects: %s\n",
+		program_name, SDL_GetError());
+	screen_reset();
+	return;
+    }
+
+    if (!opts.headless) {
+	screen_window = SDL_CreateWindow("abc80sim", PX_WIDTH, PX_HEIGHT, 0);
+	if (screen_window)
+	    screen_renderer = SDL_CreateRenderer(screen_window, NULL);
+	if (screen_renderer)
+	    screen_texture = SDL_CreateTexture(screen_renderer,
+					       SDL_PIXELFORMAT_ARGB8888,
+					       SDL_TEXTUREACCESS_STREAMING,
+					       PX_WIDTH, PX_HEIGHT);
+	if (!screen_texture) {
+	    fprintf(stderr, "%s: unable to create SDL renderer: %s\n",
+		    program_name, SDL_GetError());
+	    screen_reset();
+	    return;
+	}
+	if (!init_surface(&rscreen))
+	    return;
+    }
 
     /* If not color, then overwrite colors 1-6 with white */
     if (!color) {
@@ -809,7 +789,25 @@ void screen_init(bool width40, bool color)
  */
 void screen_reset(void)
 {
-    /* Handled by atexit */
+    if (screen_texture)
+	SDL_DestroyTexture(screen_texture);
+    if (screen_renderer)
+	SDL_DestroyRenderer(screen_renderer);
+    if (screen_window)
+	SDL_DestroyWindow(screen_window);
+    if (magic_done)
+	SDL_DestroyCondition(magic_done);
+    if (magic_mutex)
+	SDL_DestroyMutex(magic_mutex);
+    if (screen_mutex)
+	SDL_DestroyMutex(screen_mutex);
+    screen_texture = NULL;
+    screen_renderer = NULL;
+    screen_window = NULL;
+    magic_done = NULL;
+    magic_mutex = NULL;
+    screen_mutex = NULL;
+    SDL_Quit();
 }
 
 enum kshift {
@@ -823,18 +821,18 @@ enum kshift {
  * This is done regardless of the Alt status, so it can be used
  * to decode Alt magic operations, too.
  */
-static int sym_to_abc(const SDL_keysym *ks)
+static int sym_to_abc(const SDL_KeyboardEvent *key)
 {
     int abcsym;
     enum kshift kshift;
     int ctlmask;
 
-    kshift = ((ks->mod & (KMOD_LALT | KMOD_RALT)) ? KSH_ALT : 0)
-	| ((ks->mod & (KMOD_LCTRL | KMOD_RCTRL)) ? KSH_CTRL : 0)
-	| ((ks->mod & (KMOD_LSHIFT | KMOD_RSHIFT)) ? KSH_SHIFT : 0);
+    kshift = ((key->mod & SDL_KMOD_ALT) ? KSH_ALT : 0)
+	| ((key->mod & SDL_KMOD_CTRL) ? KSH_CTRL : 0)
+	| ((key->mod & SDL_KMOD_SHIFT) ? KSH_SHIFT : 0);
     ctlmask = kshift & KSH_CTRL ? 0x1f : 0xff;
 
-    switch (ks->sym) {
+    switch (key->key) {
     case SDLK_LEFT:
 	abcsym = 8;		/* Backspace/back arrow */
 	break;
@@ -851,7 +849,7 @@ static int sym_to_abc(const SDL_keysym *ks)
     case SDLK_F6:
     case SDLK_F7:
     case SDLK_F8:
-	abcsym = (ks->sym - SDLK_F1 + 192) + ((int)kshift << 3);
+	abcsym = (key->key - SDLK_F1 + 192) + ((int)kshift << 3);
 	break;
 
     case SDLK_ESCAPE:		/* Equal to Ctrl-< */
@@ -873,7 +871,7 @@ static int sym_to_abc(const SDL_keysym *ks)
     }
 
     if (abcsym < 0) {
-	abcsym = unicode_to_abc(ks->unicode);
+	abcsym = unicode_to_abc(key->key);
 	switch (abcsym) {
 	case ' ':
 	    abcsym &= ctlmask;
@@ -911,7 +909,7 @@ static inline void push_user_event(enum user_event ev, int code, void *data)
     SDL_Event event;
 
     memset(&event, 0, sizeof event);
-    event.type = ev;
+    event.type = user_event_base + ev;
     event.user.code = code;
     event.user.data1 = data;
     SDL_PushEvent(&event);
@@ -922,7 +920,7 @@ static void push_quit_event(void)
    SDL_Event event;
 
     memset(&event, 0, sizeof event);
-    event.type = SDL_QUIT;
+    event.type = SDL_EVENT_QUIT;
     SDL_PushEvent(&event);
 }
 
@@ -969,55 +967,55 @@ static void do_magic_from_event_loop(int abcsym)
 void event_loop(void)
 {
     SDL_Event event;
-    int keyboard_scan = -1;	/* No key currently down */
+    SDL_Scancode keyboard_scan = SDL_SCANCODE_UNKNOWN;
     static bool keyboard_enabled = false;
     int abcsym;
 
     while (SDL_WaitEvent(&event)) {
+	if (event.type == user_event_base + UEV_REFRESH_SCREEN) {
+	    refresh_screen(&rscreen, false);
+	    continue;
+	}
+	if (event.type == user_event_base + UEV_ENABLE_KEYBOARD) {
+	    keyboard_enabled = true;
+	    continue;
+	}
+	if (event.type == user_event_base + UEV_MAGIC) {
+	    bool *done = event.user.data1;
+
+	    do_magic_from_event_loop(event.user.code);
+	    *done = true;
+	    SDL_BroadcastCondition(magic_done);
+	    continue;
+	}
+
 	switch (event.type) {
-	case SDL_KEYDOWN:
-	    abcsym = sym_to_abc(&event.key.keysym);
+	case SDL_EVENT_KEY_DOWN:
+	    if (event.key.repeat)
+		break;
+	    abcsym = sym_to_abc(&event.key);
 	    if (abcsym >= 0) {
-		if (event.key.keysym.mod & (KMOD_LALT|KMOD_RALT)) {
+		if (event.key.mod & SDL_KMOD_ALT) {
 		    do_magic_from_event_loop(abcsym);
 		} else if (keyboard_enabled && abcsym >= 0) {
 		    /*
 		     * Remember which key so we can tell
 		     * when it is released
 		     */
-		    keyboard_scan = event.key.keysym.scancode;
+		    keyboard_scan = event.key.scancode;
 		    keyboard_down(abcsym);
 		}
 	    }
 	    break;
 
-	case SDL_KEYUP:
+	case SDL_EVENT_KEY_UP:
 	    if (keyboard_enabled) {
-		if (event.key.keysym.scancode == keyboard_scan)
+		if (event.key.scancode == keyboard_scan)
 		    keyboard_up();
 	    }
 	    break;
 
-	case UEV_REFRESH_SCREEN:
-	    /* Time to update the screen */
-	    refresh_screen(&rscreen, false);
-	    break;
-
-	case UEV_ENABLE_KEYBOARD:
-	    /* Script file done */
-	    keyboard_enabled = true;
-	    break;
-
-	case UEV_MAGIC:
-	{
-	    bool *done = event.user.data1;
-	    do_magic_from_event_loop(event.user.code);
-	    *done = true;
-	    SDL_CondBroadcast(magic_done);
-	}
-	break;
-
-	case SDL_QUIT:
+	case SDL_EVENT_QUIT:
 	    return;		/* Return to main(), terminate */
 
 	default:
@@ -1054,11 +1052,11 @@ void do_magic(int abcsym)
     if (abcsym >= 0 && abcsym <= 255) {
 	bool done = false;
 
-	SDL_mutexP(magic_mutex);
+	SDL_LockMutex(magic_mutex);
 	push_user_event(UEV_MAGIC, abcsym, &done);
 	while (!done)
-	    SDL_CondWait(magic_done, magic_mutex);
-	SDL_mutexV(magic_mutex);
+	    SDL_WaitCondition(magic_done, magic_mutex);
+	SDL_UnlockMutex(magic_mutex);
     }
 }
 
@@ -1071,9 +1069,9 @@ void do_quit(void)
 /* Used from the CPU thread context to cause a screen redraw */
 void trigger_screen_refresh(void)
 {
-    SDL_mutexP(screen_mutex);
+    SDL_LockMutex(screen_mutex);
     xfr = cpu;
-    SDL_mutexV(screen_mutex);
+    SDL_UnlockMutex(screen_mutex);
 
     if (!opts.headless)
 	push_user_event(UEV_REFRESH_SCREEN, 0, NULL);
@@ -1103,14 +1101,14 @@ void crtc_out(uint16_t port, uint8_t data)
     if (crtc_addr >= 16)	/* Only R0-R15 are writable */
 	return;
 
-    SDL_mutexP(screen_mutex);
+    SDL_LockMutex(screen_mutex);
 
     old_data = cpu.crtc.regs[crtc_addr];
     cpu.crtc.regs[crtc_addr] = data;
     cpu.startaddr = ((cpu.crtc.r.starth & 0x3f) << 8) + cpu.crtc.r.startl;
     cpu.curaddr = ((cpu.crtc.r.curh & 0x3f) << 8) + cpu.crtc.r.curl;
 
-    SDL_mutexV(screen_mutex);
+    SDL_UnlockMutex(screen_mutex);
 
     if (crtc_addr == 0x0a &&
 	(old_data & 0x60) == 0x20 && (data & 0x60) != 0x20) {

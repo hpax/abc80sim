@@ -3,7 +3,7 @@
 
 #include "compiler.h"
 
-#include <SDL.h>
+#include <SDL3/SDL.h>
 
 extern void screen_init(bool, bool);
 extern void screen_reset(void);
