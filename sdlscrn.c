@@ -825,14 +825,31 @@ static int sym_to_abc(const SDL_KeyboardEvent *key)
 {
     int abcsym;
     enum kshift kshift;
-    int ctlmask;
+    unsigned int ctlmask;
+    SDL_Keycode code;
+    SDL_Keymod mod;
+    unsigned int lower;
+
+    /*
+     * Get the key symbol associated with the *modified* key,
+     * ignoring Ctrl and Alt
+     */
+    mod = key->mod & ~(SDL_KMOD_CTRL | SDL_KMOD_ALT);
+    code = SDL_GetKeyFromScancode(key->scancode, mod, false);
+
+    fprintf(stderr, "scancode = %08x key = %08x %08x mod = %08x down = %d, repeat = %d\n",
+	    key->scancode, key->key, code, key->mod, key->down, key->repeat);
 
     kshift = ((key->mod & SDL_KMOD_ALT) ? KSH_ALT : 0)
 	| ((key->mod & SDL_KMOD_CTRL) ? KSH_CTRL : 0)
 	| ((key->mod & SDL_KMOD_SHIFT) ? KSH_SHIFT : 0);
-    ctlmask = kshift & KSH_CTRL ? 0x1f : 0xff;
+    ctlmask = (key->mod & SDL_KMOD_CTRL) ? 0x1f : 0xff;
+    lower = !!(key->mod & SDL_KMOD_SHIFT) == !!(key->mod & SDL_KMOD_CAPS)
+	? 0x20 : 0x00;
 
-    switch (key->key) {
+    abcsym = -1;
+
+    switch (code) {
     case SDLK_LEFT:
 	abcsym = 8;		/* Backspace/back arrow */
 	break;
@@ -865,13 +882,35 @@ static int sym_to_abc(const SDL_KeyboardEvent *key)
 	    abcsym = 'q';
 	break;
 
+    case '[':
+    case '{':
+    case ']':
+    case '}':
+    case '\\':
+    case '|':
+	/* Forcibly make these behave like letters */
+	abcsym = ((code & ~0x20) | lower) & ctlmask;
+	break;
+
     default:
-	abcsym = -1;
+	if (code > 0x1fffff) {
+	    /* Key that are dead keys on Swedish keyboards */
+	    switch (key->scancode) {
+	    case SDL_SCANCODE_EQUALS:
+		abcsym = (0x40 | lower) & ctlmask; /* ´ ` -> É */
+		break;
+	    case SDL_SCANCODE_RIGHTBRACKET:
+		abcsym = (0x5e | lower) & ctlmask; /* ¨ ^ -> Ü */
+		break;
+	    default:
+		break;
+	    }
+	};
 	break;
     }
 
     if (abcsym < 0) {
-	abcsym = unicode_to_abc(key->key);
+	abcsym = unicode_to_abc(code);
 	switch (abcsym) {
 	case ' ':
 	    abcsym &= ctlmask;
@@ -882,6 +921,8 @@ static int sym_to_abc(const SDL_KeyboardEvent *key)
 		abcsym = 127;
 	    break;
 	default:
+	    if ((unsigned int)abcsym > 127)
+		abcsym = -1;
 	    break;
 	}
     }
@@ -991,19 +1032,17 @@ void event_loop(void)
 
 	switch (event.type) {
 	case SDL_EVENT_KEY_DOWN:
-	    if (event.key.repeat)
-		break;
 	    abcsym = sym_to_abc(&event.key);
 	    if (abcsym >= 0) {
-		if (event.key.mod & SDL_KMOD_ALT) {
+		if ((event.key.mod & SDL_KMOD_ALT) && !event.key.repeat) {
 		    do_magic_from_event_loop(abcsym);
-		} else if (keyboard_enabled && abcsym >= 0) {
+		} else if (keyboard_enabled) {
 		    /*
 		     * Remember which key so we can tell
 		     * when it is released
 		     */
 		    keyboard_scan = event.key.scancode;
-		    keyboard_down(abcsym);
+		    keyboard_down(abcsym, event.key.repeat);
 		}
 	    }
 	    break;

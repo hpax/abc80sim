@@ -503,16 +503,19 @@ static void script_next_char(void)
 
 /* Need to handle ABC802/806 up/down mode, etc. */
 
-void keyboard_down(int key)
+void keyboard_down(int key, bool repeat)
 {
     uint8_t sym = key;
 
+    if (key < 0)
+	return;
+
     if (is_abc80()) {
-        if (sym & ~127)
+        if (repeat || (key > 127))
             return;
     }
 
-    atomic_store(&keyb_data, sym | KEYB_NEW | KEYB_DOWN);
+    atomic_store(&keyb_data, (uint8_t)sym | KEYB_NEW | KEYB_DOWN);
     z80_interrupt(keyb_irq);
 }
 

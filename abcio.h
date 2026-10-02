@@ -65,7 +65,7 @@ extern void printer_init(void);
 extern void dart_pr_out(uint16_t port, uint8_t v);
 extern uint8_t dart_pr_in(uint16_t port);
 
-extern void keyboard_down(int sym);
+extern void keyboard_down(int sym, bool repeat);
 extern void keyboard_up(void);
 extern bool faketype;
 extern void cursor_enable_hook(void);
