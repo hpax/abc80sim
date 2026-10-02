@@ -74,8 +74,6 @@ struct z80_state_struct {
     uint8_t ixreg;
     int8_t  ixdisp;		/* Displacement byte for (Ixy+n) */
 
-    uint8_t rctr;		/* counter part of REG_R */
-
     uint8_t interrupt_mode;
     bool iff1, iff2, ei_shadow, signal_eoi;
     bool q;                    /* F register modified by current instruction */
