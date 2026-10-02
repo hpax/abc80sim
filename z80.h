@@ -158,23 +158,6 @@ enum uncond {
 #define TSTATE_INIT	z80_state.init.tc
 #define REG_LAST_PC	z80_state.init.pc.w
 
-
-/* Get/set the R register and update REG_R; this speeds up the counter */
-static inline uint16_t z80_get_ir(void)
-{
-    return (REG_IR & ~0x7f) | (z80_state.rctr & 0x7f);
-}
-
-static inline uint8_t z80_get_r(void)
-{
-    return z80_get_ir();	/* R is just the low byte of IR */
-}
-
-static inline uint8_t z80_set_r(uint8_t val)
-{
-    return z80_state.rctr = REG_R = val;
-}
-
 /*
  * Flag accessors:
  *

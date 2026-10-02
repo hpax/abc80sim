@@ -140,8 +140,8 @@ static inline void do_swapw(uint16_t *a, uint16_t *b)
  */
 static void rfsh(void)
 {
-    z80_state.rctr++;
-    mem_rfsh(z80_get_ir());
+    REG_IR = (REG_IR & ~0x7f) | ((REG_IR + 1) & 0x7f);
+    mem_rfsh(REG_IR);
 }
 
 /*
@@ -1744,10 +1744,10 @@ static void do_ED_instruction(void)
         break;
 
     case 0x5F:                 /* ld a, r */
-        do_ld_a_ir(z80_get_r());
+        do_ld_a_ir(REG_R);
         break;
     case 0x4F:                 /* ld r, a */
-	z80_set_r(REG_A);
+	REG_R = REG_A;
         break;
 
     CASE4rp(0x4B):	       /* ld rp, (address) */
@@ -2323,7 +2323,7 @@ void z80_dumpregs(FILE *f, const char *prefix)
 	fprintf(f, "%sBC=%04X DE=%04X HL=%04X IX=%04X IY=%04X SP=%04X\n"
 		"%sA=%02X F=%02X,%s I=%02X R=%02X BC\'=%04X DE\'=%04X HL\'=%04X AF\'=%04X\n",
 		prefix, REG_BC, REG_DE, REG_HL, REG_IX, REG_IY, REG_SP,
-		prefix, REG_A, REG_F, flagdis(REG_F), REG_I, z80_get_r(),
+		prefix, REG_A, REG_F, flagdis(REG_F), REG_I, REG_R,
 		REG_BCx, REG_DEx, REG_HLx, REG_AFx);
     } else {
 	/* Extended form */
@@ -2345,7 +2345,7 @@ void z80_dumpregs(FILE *f, const char *prefix)
 		REG_AF, REG_A, REG_F, flagdis(REG_F),
 		REG_IX, REG_IX, REG_IXH, REG_IXL,
 		REG_IY, REG_IY, REG_IYH, REG_IYL,
-		REG_I, z80_get_r(), REG_I, z80_get_r());
+		REG_I, REG_R, REG_I, REG_R);
 	fprintf(f,
 		"BC' = 0x%04x   %5u   %3u:%3u\n"
 		"DE' = 0x%04x   %5u   %3u:%3u\n"
