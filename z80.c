@@ -25,6 +25,7 @@
  * There are undobutedly bugs in the emulator.  If you discover any,
  * please do send a report.
  */
+/* Copyright (C) 2026 H. Peter Anvin <hpa@zytor.com> */
 #include "z80.h"
 #include "z80irq.h"
 #include "sysload.h"
@@ -56,6 +57,12 @@ static printf_func(1,2) void add_cputrace(const char *fmt, ...)
 }
 
 static void diffstate(void);
+
+static inline void set_flags(uint8_t flags)
+{
+    REG_F = flags;
+    z80_state.q = true;
+}
 
 /*
  * T-states (clock cycles) for various instructions.
@@ -469,7 +476,7 @@ static void do_add_flags(int a, int b, int result)
      * up the flag values in the above tables.
      */
 
-    f = REG_F & ~(SIGN_MASK | ZERO_MASK | HALF_CARRY_MASK
+    f = REG_F & ~(SIGN_MASK | ZERO_MASK | HALF_CARRY_MASK | XY_MASK
                   | OVERFLOW_MASK | SUBTRACT_MASK | CARRY_MASK);
 
     index = ((a & 0x88) >> 1) | ((b & 0x88) >> 2) | ((result & 0x88) >> 3);
@@ -478,7 +485,7 @@ static void do_add_flags(int a, int b, int result)
     if ((result & 0xFF) == 0)
         f |= ZERO_MASK;
 
-    REG_F = f;
+    set_flags(f | (result & XY_MASK));
 }
 
 static void do_sub_flags(int a, int b, int result)
@@ -493,8 +500,9 @@ static void do_sub_flags(int a, int b, int result)
      * up the flag values in the above tables.
      */
 
-    f = (REG_F | SUBTRACT_MASK) & ~(SIGN_MASK | ZERO_MASK | HALF_CARRY_MASK
-                                    | OVERFLOW_MASK | CARRY_MASK);
+    f = (REG_F | SUBTRACT_MASK) & ~(SIGN_MASK | ZERO_MASK |
+                                    HALF_CARRY_MASK | XY_MASK |
+                                    OVERFLOW_MASK | CARRY_MASK);
 
     index = ((a & 0x88) >> 1) | ((b & 0x88) >> 2) | ((result & 0x88) >> 3);
     f |= subtract_half_carry_table[index & 7] |
@@ -503,7 +511,7 @@ static void do_sub_flags(int a, int b, int result)
     if ((result & 0xFF) == 0)
         f |= ZERO_MASK;
 
-    REG_F = f;
+    set_flags(f | (result & XY_MASK));
 }
 
 static uint16_t do_adc_word_flags(uint16_t a, uint16_t b)
@@ -519,7 +527,7 @@ static uint16_t do_adc_word_flags(uint16_t a, uint16_t b)
      * up the flag values in the above tables.
      */
 
-    f = REG_F & ~(SIGN_MASK | ZERO_MASK | HALF_CARRY_MASK
+    f = REG_F & ~(SIGN_MASK | ZERO_MASK | HALF_CARRY_MASK | XY_MASK
                   | OVERFLOW_MASK | SUBTRACT_MASK | CARRY_MASK);
 
     index = ((a & 0x8800) >> 9) | ((b & 0x8800) >> 10) |
@@ -530,7 +538,7 @@ static uint16_t do_adc_word_flags(uint16_t a, uint16_t b)
     if (!result)
         f |= ZERO_MASK;
 
-    REG_F = f;
+    set_flags(f | ((result >> 8) & XY_MASK));
     return result;
 }
 
@@ -547,7 +555,7 @@ static uint16_t do_add_word_flags(uint16_t a, uint16_t b)
      * up the flag values in the above tables.
      */
 
-    f = REG_F & ~(HALF_CARRY_MASK | SUBTRACT_MASK | CARRY_MASK);
+    f = REG_F & ~(HALF_CARRY_MASK | SUBTRACT_MASK | CARRY_MASK | XY_MASK);
 
     index = ((a & 0x8800) >> 9) | ((b & 0x8800) >> 10) |
         ((result & 0x8800) >> 11);
@@ -555,7 +563,7 @@ static uint16_t do_add_word_flags(uint16_t a, uint16_t b)
     f |= half_carry_table[index & 7] |
         (sign_carry_overflow_table[index >> 4] & CARRY_MASK);
 
-    REG_F = f;
+    set_flags(f | ((result >> 8) & XY_MASK));
     return result;
 }
 
@@ -573,7 +581,7 @@ static uint16_t do_sbc_word_flags(uint16_t a, uint16_t b)
      */
 
     f = (REG_F | SUBTRACT_MASK) &
-	~(SIGN_MASK | ZERO_MASK | HALF_CARRY_MASK
+	~(SIGN_MASK | ZERO_MASK | HALF_CARRY_MASK | XY_MASK
 	  | OVERFLOW_MASK | CARRY_MASK);
 
     index = ((a & 0x8800) >> 9) | ((b & 0x8800) >> 10) |
@@ -585,7 +593,7 @@ static uint16_t do_sbc_word_flags(uint16_t a, uint16_t b)
     if (!result)
         f |= ZERO_MASK;
 
-    REG_F = f;
+    set_flags(f | ((result >> 8) & XY_MASK));
     return result;
 }
 
@@ -595,7 +603,7 @@ static void do_inc_dec_byte(uint8_t op)
     uint8_t wrap;
     uint8_t value, set;
     const uint8_t clear = SUBTRACT_MASK | OVERFLOW_MASK |
-	HALF_CARRY_MASK | ZERO_MASK | SIGN_MASK;
+	HALF_CARRY_MASK | ZERO_MASK | SIGN_MASK | XY_MASK;
 
     if (op & 1) {
 	delta  = -1;
@@ -619,7 +627,7 @@ static void do_inc_dec_byte(uint8_t op)
     if ((int8_t)value < 0)
         set |= SIGN_MASK;
 
-    REG_F = (REG_F & ~clear) | set;
+    set_flags((REG_F & ~clear) | set | (value & XY_MASK));
 }
 
 /*
@@ -633,7 +641,8 @@ static void do_and_byte(int value)
 
     result = (REG_A &= value);
 
-    clear = CARRY_MASK | SUBTRACT_MASK | PARITY_MASK | ZERO_MASK | SIGN_MASK;
+    clear = CARRY_MASK | SUBTRACT_MASK | PARITY_MASK | ZERO_MASK | SIGN_MASK |
+        XY_MASK;
     set = HALF_CARRY_MASK;
 
     if (even_parity(result))
@@ -643,7 +652,7 @@ static void do_and_byte(int value)
     if (result & 0x80)
         set |= SIGN_MASK;
 
-    REG_F = (REG_F & ~clear) | set;
+    set_flags((REG_F & ~clear) | set | (result & XY_MASK));
 }
 
 static void do_or_byte(int value)
@@ -654,7 +663,7 @@ static void do_or_byte(int value)
     result = (REG_A |= value);
 
     clear = CARRY_MASK | SUBTRACT_MASK | PARITY_MASK
-        | HALF_CARRY_MASK | ZERO_MASK | SIGN_MASK;
+        | HALF_CARRY_MASK | ZERO_MASK | SIGN_MASK | XY_MASK;
     set = 0;
 
     if (even_parity(result))
@@ -664,7 +673,7 @@ static void do_or_byte(int value)
     if (result & 0x80)
         set |= SIGN_MASK;
 
-    REG_F = (REG_F & ~clear) | set;
+    set_flags((REG_F & ~clear) | set | (result & XY_MASK));
 }
 
 static void do_xor_byte(int value)
@@ -675,7 +684,7 @@ static void do_xor_byte(int value)
     result = (REG_A ^= value);
 
     clear = CARRY_MASK | SUBTRACT_MASK | PARITY_MASK
-        | HALF_CARRY_MASK | ZERO_MASK | SIGN_MASK;
+        | HALF_CARRY_MASK | ZERO_MASK | SIGN_MASK | XY_MASK;
     set = 0;
 
     if (even_parity(result))
@@ -685,7 +694,7 @@ static void do_xor_byte(int value)
     if (result & 0x80)
         set |= SIGN_MASK;
 
-    REG_F = (REG_F & ~clear) | set;
+    set_flags((REG_F & ~clear) | set | (result & XY_MASK));
 }
 
 static void do_add_byte(int value)
@@ -726,7 +735,7 @@ static void do_negate(void)
     REG_A = -a;
     do_sub_flags(0, a, REG_A);
     if (a == 0)
-        REG_F |= CARRY_MASK;
+        SET_CARRY();
 }
 
 static void do_sbc_byte(int value)
@@ -744,6 +753,7 @@ static void do_cp_byte(int value)
 
     result = (a = REG_A) - value;
     do_sub_flags(a, value, result);
+    set_flags((REG_F & ~XY_MASK) | (value & XY_MASK));
 }
 
 /* 8-bit arithmetic against the accumulator */
@@ -778,7 +788,10 @@ static inline int string_dir(uint8_t op)
 
 static void do_cpid(uint8_t op)
 {
-    do_cp_byte(mem_read(REG_HL));
+    uint8_t value = mem_read(REG_HL);
+    uint8_t result = REG_A - value;
+
+    do_cp_byte(value);
     REG_HL += string_dir(op);
     REG_BC--;
 
@@ -787,6 +800,8 @@ static void do_cpid(uint8_t op)
     else
         SET_OVERFLOW();
 
+    set_flags((REG_F & ~XY_MASK) | ((result - !!HALF_CARRY_FLAG) & X_MASK) |
+              (((result - !!HALF_CARRY_FLAG) & 2) << 4));
     string_rep(op, REG_BC == 0 || ZERO_FLAG);
 }
 
@@ -794,13 +809,13 @@ static uint8_t do_test_bit(uint8_t value, unsigned int bit)
 {
     uint8_t clear, set;
 
-    clear = SIGN_MASK | ZERO_MASK | OVERFLOW_MASK | SUBTRACT_MASK;
+    clear = SIGN_MASK | ZERO_MASK | OVERFLOW_MASK | SUBTRACT_MASK | XY_MASK;
     set = HALF_CARRY_MASK;
 
     if ((value & (1 << bit)) == 0)
         set |= ZERO_MASK;
 
-    REG_F = (REG_F & ~clear) | set;
+    set_flags((REG_F & ~clear) | set | (value & XY_MASK));
     return value;
 }
 
@@ -815,7 +830,7 @@ static int rl_byte(int value)
     int result;
 
     clear = SIGN_MASK | ZERO_MASK | HALF_CARRY_MASK | PARITY_MASK |
-        SUBTRACT_MASK | CARRY_MASK;
+        SUBTRACT_MASK | CARRY_MASK | XY_MASK;
     set = 0;
 
     if (CARRY_FLAG) {
@@ -833,7 +848,7 @@ static int rl_byte(int value)
     if (value & 0x80)
         set |= CARRY_MASK;
 
-    REG_F = (REG_F & ~clear) | set;
+    set_flags((REG_F & ~clear) | set | (result & XY_MASK));
 
     return result;
 }
@@ -849,7 +864,7 @@ static int rr_byte(int value)
     int result;
 
     clear = SIGN_MASK | ZERO_MASK | HALF_CARRY_MASK | PARITY_MASK |
-        SUBTRACT_MASK | CARRY_MASK;
+        SUBTRACT_MASK | CARRY_MASK | XY_MASK;
     set = 0;
 
     if (CARRY_FLAG) {
@@ -867,7 +882,7 @@ static int rr_byte(int value)
     if (value & 0x1)
         set |= CARRY_MASK;
 
-    REG_F = (REG_F & ~clear) | set;
+    set_flags((REG_F & ~clear) | set | (result & XY_MASK));
 
     return result;
 }
@@ -883,7 +898,7 @@ static int rlc_byte(int value)
     int result;
 
     clear = SIGN_MASK | ZERO_MASK | HALF_CARRY_MASK | PARITY_MASK |
-        SUBTRACT_MASK | CARRY_MASK;
+        SUBTRACT_MASK | CARRY_MASK | XY_MASK;
     set = 0;
 
     if (value & 0x80) {
@@ -900,7 +915,7 @@ static int rlc_byte(int value)
     if (even_parity(result))
         set |= PARITY_MASK;
 
-    REG_F = (REG_F & ~clear) | set;
+    set_flags((REG_F & ~clear) | set | (result & XY_MASK));
 
     return result;
 }
@@ -911,7 +926,7 @@ static int rrc_byte(int value)
     int result;
 
     clear = SIGN_MASK | ZERO_MASK | HALF_CARRY_MASK | PARITY_MASK |
-        SUBTRACT_MASK | CARRY_MASK;
+        SUBTRACT_MASK | CARRY_MASK | XY_MASK;
     set = 0;
 
     if (value & 0x1) {
@@ -928,7 +943,7 @@ static int rrc_byte(int value)
     if (even_parity(result))
         set |= PARITY_MASK;
 
-    REG_F = (REG_F & ~clear) | set;
+    set_flags((REG_F & ~clear) | set | (result & XY_MASK));
 
     return result;
 }
@@ -941,7 +956,7 @@ static void do_rla(void)
 {
     uint8_t clear, set;
 
-    clear = HALF_CARRY_MASK | SUBTRACT_MASK | CARRY_MASK;
+    clear = HALF_CARRY_MASK | SUBTRACT_MASK | CARRY_MASK | XY_MASK;
     set = 0;
 
     if (REG_A & 0x80)
@@ -953,14 +968,14 @@ static void do_rla(void)
         REG_A = (REG_A << 1) & 0xFF;
     }
 
-    REG_F = (REG_F & ~clear) | set;
+    set_flags((REG_F & ~clear) | set | (REG_A & XY_MASK));
 }
 
 static void do_rra(void)
 {
     uint8_t clear, set;
 
-    clear = HALF_CARRY_MASK | SUBTRACT_MASK | CARRY_MASK;
+    clear = HALF_CARRY_MASK | SUBTRACT_MASK | CARRY_MASK | XY_MASK;
     set = 0;
 
     if (REG_A & 0x1)
@@ -971,14 +986,14 @@ static void do_rra(void)
     } else {
         REG_A = REG_A >> 1;
     }
-    REG_F = (REG_F & ~clear) | set;
+    set_flags((REG_F & ~clear) | set | (REG_A & XY_MASK));
 }
 
 static void do_rlca(void)
 {
     uint8_t clear, set;
 
-    clear = HALF_CARRY_MASK | SUBTRACT_MASK | CARRY_MASK;
+    clear = HALF_CARRY_MASK | SUBTRACT_MASK | CARRY_MASK | XY_MASK;
     set = 0;
 
     if (REG_A & 0x80) {
@@ -987,14 +1002,14 @@ static void do_rlca(void)
     } else {
         REG_A = (REG_A << 1) & 0xFF;
     }
-    REG_F = (REG_F & ~clear) | set;
+    set_flags((REG_F & ~clear) | set | (REG_A & XY_MASK));
 }
 
 static void do_rrca(void)
 {
     uint8_t clear, set;
 
-    clear = HALF_CARRY_MASK | SUBTRACT_MASK | CARRY_MASK;
+    clear = HALF_CARRY_MASK | SUBTRACT_MASK | CARRY_MASK | XY_MASK;
     set = 0;
 
     if (REG_A & 0x1) {
@@ -1003,7 +1018,7 @@ static void do_rrca(void)
     } else {
         REG_A = REG_A >> 1;
     }
-    REG_F = (REG_F & ~clear) | set;
+    set_flags((REG_F & ~clear) | set | (REG_A & XY_MASK));
 }
 
 static int sla_byte(int value)
@@ -1012,7 +1027,7 @@ static int sla_byte(int value)
     int result;
 
     clear = SIGN_MASK | ZERO_MASK | HALF_CARRY_MASK | PARITY_MASK |
-        SUBTRACT_MASK | CARRY_MASK;
+        SUBTRACT_MASK | CARRY_MASK | XY_MASK;
     set = 0;
 
     result = value << 1;
@@ -1026,7 +1041,7 @@ static int sla_byte(int value)
     if (value & 0x80)
         set |= CARRY_MASK;
 
-    REG_F = (REG_F & ~clear) | set;
+    set_flags((REG_F & ~clear) | set | (result & XY_MASK));
 
     return result;
 }
@@ -1038,7 +1053,7 @@ static int sll_byte(int value)
     int result;
 
     clear = SIGN_MASK | ZERO_MASK | HALF_CARRY_MASK | PARITY_MASK |
-        SUBTRACT_MASK | CARRY_MASK;
+        SUBTRACT_MASK | CARRY_MASK | XY_MASK;
     set = 0;
 
     result = (value << 1) | 1;
@@ -1052,7 +1067,7 @@ static int sll_byte(int value)
     if (value & 0x80)
         set |= CARRY_MASK;
 
-    REG_F = (REG_F & ~clear) | set;
+    set_flags((REG_F & ~clear) | set | (result & XY_MASK));
 
     return result;
 }
@@ -1063,7 +1078,7 @@ static int sra_byte(int value)
     int result;
 
     clear = SIGN_MASK | ZERO_MASK | HALF_CARRY_MASK | PARITY_MASK |
-        SUBTRACT_MASK | CARRY_MASK;
+        SUBTRACT_MASK | CARRY_MASK | XY_MASK;
     set = 0;
 
     if (value & 0x80) {
@@ -1080,7 +1095,7 @@ static int sra_byte(int value)
     if (value & 0x1)
         set |= CARRY_MASK;
 
-    REG_F = (REG_F & ~clear) | set;
+    set_flags((REG_F & ~clear) | set | (result & XY_MASK));
 
     return result;
 }
@@ -1091,7 +1106,7 @@ static int srl_byte(int value)
     int result;
 
     clear = SIGN_MASK | ZERO_MASK | HALF_CARRY_MASK | PARITY_MASK |
-        SUBTRACT_MASK | CARRY_MASK;
+        SUBTRACT_MASK | CARRY_MASK | XY_MASK;
     set = 0;
 
     result = value >> 1;
@@ -1105,14 +1120,17 @@ static int srl_byte(int value)
     if (value & 0x1)
         set |= CARRY_MASK;
 
-    REG_F = (REG_F & ~clear) | set;
+    set_flags((REG_F & ~clear) | set | (result & XY_MASK));
 
     return result;
 }
 
 static void do_ldid(uint8_t op)
 {
-    mem_write(REG_DE, mem_read(REG_HL));
+    uint8_t value = mem_read(REG_HL);
+    uint8_t result = REG_A + value;
+
+    mem_write(REG_DE, value);
 
     REG_DE += string_dir(op);
     REG_HL += string_dir(op);
@@ -1125,6 +1143,8 @@ static void do_ldid(uint8_t op)
     else
         SET_OVERFLOW();
 
+    set_flags((REG_F & ~XY_MASK) | (result & X_MASK) |
+              ((result & 2) << 4));
     string_rep(op, REG_BC == 0);
 }
 
@@ -1133,7 +1153,7 @@ static void do_ld_a_ir(uint8_t val)
     uint8_t clear, set;
 
     clear = SIGN_MASK | ZERO_MASK | HALF_CARRY_MASK | OVERFLOW_MASK |
-        SUBTRACT_MASK;
+        SUBTRACT_MASK | XY_MASK;
     set = 0;
 
     REG_A = val;
@@ -1146,7 +1166,7 @@ static void do_ld_a_ir(uint8_t val)
     if (z80_state.iff2)
         set |= OVERFLOW_MASK;
 
-    REG_F = (REG_F & ~clear) | set;
+    set_flags((REG_F & ~clear) | set | (REG_A & XY_MASK));
 }
 
 static void do_daa(void)
@@ -1258,7 +1278,7 @@ static void do_rld(void)
     uint8_t clear, set;
 
     clear = SIGN_MASK | ZERO_MASK | HALF_CARRY_MASK | PARITY_MASK |
-        SUBTRACT_MASK;
+        SUBTRACT_MASK | XY_MASK;
     set = 0;
 
     old_value = mem_read(REG_HL);
@@ -1276,7 +1296,7 @@ static void do_rld(void)
     if (even_parity(REG_A))
         set |= PARITY_MASK;
 
-    REG_F = (REG_F & ~clear) | set;
+    set_flags((REG_F & ~clear) | set | (REG_A & XY_MASK));
     mem_write(REG_HL, new_value);
 }
 
@@ -1289,7 +1309,7 @@ static void do_rrd(void)
     uint8_t clear, set;
 
     clear = SIGN_MASK | ZERO_MASK | HALF_CARRY_MASK | PARITY_MASK |
-        SUBTRACT_MASK;
+        SUBTRACT_MASK | XY_MASK;
     set = 0;
 
     old_value = mem_read(REG_HL);
@@ -1307,7 +1327,7 @@ static void do_rrd(void)
     if (even_parity(REG_A))
         set |= PARITY_MASK;
 
-    REG_F = (REG_F & ~clear) | set;
+    set_flags((REG_F & ~clear) | set | (REG_A & XY_MASK));
     mem_write(REG_HL, new_value);
 }
 
@@ -1342,7 +1362,7 @@ static uint8_t in_with_flags(uint16_t port)
     uint8_t clear, set;
 
     clear = SIGN_MASK | ZERO_MASK | HALF_CARRY_MASK |
-        PARITY_MASK | SUBTRACT_MASK;
+        PARITY_MASK | SUBTRACT_MASK | XY_MASK;
     set = 0;
 
     value = z80_in(port);
@@ -1356,7 +1376,7 @@ static uint8_t in_with_flags(uint16_t port)
 
     /* What should the half-carry do?  Is this a mistake? */
 
-    REG_F = (REG_F & ~clear) | set;
+    set_flags((REG_F & ~clear) | set | (value & XY_MASK));
 
     return value;
 }
@@ -1490,6 +1510,7 @@ static void do_reset(void)
     z80_state.iff1 = false;
     z80_state.iff2 = false;
     z80_state.ei_shadow = false;
+    z80_state.q = false;
     z80_state.interrupt_mode = 0;
     z80_state.nmi_in_progress = false;
     z80_state.signal_eoi = false;
@@ -1665,8 +1686,10 @@ static void do_CB_ixiy(void)
 
     data = read_byte_hlix();
     data = do_bitop(op, data);
-    if ((op >> 6) == 1)	       /* BIT */
+    if ((op >> 6) == 1) {	       /* BIT */
+	set_flags((REG_F & ~XY_MASK) | ((hlix_addr() >> 8) & XY_MASK));
 	return;
+    }
 
     TSTATE += 3;
     write_byte_hlix(data);
@@ -1979,6 +2002,7 @@ enum z80_cond z80_run(enum z80_cond condrq)
 	if (cond & condrq)
 	    return cond;
 
+	z80_state.q = false;
 	fetch_m1_commit();
 
     indexed:
@@ -2004,7 +2028,8 @@ enum z80_cond z80_run(enum z80_cond condrq)
 
 	    case 0x2F:             /* cpl */
 		REG_A = ~REG_A;
-		REG_F |= (HALF_CARRY_MASK | SUBTRACT_MASK);
+		set_flags((REG_F & ~XY_MASK) | (REG_A & XY_MASK) |
+			  HALF_CARRY_MASK | SUBTRACT_MASK);
 		break;
 
 	    case 0x27:             /* daa */
@@ -2013,6 +2038,7 @@ enum z80_cond z80_run(enum z80_cond condrq)
 
 	    case 0x08:	       /* ex af, af' */
 		SWAPW(REG_AF, REG_AFx);
+		z80_state.q = true;
 		break;
 
 	    CASE8x(0x04):      /* inc xx */
@@ -2092,11 +2118,14 @@ enum z80_cond z80_run(enum z80_cond condrq)
 		break;
 
 	    case 0x37:             /* scf */
-		REG_F = (REG_F | CARRY_MASK) & ~(SUBTRACT_MASK | HALF_CARRY_MASK);
+		set_flags(((REG_F | CARRY_MASK) &
+			   ~(SUBTRACT_MASK | HALF_CARRY_MASK | XY_MASK)) |
+			  (REG_A & XY_MASK));
 		break;
 
 	    case 0x3F:             /* ccf */
-		REG_F = (REG_F ^ CARRY_MASK) & ~SUBTRACT_MASK;
+		set_flags(((REG_F ^ CARRY_MASK) &
+			   ~(SUBTRACT_MASK | XY_MASK)) | (REG_A & XY_MASK));
 		break;
 	    }
 	    break;
@@ -2139,9 +2168,11 @@ enum z80_cond z80_run(enum z80_cond condrq)
 
 	    switch (op) {
 	    case 0xDD:	       /* DD.. extended instruction */
+		z80_state.q = false;
 		op = start_indexed_insn(Z80_IX);
 		goto indexed;
 	    case 0xFD:	       /* FD.. extended instruction */
+		z80_state.q = false;
 		op = start_indexed_insn(Z80_IY);
 		goto indexed;
 

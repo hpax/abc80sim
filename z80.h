@@ -1,6 +1,8 @@
 #ifndef Z80_H
 #define Z80_H
 
+/* Copyright (C) 2026 H. Peter Anvin <hpa@zytor.com> */
+
 #include "compiler.h"
 
 #define Z80_ADDRESS_LIMIT	(1 << 16)
@@ -75,6 +77,7 @@ struct z80_state_struct {
 
     uint8_t interrupt_mode;
     bool iff1, iff2, ei_shadow, signal_eoi;
+    bool q;                    /* F register modified by current instruction */
     bool nmi_in_progress;       /* to prevent multiple simultaneous NMIs */
     bool running;		/* CPU is running */
     bool was_call_ret;		/* Previous instruction was a CALL, RST, RET */
@@ -164,7 +167,7 @@ enum uncond {
  * Flags are:
  *
  *	7   6   5   4   3   2   1   0
- *	S   Z   -   H   -  P/V  N   C
+ *	S   Z   Y   H   X  P/V  N   C
  *
  *	C	Carry
  *	N	Subtract
@@ -178,26 +181,30 @@ enum uncond {
 #define SUBTRACT_MASK		(0x2)
 #define PARITY_MASK		(0x4)
 #define OVERFLOW_MASK		(0x4)
+#define X_MASK			(0x8)
 #define HALF_CARRY_MASK		(0x10)
+#define Y_MASK			(0x20)
+#define XY_MASK			(X_MASK | Y_MASK)
 #define ZERO_MASK		(0x40)
 #define	SIGN_MASK		(0x80)
 #define ALL_FLAGS_MASK		(CARRY_MASK | SUBTRACT_MASK | OVERFLOW_MASK | \
-				 HALF_CARRY_MASK | ZERO_MASK | SIGN_MASK)
+				 HALF_CARRY_MASK | ZERO_MASK | SIGN_MASK | XY_MASK)
 
-#define SET_SIGN()		(REG_F |= SIGN_MASK)
-#define CLEAR_SIGN()		(REG_F &= (~SIGN_MASK))
-#define SET_ZERO()		(REG_F |= ZERO_MASK)
-#define CLEAR_ZERO()		(REG_F &= (~ZERO_MASK))
-#define SET_HALF_CARRY()	(REG_F |= HALF_CARRY_MASK)
-#define CLEAR_HALF_CARRY()	(REG_F &= (~HALF_CARRY_MASK))
-#define SET_OVERFLOW()		(REG_F |= OVERFLOW_MASK)
-#define CLEAR_OVERFLOW()	(REG_F &= (~OVERFLOW_MASK))
-#define SET_PARITY()		(REG_F |= PARITY_MASK)
-#define CLEAR_PARITY()		(REG_F &= (~PARITY_MASK))
-#define SET_SUBTRACT()		(REG_F |= SUBTRACT_MASK)
-#define CLEAR_SUBTRACT()	(REG_F &= (~SUBTRACT_MASK))
-#define SET_CARRY()		(REG_F |= CARRY_MASK)
-#define CLEAR_CARRY()		(REG_F &= (~CARRY_MASK))
+#define MODIFY_F(op)		do { REG_F op; z80_state.q = true; } while (0)
+#define SET_SIGN()		MODIFY_F(|= SIGN_MASK)
+#define CLEAR_SIGN()		MODIFY_F(&= ~SIGN_MASK)
+#define SET_ZERO()		MODIFY_F(|= ZERO_MASK)
+#define CLEAR_ZERO()		MODIFY_F(&= ~ZERO_MASK)
+#define SET_HALF_CARRY()	MODIFY_F(|= HALF_CARRY_MASK)
+#define CLEAR_HALF_CARRY()	MODIFY_F(&= ~HALF_CARRY_MASK)
+#define SET_OVERFLOW()		MODIFY_F(|= OVERFLOW_MASK)
+#define CLEAR_OVERFLOW()	MODIFY_F(&= ~OVERFLOW_MASK)
+#define SET_PARITY()		MODIFY_F(|= PARITY_MASK)
+#define CLEAR_PARITY()		MODIFY_F(&= ~PARITY_MASK)
+#define SET_SUBTRACT()		MODIFY_F(|= SUBTRACT_MASK)
+#define CLEAR_SUBTRACT()	MODIFY_F(&= ~SUBTRACT_MASK)
+#define SET_CARRY()		MODIFY_F(|= CARRY_MASK)
+#define CLEAR_CARRY()		MODIFY_F(&= ~CARRY_MASK)
 
 #define SIGN_FLAG		(REG_F & SIGN_MASK)
 #define ZERO_FLAG		(REG_F & ZERO_MASK)
