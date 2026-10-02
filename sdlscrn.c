@@ -837,9 +837,6 @@ static int sym_to_abc(const SDL_KeyboardEvent *key)
     mod = key->mod & ~(SDL_KMOD_CTRL | SDL_KMOD_ALT);
     code = SDL_GetKeyFromScancode(key->scancode, mod, false);
 
-    fprintf(stderr, "scancode = %08x key = %08x %08x mod = %08x down = %d, repeat = %d\n",
-	    key->scancode, key->key, code, key->mod, key->down, key->repeat);
-
     kshift = ((key->mod & SDL_KMOD_ALT) ? KSH_ALT : 0)
 	| ((key->mod & SDL_KMOD_CTRL) ? KSH_CTRL : 0)
 	| ((key->mod & SDL_KMOD_SHIFT) ? KSH_SHIFT : 0);
