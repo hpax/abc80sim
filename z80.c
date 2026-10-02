@@ -2185,7 +2185,7 @@ enum z80_cond z80_run(enum z80_cond condrq)
             break;
 
 	    case 0xD9:	       /* exx */
-		SWAPW(REG_PC, REG_BCx);
+		SWAPW(REG_BC, REG_BCx);
 		SWAPW(REG_DE, REG_DEx);
 		SWAPW(REG_HL, REG_HLx);
 		break;
