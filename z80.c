@@ -1982,6 +1982,9 @@ enum z80_cond z80_run(enum z80_cond condrq)
 
     /* loop to do a z80 instruction */
     do {
+	/* The Q flip flop state inherited from the previous instruction */
+	bool prev_q;
+
 	/*
 	 * Save the values at the top of the instruction, useful
 	 * for tracing/debugging
@@ -2044,6 +2047,7 @@ enum z80_cond z80_run(enum z80_cond condrq)
 	if (cond & condrq)
 	    return cond;
 
+	prev_q = z80_state.q;
 	z80_state.q = false;
 	fetch_m1_commit();
 
@@ -2144,16 +2148,16 @@ enum z80_cond z80_run(enum z80_cond condrq)
                 uint16_t address = fetch_word();
 		mem_write(address, REG_A);
 		REG_WZ = (REG_A << 8) | ((address + 1) & 0xff);
-            }
 		break;
+	    }
 
 	    case 0x22:             /* ld (address), hl */
             {
                 uint16_t address = fetch_word();
 		mem_write_word(address, HLIX.w);
 		REG_WZ = address + 1;
-            }
 		break;
+            }
 
 	    case 0x2A:             /* ld hl, (address) */
 		HLIX.w = direct_word();
@@ -2175,19 +2179,35 @@ enum z80_cond z80_run(enum z80_cond condrq)
 		do_rla();
 		break;
 
+/*
+ * For the SCF and CCF XY flag behavior, see:
+ * https://github.com/hoglet67/Z80Decoder/wiki/Undocumented-Flags#scfccf
+ */
 	    case 0x37:             /* scf */
-		set_flags(((REG_F | CARRY_MASK) &
-			   ~(SUBTRACT_MASK | HALF_CARRY_MASK | XY_MASK)) |
-			  (REG_A & XY_MASK));
-		break;
-
-	    case 0x3F:             /* ccf */
-		set_flags(((REG_F ^ CARRY_MASK) &
-			   ~(SUBTRACT_MASK | XY_MASK)) | (REG_A & XY_MASK));
+	    {
+		uint8_t f = REG_F & ~(SUBTRACT_MASK | HALF_CARRY_MASK);
+		if (prev_q)
+		    f &= ~XY_MASK;
+		f |= REG_A & XY_MASK;
+		f |= CARRY_MASK;
+		set_flags(f);
 		break;
 	    }
-	    break;
+
+	    case 0x3F:             /* ccf */
+	    {
+		uint8_t f = REG_F & ~(SUBTRACT_MASK | HALF_CARRY_MASK);
+		if (prev_q)
+		    f &= ~XY_MASK;
+		f |= REG_A & XY_MASK;
+		f ^= CARRY_MASK;
+		set_flags(f);
+		break;
+	    }
+
+	    }
 	}
+	break;
 	case 1:		       /* ld xx, xx + HALT */
 	{
 	    /*
@@ -2226,11 +2246,11 @@ enum z80_cond z80_run(enum z80_cond condrq)
 
 	    switch (op) {
 	    case 0xDD:	       /* DD.. extended instruction */
-		z80_state.q = false;
+		prev_q = false;	/* DD and FD clears the internal Q flag */
 		op = start_indexed_insn(Z80_IX);
 		goto indexed;
 	    case 0xFD:	       /* FD.. extended instruction */
-		z80_state.q = false;
+		prev_q = false;	/* DD and FD clears the internal Q flag */
 		op = start_indexed_insn(Z80_IY);
 		goto indexed;
 
@@ -2285,8 +2305,8 @@ enum z80_cond z80_run(enum z80_cond condrq)
                 uint8_t a = REG_A;
 		REG_A = z80_in((a << 8) + fetch_byte());
 		REG_WZ = (a << 8) | (REG_A + 1);
-            }
 		break;
+            }
 
 	    case 0xC3:	       /* jp address */
 		do_jp(true);
@@ -2308,8 +2328,8 @@ enum z80_cond z80_run(enum z80_cond condrq)
                 uint8_t port = fetch_byte();
 		z80_out((REG_A << 8) + port, REG_A);
 		REG_WZ = (REG_A << 8) | (port + 1);
-            }
 		break;
+            }
 
 	    CASE4rp(0xC1):     /* pop rp */
 		rp->w = pop();
