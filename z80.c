@@ -202,13 +202,19 @@ static uint16_t fetch_word(void)
 /* Read an 8-bit value from an immediate memory address */
 static uint8_t direct_byte(void)
 {
-    return mem_read(fetch_word());
+    uint16_t address = fetch_word();
+
+    REG_WZ = address + 1;
+    return mem_read(address);
 }
 
 /* Read a 16-bit value from an immediate memory address */
 static uint16_t direct_word(void)
 {
-    return mem_read_word(fetch_word());
+    uint16_t address = fetch_word();
+
+    REG_WZ = address + 1;
+    return mem_read_word(address);
 }
 
 #define HLIX REG(IXREG)	       /* HL, IX, or IY */
@@ -218,7 +224,8 @@ static uint16_t direct_word(void)
  */
 static uint16_t hlix_addr(void)
 {
-    return HLIX.w + z80_state.ixdisp;
+    REG_WZ = HLIX.w + z80_state.ixdisp;
+    return REG_WZ;
 }
 
 /* Read a byte from (HL)/(Ixy+n) */
@@ -539,6 +546,7 @@ static uint16_t do_adc_word_flags(uint16_t a, uint16_t b)
         f |= ZERO_MASK;
 
     set_flags(f | ((result >> 8) & XY_MASK));
+    REG_WZ = a + 1;
     return result;
 }
 
@@ -564,6 +572,7 @@ static uint16_t do_add_word_flags(uint16_t a, uint16_t b)
         (sign_carry_overflow_table[index >> 4] & CARRY_MASK);
 
     set_flags(f | ((result >> 8) & XY_MASK));
+    REG_WZ = a + 1;
     return result;
 }
 
@@ -594,6 +603,7 @@ static uint16_t do_sbc_word_flags(uint16_t a, uint16_t b)
         f |= ZERO_MASK;
 
     set_flags(f | ((result >> 8) & XY_MASK));
+    REG_WZ = a + 1;
     return result;
 }
 
@@ -794,6 +804,7 @@ static void do_cpid(uint8_t op)
     do_cp_byte(value);
     REG_HL += string_dir(op);
     REG_BC--;
+    REG_WZ += string_dir(op);
 
     if (REG_BC == 0)
         CLEAR_OVERFLOW();
@@ -802,7 +813,14 @@ static void do_cpid(uint8_t op)
 
     set_flags((REG_F & ~XY_MASK) | ((result - !!HALF_CARRY_FLAG) & X_MASK) |
               (((result - !!HALF_CARRY_FLAG) & 2) << 4));
-    string_rep(op, REG_BC == 0 || ZERO_FLAG);
+    if ((op & 16) && REG_BC != 0 && !ZERO_FLAG) {
+        string_rep(op, false);
+        REG_WZ = REG_PC + 1;
+    } else {
+        string_rep(op, true);
+        if (op & 16)
+            REG_WZ++;
+    }
 }
 
 static uint8_t do_test_bit(uint8_t value, unsigned int bit)
@@ -1145,7 +1163,12 @@ static void do_ldid(uint8_t op)
 
     set_flags((REG_F & ~XY_MASK) | (result & X_MASK) |
               ((result & 2) << 4));
-    string_rep(op, REG_BC == 0);
+    if ((op & 16) && REG_BC != 0) {
+        string_rep(op, false);
+        REG_WZ = REG_PC + 1;
+    } else {
+        string_rep(op, true);
+    }
 }
 
 static void do_ld_a_ir(uint8_t val)
@@ -1298,6 +1321,7 @@ static void do_rld(void)
 
     set_flags((REG_F & ~clear) | set | (REG_A & XY_MASK));
     mem_write(REG_HL, new_value);
+    REG_WZ = REG_HL + 1;
 }
 
 static void do_rrd(void)
@@ -1329,6 +1353,7 @@ static void do_rrd(void)
 
     set_flags((REG_F & ~clear) | set | (REG_A & XY_MASK));
     mem_write(REG_HL, new_value);
+    REG_WZ = REG_HL + 1;
 }
 
 /*
@@ -1340,6 +1365,7 @@ static void do_inid(uint8_t op)
     mem_write(REG_HL, z80_in(REG_BC));
     REG_HL += (op & 8) ? -1 : 1;
     REG_B--;
+    REG_WZ = REG_BC + ((op & 8) ? -2 : 1);
 
     if (REG_B == 0)
         SET_ZERO();
@@ -1386,6 +1412,7 @@ static void do_outid(uint8_t op)
     z80_out(REG_BC, mem_read(REG_HL));
     REG_HL += string_dir(op);
     REG_B--;
+    REG_WZ = REG_BC + ((op & 8) ? -2 : 1);
 
     if (REG_B == 0)
         SET_ZERO();
@@ -1467,6 +1494,7 @@ static void do_int(void)
         REG_SP -= 2;
         mem_write_word(REG_SP, REG_PC);
         REG_PC = i_vector & 0x38;
+        REG_WZ = REG_PC;
         TSTATE += 11;
         break;
 
@@ -1475,6 +1503,7 @@ static void do_int(void)
         REG_SP -= 2;
         mem_write_word(REG_SP, REG_PC);
         REG_PC = 0x38;
+        REG_WZ = REG_PC;
         TSTATE += 11;
         break;
 
@@ -1483,6 +1512,7 @@ static void do_int(void)
         REG_SP -= 2;
         mem_write_word(REG_SP, REG_PC);
         REG_PC = mem_read_word((REG_IR & 0xff00) + i_vector);
+        REG_WZ = REG_PC;
         TSTATE += 19;
         break;
 
@@ -1507,6 +1537,7 @@ static void do_reset(void)
 {
     REG_PC = 0;
     REG_I  = 0;			/* REG_IR? */
+    REG_WZ = 0;
     z80_state.iff1 = false;
     z80_state.iff2 = false;
     z80_state.ei_shadow = false;
@@ -1757,6 +1788,7 @@ static void do_ED_instruction(void)
 
     CASE8x(0x40):	       /* in xx, (c) */
 	set8reg(op >> 3, in_with_flags(REG_BC));
+        REG_WZ = REG_BC + 1;
         break;
 
     case 0x57:                 /* ld a, i */
@@ -1778,8 +1810,12 @@ static void do_ED_instruction(void)
         break;
 
     CASE4rp(0x43):	       /* ld (address), rp */
-        mem_write_word(fetch_word(), rp->w);
+    {
+        uint16_t address = fetch_word();
+        mem_write_word(address, rp->w);
+        REG_WZ = address + 1;
         break;
+    }
 
 
     CASE8x(0x44):	       /* neg */
@@ -1788,6 +1824,7 @@ static void do_ED_instruction(void)
 
     CASE8x(0x41):	       /* out (c), xx */
 	z80_out(REG_BC, get8reg(op >> 3));
+        REG_WZ = REG_BC + 1;
 	break;
 
     case 0xA8:                 /* ldd */
@@ -1826,7 +1863,8 @@ static void do_ED_instruction(void)
 	    z80_state.signal_eoi = true;
 	}
         REG_PC = pop();
-        z80_state.iff1 = z80_state.iff2;
+	REG_WZ = REG_PC;
+	z80_state.iff1 = z80_state.iff2;
         z80_state.nmi_in_progress = false;
         break;
 
@@ -1891,6 +1929,7 @@ static bool flagcond(uint8_t op)
 static bool do_jp(bool cond)
 {
     uint16_t address = fetch_word();
+    REG_WZ = address;
     if (cond) {
 	REG_PC = address;
 	/* TSTATE += 0 */
@@ -1903,6 +1942,7 @@ static bool do_jr(bool cond)
     int8_t disp = fetch_byte();
     if (cond) {
 	REG_PC += disp;
+	REG_WZ = REG_PC;
 	TSTATE += 5;
     }
     return cond;
@@ -1911,6 +1951,7 @@ static bool do_jr(bool cond)
 static bool do_call(bool cond)
 {
     uint16_t address = fetch_word();
+    REG_WZ = address;
     if (cond) {
 	push(REG_PC);
 	REG_PC = address;
@@ -1924,6 +1965,7 @@ static bool do_ret(bool cond)
 {
     if (cond) {
 	REG_PC = pop();
+	REG_WZ = REG_PC;
 	TSTATE += 6;
     }
     return cond;
@@ -2068,8 +2110,12 @@ enum z80_cond z80_run(enum z80_cond condrq)
 		break;
 
 	    case 0x02:             /* ld (bc), a */
+		mem_write(rp->w, REG_A);
+		REG_WZ = (REG_A << 8) | ((rp->w + 1) & 0xff);
+		break;
 	    case 0x12:             /* ld (de), a */
 		mem_write(rp->w, REG_A);
+		REG_WZ = (REG_A << 8) | ((rp->w + 1) & 0xff);
 		break;
 
 	    CASE8x(0x06):	       /* ld xx, value */
@@ -2085,16 +2131,28 @@ enum z80_cond z80_run(enum z80_cond condrq)
 		break;
 
 	    case 0x0A:             /* ld a, (bc) */
+		REG_A = mem_read(rp->w);
+		REG_WZ = rp->w + 1;
+		break;
 	    case 0x1A:             /* ld a, (de) */
 		REG_A = mem_read(rp->w);
+		REG_WZ = rp->w + 1;
 		break;
 
 	    case 0x32:             /* ld (address), a */
-		mem_write(fetch_word(), REG_A);
+            {
+                uint16_t address = fetch_word();
+		mem_write(address, REG_A);
+		REG_WZ = (REG_A << 8) | ((address + 1) & 0xff);
+            }
 		break;
 
 	    case 0x22:             /* ld (address), hl */
-		mem_write_word(fetch_word(), HLIX.w);
+            {
+                uint16_t address = fetch_word();
+		mem_write_word(address, HLIX.w);
+		REG_WZ = address + 1;
+            }
 		break;
 
 	    case 0x2A:             /* ld hl, (address) */
@@ -2212,6 +2270,7 @@ enum z80_cond z80_run(enum z80_cond condrq)
                 temp = mem_read_word(REG_SP);
                 mem_write_word(REG_SP, HLIX.w);
                 HLIX.w = temp;
+                REG_WZ = temp;
             }
             break;
 
@@ -2222,7 +2281,11 @@ enum z80_cond z80_run(enum z80_cond condrq)
 		break;
 
 	    case 0xDB:	       /* in a, (port) */
-		REG_A = z80_in((REG_A << 8) + fetch_byte());
+            {
+                uint8_t a = REG_A;
+		REG_A = z80_in((a << 8) + fetch_byte());
+		REG_WZ = (a << 8) | (REG_A + 1);
+            }
 		break;
 
 	    case 0xC3:	       /* jp address */
@@ -2233,6 +2296,7 @@ enum z80_cond z80_run(enum z80_cond condrq)
 		break;
 	    case 0xE9:	       /* jp (hl) */
 		REG_PC = HLIX.w;
+		REG_WZ = REG_PC;
 		break;
 
 	    case 0xF9:	       /* ld sp, hl */
@@ -2240,7 +2304,11 @@ enum z80_cond z80_run(enum z80_cond condrq)
 		break;
 
 	    case 0xD3:	       /* out (port), a */
-		z80_out((REG_A << 8) + fetch_byte(), REG_A);
+            {
+                uint8_t port = fetch_byte();
+		z80_out((REG_A << 8) + port, REG_A);
+		REG_WZ = (REG_A << 8) | (port + 1);
+            }
 		break;
 
 	    CASE4rp(0xC1):     /* pop rp */
@@ -2261,6 +2329,7 @@ enum z80_cond z80_run(enum z80_cond condrq)
 	    CASE8x(0xC7):      /* rst nn */
 		push(REG_PC);
 		REG_PC = op & 0x38;
+		REG_WZ = REG_PC;
 		call_ret = true;
 		break;
 	    }
@@ -2301,8 +2370,7 @@ static const char *flagdis(uint8_t f)
     bp = buf;
 
     for (i = 0; i < 8; i++) {
-	if (fx & 0x80)
-	    *bp++ = flags[i];
+	*bp++ = (fx & 0x80) ? flags[i] : '-';
 	fx <<= 1;
     }
     *bp = '\0';
@@ -2338,6 +2406,7 @@ static void diffstate(void)
     WREG("IX", ix);
     WREG("IY", iy);
     WREG("SP", sp);
+    WREG("WZ", wz);
     /* WREG(PC,pc); */
     FREG("F", af.b.l);
     WREG("AF\'", afx);
@@ -2352,9 +2421,9 @@ void z80_dumpregs(FILE *f, const char *prefix)
     if (prefix) {
 	/* Compact form */
 	fprintf(f, "%sBC=%04X DE=%04X HL=%04X IX=%04X IY=%04X SP=%04X\n"
-		"%sA=%02X F=%02X,%s I=%02X R=%02X BC\'=%04X DE\'=%04X HL\'=%04X AF\'=%04X\n",
+		"%sA=%02X F=%s(%02X) I=%02X R=%02X BC\'=%04X DE\'=%04X HL\'=%04X AF\'=%04X\n",
 		prefix, REG_BC, REG_DE, REG_HL, REG_IX, REG_IY, REG_SP,
-		prefix, REG_A, REG_F, flagdis(REG_F), REG_I, REG_R,
+		prefix, REG_A, flagdis(REG_F), REG_F, REG_I, REG_R,
 		REG_BCx, REG_DEx, REG_HLx, REG_AFx);
     } else {
 	/* Extended form */
@@ -2367,6 +2436,7 @@ void z80_dumpregs(FILE *f, const char *prefix)
 		"AF  = 0x%04x           %3u:%3u  %s\n"
 		"IX  = 0x%04x   %5u   %3u:%3u\n"
 		"IY  = 0x%04x   %5u   %3u:%3u\n"
+		"WZ  = 0x%04x   %5u   %3u:%3u\n"
 		"IR  = 0x%02x%02x           %3u:%3u\n",
 		REG_PC, REG_PC, z80_state.pc.b.h, z80_state.pc.b.l,
 		REG_SP, REG_SP, z80_state.sp.b.h, z80_state.sp.b.l,
@@ -2376,6 +2446,7 @@ void z80_dumpregs(FILE *f, const char *prefix)
 		REG_AF, REG_A, REG_F, flagdis(REG_F),
 		REG_IX, REG_IX, REG_IXH, REG_IXL,
 		REG_IY, REG_IY, REG_IYH, REG_IYL,
+		REG_WZ, REG_WZ, z80_state.wz.b.h, z80_state.wz.b.l,
 		REG_I, REG_R, REG_I, REG_R);
 	fprintf(f,
 		"BC' = 0x%04x   %5u   %3u:%3u\n"

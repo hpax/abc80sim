@@ -66,6 +66,7 @@ struct z80_state_struct {
     regpair hlx;
 
     regpair ir;
+    regpair wz;                /* Hidden WZ register */
 
     /* 0 if no DD or FD prefix on this instruction, otherwise
      * REG_IX - REG_HL (DD) or REG_IY - REG_HL (FD).
@@ -150,6 +151,7 @@ enum uncond {
 #define REG_IYH		z80_state.iy.b.h
 
 #define REG_IR		z80_state.ir.w
+#define REG_WZ		z80_state.wz.w
 
 #define REG_I		z80_state.ir.b.h
 #define REG_R		z80_state.ir.b.l
