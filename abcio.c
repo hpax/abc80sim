@@ -118,6 +118,13 @@ static void do_magic_out(uint16_t addr, uint8_t value)
     do_magic(value);
 }
 
+/* Magic stdout XXX: make it redirectable */
+static void do_debug_out(uint16_t addr, uint8_t value)
+{
+    (void)addr;
+    putchar(value);
+}
+
 /*
  * This function is called from the z80 at an OUT instruction.
  * We check if any special port was accessed and
@@ -248,8 +255,10 @@ static void abc80_register_ioports(void)
     }
 
     /* Magic events */
-    if (opts.magic)
+    if (opts.magic) {
 	register_outport(184, 0xff, ~0, do_magic_out);
+	register_outport(185, 0xff, ~0, do_debug_out);
+    }
 }
 
 /*
