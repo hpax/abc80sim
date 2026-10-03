@@ -32,6 +32,8 @@
 #include "clock.h"
 #include "debug.h"
 
+#define COSIMULATE 0		/* Hack for debugging */
+
 /*
  * The state of our Z-80 registers is kept in this structure:
  */
@@ -57,6 +59,11 @@ static printf_func(1,2) void add_cputrace(const char *fmt, ...)
 }
 
 static void diffstate(void);
+#if COSIMULATE
+static void cosimulate(void);
+#else
+static inline void cosimulate(void) { }
+#endif
 
 static inline void set_flags(uint8_t flags)
 {
@@ -215,6 +222,8 @@ static void rfsh(void)
  * Perform the opcode read, but without advancing the actual machine
  * state; this is used to handle software breakpoints without
  * advancing the CPU state (a hack for debugger convenience only.)
+ *
+ * This should be flagged separately on the bus!
  */
 static inline uint8_t fetch_m1_peek(void)
 {
@@ -273,25 +282,16 @@ static uint16_t direct_word(void)
 
 #define HLIX REG(IXREG)	       /* HL, IX, or IY */
 
-/*
- * The address for (HL) or (Ixy+nn) operations.
- */
-static uint16_t hlix_addr(void)
-{
-    REG_WZ = HLIX.w + z80_state.ixdisp;
-    return REG_WZ;
-}
-
 /* Read a byte from (HL)/(Ixy+n) */
 static uint8_t read_byte_hlix(void)
 {
-    return mem_read(hlix_addr());
+    return mem_read(HLIXADDR);
 }
 
 /* Write a byte to (HL)/(Ixy+n) */
 static uint8_t write_byte_hlix(uint8_t b)
 {
-    mem_write(hlix_addr(), b);
+    mem_write(HLIXADDR, b);
     return b;
 }
 
@@ -816,17 +816,27 @@ static void do_cpid(uint8_t op)
     }
 }
 
-static uint8_t do_test_bit(uint8_t value, unsigned int bit)
+/* BIT instruction */
+static uint8_t do_test_bit(uint8_t value, unsigned int bit, bool is_mem)
 {
-    uint8_t clear, set;
+    uint8_t f;
+    uint8_t tested = value & (1 << bit);
 
-    clear = SIGN_MASK | ZERO_MASK | OVERFLOW_MASK | SUBTRACT_MASK | XY_MASK;
-    set = HALF_CARRY_MASK;
+    f = (REG_F & CARRY_MASK) | HALF_CARRY_MASK;
 
-    if ((value & (1 << bit)) == 0)
-        set |= ZERO_MASK;
+    if (!tested)
+	f |= ZERO_MASK | PARITY_MASK;
 
-    set_flags((REG_F & ~clear) | set | (value & XY_MASK));
+    f |= tested & SIGN_MASK;
+
+    /*
+     * "Undocumented Z80 Documented" says these values are post-mask in
+     * the !is_mem case, but that doesn't actually seem to reflect
+     * the consensus. Need to run experiments.
+     */
+    f |= (is_mem ? REG_W : value) & XY_MASK;
+
+    set_flags(f);
     return value;
 }
 
@@ -1345,6 +1355,8 @@ static void do_reset(void)
     REG_PC = 0;
     REG_I  = 0;			/* REG_IR? */
     REG_WZ = 0;
+    REG_SP = 0xffff;
+    REG_AF = 0xffff;
     z80_state.iff1 = false;
     z80_state.iff2 = false;
     z80_state.ei_shadow = false;
@@ -1428,12 +1440,13 @@ static uint8_t do_shiftop(uint8_t op, uint8_t data)
 static uint8_t do_bitop(uint8_t op, uint8_t data)
 {
     const unsigned int bit = (op >> 3) & 7;
+    const bool is_mem = (op & 7) == 6;
 
     switch (op >> 6) {
     case 0: return do_shiftop(op, data);
-    case 1: return do_test_bit(data, bit); /* bit */
-    case 2: return data &= ~(1 << bit);	   /* res */
-    case 3: return data |= 1 << bit;	   /* set */
+    case 1: return do_test_bit(data, bit, is_mem);	/* bit */
+    case 2: return data &= ~(1 << bit);			/* res */
+    case 3: return data |= 1 << bit;			/* set */
     default: abort();
     }
 }
@@ -1443,25 +1456,25 @@ static uint8_t do_bitop(uint8_t op, uint8_t data)
  */
 static void do_CB_noix(void)
 {
-    uint8_t op, data;
-
     /*
      * The sub-opcode is loaded using a normal M1# cycle.
      */
-    op = fetch_m1();
+    const uint8_t op = fetch_m1();
+    const bool is_bit = (op >> 6) == 1;
+    const bool is_mem = (op & 7) == 6;
+    uint8_t data;
+
     TSTATE += 4;
 
-    if ((op & 7) == 6)
+    if (is_mem)
 	TSTATE += 4;	       /* For the load */
 
     data = get8noix(op);
     data = do_bitop(op, data);
-
-    if ((op >> 6) == 1)	       /* BIT */
-	return;		       /* Skip writeback */
-
-    if ((op & 7) == 6)
-	TSTATE += 3;	       /* For the store */
+    if (is_bit)
+	return;			/* No writeback */
+    else if (is_mem)
+	TSTATE += 3;		/* For the store */
 
     set8noix(op, data);
 }
@@ -1471,8 +1484,8 @@ static void do_CB_noix(void)
  */
 static inline void clear_indexing(void)
 {
-    IXREG = Z80_HL;
-    IXDISP = 0;
+    IXREG  = Z80_HL;
+    HLIXADDR = REG_HL;		/* Address with displacement */
 }
 
 static uint8_t start_indexed_insn(enum z80_regnums reg)
@@ -1493,7 +1506,7 @@ static uint8_t start_indexed_insn(enum z80_regnums reg)
     op = fetch_m1();
 
     if (need_disp[op >> 5] & ((uint32_t)1 << (op & 31))) {
-	IXDISP = fetch_byte();
+	HLIXADDR = REG_WZ = HLIX.w + (int8_t)fetch_byte();
 	TSTATE += 8;	       /* 3+5 T-states for two machine cycles */
     }
 
@@ -1517,17 +1530,20 @@ static void do_CB_ixiy(void)
      * and the instruction is loaded using a normal memory read, as if
      * it were an immediate, rather than an M1# cycle.
      */
-    uint8_t op, data;
+    const uint8_t op = fetch_byte();
+    const bool is_bit = (op >> 6) == 1;
+    uint8_t data;
 
-    op = fetch_byte();
     TSTATE += 4;
 
     data = read_byte_hlix();
-    data = do_bitop(op, data);
-    if ((op >> 6) == 1) {	       /* BIT */
-	set_flags((REG_F & ~XY_MASK) | ((hlix_addr() >> 8) & XY_MASK));
-	return;
+    if (is_bit) {
+	/* Always use memop flags rules */
+	do_test_bit(data, (op >> 3) & 7, true);
+	return;			/* No writeback */
     }
+
+    data = do_bitop(op, data);
 
     TSTATE += 3;
     write_byte_hlix(data);
@@ -1824,6 +1840,8 @@ enum z80_cond z80_run(enum z80_cond condrq)
             if (cond & condrq)
 		return cond;
         }
+
+	cosimulate();
 
         if (tracing(TRACE_CPU | TRACE_CALL)) {
             add_cputrace("[%12" PRIu64 "] PC=%04X ",TSTATE, REG_PC);
@@ -2293,3 +2311,65 @@ void z80_dumpregs(FILE *f, const char *prefix)
 		TSTATE*ns_per_tstate*1.0e-9);
     }
 }
+
+#if COSIMULATE
+
+struct cosim {
+    uint16_t pc;
+    uint8_t f, a;
+    uint16_t bc, de, hl, ix, iy, sp;
+    uint8_t r, i;
+    uint16_t wz;
+};
+
+static const char *print_ref(const struct cosim *r)
+{
+    static char str[128];
+    snprintf(str, sizeof str,
+	     "PC:%04x F:%s(%02x) A:%02x BC:%04x DE:%04x HL:%04x IX:%04x IY:%04x SP:%04x I:%02x R:%02x WZ:%04x",
+	     r->pc, flagdis(r->f), r->f, r->a, r->bc, r->de, r->hl,
+	     r->ix, r->iy, r->sp, r->i, r->r, r->wz);
+    return str;
+}
+
+static void cosimulate(void)
+{
+    static unsigned long long ins = 0;
+    struct cosim that, this;
+    static struct cosim last;
+
+    if (fread(&that, sizeof that, 1, stdin) != 1) {
+	printf("Cosimulation end of data.\n");
+	fflush(NULL);
+	exit(0);
+    }
+
+    this.pc = REG_PC;
+    this.f  = REG_F;
+    this.a  = REG_A;
+    this.bc = REG_BC;
+    this.de = REG_DE;
+    this.hl = REG_HL;
+    this.ix = REG_IX;
+    this.iy = REG_IY;
+    this.sp = REG_SP;
+    this.i  = REG_I;
+    this.r  = REG_R;
+    this.wz = REG_WZ;
+
+    if (unlikely(memcmp(&this, &that, sizeof this))) {
+	char insn[128];		/* Hopefully it is still correct... */
+	DAsm(last.pc, insn, NULL);
+	printf("Cosimulation ERROR at instruction %llu: %s\n", ins, insn);
+	printf("Previous: %s\n", print_ref(&last));
+	printf("Expected: %s\n", print_ref(&that));
+	printf("Got:      %s\n", print_ref(&this));
+	fflush(NULL);
+	exit(1);
+    }
+
+    last = this;
+    ins++;
+}
+
+#endif /* COSIMULATE */

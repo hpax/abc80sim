@@ -68,11 +68,8 @@ struct z80_state_struct {
     regpair ir;
     regpair wz;                /* Hidden WZ register */
 
-    /* 0 if no DD or FD prefix on this instruction, otherwise
-     * REG_IX - REG_HL (DD) or REG_IY - REG_HL (FD).
-     */
-    uint8_t ixreg;
-    int8_t  ixdisp;		/* Displacement byte for (Ixy+n) */
+    uint16_t ixaddr;		/* HL or I[XY]+displacement */
+    uint8_t ixreg;		/* Z80_HL, Z80_IX or Z80_IY */
 
     uint8_t interrupt_mode;
     bool iff1, iff2, ei_shadow, signal_eoi;
@@ -149,14 +146,16 @@ enum uncond {
 #define REG_IYH		z80_state.iy.b.h
 
 #define REG_IR		z80_state.ir.w
-#define REG_WZ		z80_state.wz.w
-
 #define REG_I		z80_state.ir.b.h
 #define REG_R		z80_state.ir.b.l
 
+#define REG_WZ		z80_state.wz.w
+#define REG_W		z80_state.wz.b.h
+#define REG_Z		z80_state.wz.b.l
+
 /* Meta-registers */
 #define IXREG		z80_state.ixreg
-#define IXDISP		z80_state.ixdisp
+#define HLIXADDR	z80_state.ixaddr
 #define TSTATE		z80_state.tc
 #define TSTATE_INIT	z80_state.init.tc
 #define REG_LAST_PC	z80_state.init.pc.w
