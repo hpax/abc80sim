@@ -32,7 +32,9 @@
 #include "clock.h"
 #include "debug.h"
 
+#ifndef COSIMULATE
 #define COSIMULATE 0		/* Hack for debugging */
+#endif
 
 /*
  * The state of our Z-80 registers is kept in this structure:
@@ -527,10 +529,11 @@ static void do_add_flags(int a, int b, int result)
     set_flags(f | (result & XY_MASK));
 }
 
-static void do_sub_flags(int a, int b, int result)
+/* Get the subtraction flags, as return, not including XF and YF */
+static uint8_t get_sub_flags(uint8_t a, uint8_t b, uint8_t result)
 {
-    int index;
-    int f;
+    size_t index;
+    uint8_t f;
 
     /*
      * sign, carry, and overflow depend upon values of bit 7.
@@ -539,18 +542,21 @@ static void do_sub_flags(int a, int b, int result)
      * up the flag values in the above tables.
      */
 
-    f = (REG_F | SUBTRACT_MASK) & ~(SIGN_MASK | ZERO_MASK |
-                                    HALF_CARRY_MASK | XY_MASK |
-                                    OVERFLOW_MASK | CARRY_MASK);
+    f = SUBTRACT_MASK;
 
     index = ((a & 0x88) >> 1) | ((b & 0x88) >> 2) | ((result & 0x88) >> 3);
     f |= subtract_half_carry_table[index & 7] |
         subtract_sign_carry_overflow_table[index >> 4];
 
-    if ((result & 0xFF) == 0)
+    if (!result)
         f |= ZERO_MASK;
 
-    set_flags(f | (result & XY_MASK));
+    return f;
+}
+
+static void do_sub_flags(int a, int b, int result)
+{
+    set_flags(get_sub_flags(a, b, result) | (result & XY_MASK));
 }
 
 static uint16_t do_adc_word_flags(uint16_t a, uint16_t b)
@@ -755,8 +761,7 @@ static void do_cp_byte(int value)
     int a, result;
 
     result = (a = REG_A) - value;
-    do_sub_flags(a, value, result);
-    set_flags((REG_F & ~XY_MASK) | (value & XY_MASK));
+    set_flags(get_sub_flags(a, value, result) | (value & XY_MASK));
 }
 
 /* 8-bit arithmetic against the accumulator */
@@ -774,14 +779,25 @@ static void do_arith_byte(uint8_t op, uint8_t val)
     }
 }
 
-/* Handle the repeat condition for string ops */
-static inline void string_rep(uint8_t op, bool quit)
+/* Indicates if a string instruction is repeating */
+static inline bool string_rep(uint8_t op)
 {
-    if (quit || !(op & 16))
-	return;
+    return !!(op & 16);
+}
+
+/* Handle the repeat condition for string ops */
+static inline bool do_string_rep(uint8_t op, bool quit)
+{
+    uint16_t pc;
+
+    if (quit || !string_rep(op))
+	return false;		/* Not repeating */
 
     TSTATE += 5;
-    REG_PC -= 2;
+    REG_PC  = pc = REG_PC - 2;
+    REG_WZ  = pc + 1;
+    REG_F   = (REG_F & ~XY_MASK) | ((pc >> 8) & XY_MASK);
+    return true;		/* Is repeating */
 }
 
 static inline int string_dir(uint8_t op)
@@ -792,28 +808,29 @@ static inline int string_dir(uint8_t op)
 static void do_cpid(uint8_t op)
 {
     uint8_t value = mem_read(REG_HL);
-    uint8_t result = REG_A - value;
+    uint8_t a = REG_A;
+    uint8_t result = a - value;
+    uint8_t f = REG_F;
+    bool stop;
 
-    do_cp_byte(value);
+    do_sub_flags(a, value, result); /* SF ZF HF NF */
     REG_HL += string_dir(op);
-    REG_BC--;
+
+    f &= CARRY_MASK;
+    f |= get_sub_flags(a, value, result) &
+	(SIGN_MASK | ZERO_MASK | HALF_CARRY_MASK | SUBTRACT_MASK);
+    if (--REG_BC)
+	f |= OVERFLOW_MASK;
+
+    result -= !!(f & HALF_CARRY_MASK);	/* Yeah, it's weird */
+    f |= result & X_MASK;
+    f |= (result << 4) & Y_MASK;	/* Even more weirderer!! */
+
+    set_flags(f);
+
     REG_WZ += string_dir(op);
-
-    if (REG_BC == 0)
-        CLEAR_OVERFLOW();
-    else
-        SET_OVERFLOW();
-
-    set_flags((REG_F & ~XY_MASK) | ((result - !!HALF_CARRY_FLAG) & X_MASK) |
-              (((result - !!HALF_CARRY_FLAG) & 2) << 4));
-    if ((op & 16) && REG_BC != 0 && !ZERO_FLAG) {
-        string_rep(op, false);
-        REG_WZ = REG_PC + 1;
-    } else {
-        string_rep(op, true);
-        if (op & 16)
-            REG_WZ++;
-    }
+    stop = (f & (OVERFLOW_MASK | ZERO_MASK)) != OVERFLOW_MASK;
+    do_string_rep(op, stop);
 }
 
 /* BIT instruction */
@@ -1019,12 +1036,7 @@ static void do_ldid(uint8_t op)
 
     set_flags((REG_F & ~XY_MASK) | (result & X_MASK) |
               ((result & 2) << 4));
-    if ((op & 16) && REG_BC != 0) {
-        string_rep(op, false);
-        REG_WZ = REG_PC + 1;
-    } else {
-        string_rep(op, true);
-    }
+    do_string_rep(op, !REG_BC);
 }
 
 static void do_ld_a_ir(uint8_t val)
@@ -1207,7 +1219,7 @@ static void do_inid(uint8_t op)
 
     SET_SUBTRACT();
 
-    string_rep(op, REG_B == 0);
+    do_string_rep(op, !REG_B);
 }
 
 static uint8_t in_with_flags(uint16_t port)
@@ -1238,7 +1250,7 @@ static void do_outid(uint8_t op)
 
     SET_SUBTRACT();
 
-    string_rep(op, REG_B == 0);
+    do_string_rep(op, !REG_B);
 }
 
 /*
@@ -2014,21 +2026,29 @@ enum z80_cond z80_run(enum z80_cond condrq)
 	    case 0x37:             /* scf */
 	    {
 		uint8_t f = REG_F & ~(SUBTRACT_MASK | HALF_CARRY_MASK);
-		if (prev_q)
+		f |= CARRY_MASK;
+
+		if (!COSIMULATE && prev_q)
 		    f &= ~XY_MASK;
 		f |= REG_A & XY_MASK;
-		f |= CARRY_MASK;
+
 		set_flags(f);
 		break;
 	    }
 
 	    case 0x3F:             /* ccf */
 	    {
-		uint8_t f = REG_F & ~(SUBTRACT_MASK | HALF_CARRY_MASK);
-		if (prev_q)
+		uint8_t f = REG_F & ~(SUBTRACT_MASK | CARRY_MASK |
+				      HALF_CARRY_MASK);
+		if (CARRY_FLAG)
+		    f |= HALF_CARRY_MASK;
+		else
+		    f |= CARRY_MASK;
+
+		if (!COSIMULATE && prev_q)
 		    f &= ~XY_MASK;
 		f |= REG_A & XY_MASK;
-		f ^= CARRY_MASK;
+
 		set_flags(f);
 		break;
 	    }
