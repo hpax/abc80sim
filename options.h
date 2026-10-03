@@ -89,6 +89,7 @@ struct opts {
     double hz;			/* Frequency in Hz (HUGE_VAL if unlimited) */
     const char *pidfile;	/* Process ID file if detached */
     unsigned int retry_port;	/* Retry acquiring a serial port? */
+    int bootmap;		/* Boot time memory map (if applicable) */
 };
 extern struct opts opts;
 

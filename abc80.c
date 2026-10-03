@@ -246,6 +246,7 @@ struct opts opts = {
     .net_pr             = true,
     .faketype		= A_AUTO,
     .memflags           = MEMFL_DEFAULT,
+    .bootmap            = -1,
 };
 
 /* Helper functions that error out on a missing argument */
@@ -440,6 +441,8 @@ int main(int argc, char **argv)
 		opts.meg80 = enable;
 		if (optarg)
 		    opts.meg80_config = optarg;
+	    } else if (!strcmp(optstr, "bootmap")) {
+                opts.bootmap = strtoul(LONG_ARG(), NULL, 0);
 	    } else if (!strcmp(optstr, "console")) {
 		opts.console = enable;
 		parse_volname(opts.console_dev, optarg);

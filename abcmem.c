@@ -492,7 +492,7 @@ static int init_meg80(void)
     kb[0] = kb[1] = kb[2] = 512; /* 3x512K */
     ic_ops[0] = ic_ops[1] = &ram_as_ops;
     ic_ops[2] = &meg80_flash_ops; /* IC3 is flash */
-    bootmap = -1;		  /* System boot */
+    bootmap = opts.bootmap;	  /* Defaults to -1 = system boot */
 
     srp = opts.meg80_config;
     if (!srp)
@@ -824,6 +824,7 @@ static void mem_init_abc80(void)
 	if (init_meg80() < 0)
 	    opts.meg80 = false;
     }
+
     if (opts.kb != 64 && (opts.kb < 1 || opts.kb > 32)) {
 	unsigned int k = opts.meg80 ? 16 : 64;
 	fprintf(stderr, "%s: invalid ABC80 memory size %uK, using %uK\n",
@@ -1050,6 +1051,9 @@ static void mem_init_abc80(void)
 
 	as_set_pages(sys_as, K(32)-vlen, 1, vram_as, 0, vlen);
 	as_set_pages(sys_as, K(64)-vlen, 2, vram_as, 0, vlen);
+
+	if (opts.bootmap >= 0)
+	    as_set_map(sys_as, opts.bootmap & 3);
     }
 }
 
