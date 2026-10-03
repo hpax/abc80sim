@@ -123,6 +123,7 @@ static void do_debug_out(uint16_t addr, uint8_t value)
 {
     (void)addr;
     putchar(value);
+    fflush(stdout);
 }
 
 /*
