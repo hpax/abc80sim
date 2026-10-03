@@ -65,6 +65,60 @@ static inline void set_flags(uint8_t flags)
 }
 
 /*
+ * Get the parity flag value (set for *even* parity)
+ */
+static inline uint8_t const_func parity_flag(uint8_t value)
+{
+#ifdef HAVE___BUILTIN_PARITY
+    return __builtin_parity(value) ? 0 : PARITY_MASK;
+#elif defined(HAVE_STDC_COUNT_ONES)
+    return (stdc_count_ones(value) & 1) ? 0 : PARITY_MASK;
+#elif defined(HAVE___BUILTIN_POPCNT)
+    return (__builtin_popcnt(value) & 1) ? 0 : PARITY_MASK;
+#elif defined(HAVE___POPCNT)
+    return (__popcnt(value) & 1) ? 0 : PARITY_MASK;
+#elif defined(__GNUC__) && (defined(__i386__) || defined(__x86_64__))
+    bool out;
+    asm("test %1,%1" : "=@ccp" (pf) : "q" (value));
+    return out ? PARITY_MASK : 0;
+#else
+    value ^= (value << 4);
+    value ^= (value << 2);
+    value ^= (value << 1);
+    return (int8_t)value < 0 ? 0 : PARITY_MASK;
+#endif
+}
+
+/*
+ * Set flags after a logical operation. This sets SF ZF YF XF PF based
+ * on the result; if HF NF or CF need to be set, pass them into "set".
+ */
+static const uint8_t logical_flags[256] = {
+    /*          0    1    2    3    4    5    6    7    8    9    a    b    c    d    e    f */
+    /* 00 */ 0x44,0x00,0x00,0x04,0x00,0x04,0x04,0x00,0x08,0x0c,0x0c,0x08,0x0c,0x08,0x08,0x0c,
+    /* 10 */ 0x00,0x04,0x04,0x00,0x04,0x00,0x00,0x04,0x0c,0x08,0x08,0x0c,0x08,0x0c,0x0c,0x08,
+    /* 20 */ 0x20,0x24,0x24,0x20,0x24,0x20,0x20,0x24,0x2c,0x28,0x28,0x2c,0x28,0x2c,0x2c,0x28,
+    /* 30 */ 0x24,0x20,0x20,0x24,0x20,0x24,0x24,0x20,0x28,0x2c,0x2c,0x28,0x2c,0x28,0x28,0x2c,
+    /* 40 */ 0x00,0x04,0x04,0x00,0x04,0x00,0x00,0x04,0x0c,0x08,0x08,0x0c,0x08,0x0c,0x0c,0x08,
+    /* 50 */ 0x04,0x00,0x00,0x04,0x00,0x04,0x04,0x00,0x08,0x0c,0x0c,0x08,0x0c,0x08,0x08,0x0c,
+    /* 60 */ 0x24,0x20,0x20,0x24,0x20,0x24,0x24,0x20,0x28,0x2c,0x2c,0x28,0x2c,0x28,0x28,0x2c,
+    /* 70 */ 0x20,0x24,0x24,0x20,0x24,0x20,0x20,0x24,0x2c,0x28,0x28,0x2c,0x28,0x2c,0x2c,0x28,
+    /* 80 */ 0x80,0x84,0x84,0x80,0x84,0x80,0x80,0x84,0x8c,0x88,0x88,0x8c,0x88,0x8c,0x8c,0x88,
+    /* 90 */ 0x84,0x80,0x80,0x84,0x80,0x84,0x84,0x80,0x88,0x8c,0x8c,0x88,0x8c,0x88,0x88,0x8c,
+    /* a0 */ 0xa4,0xa0,0xa0,0xa4,0xa0,0xa4,0xa4,0xa0,0xa8,0xac,0xac,0xa8,0xac,0xa8,0xa8,0xac,
+    /* b0 */ 0xa0,0xa4,0xa4,0xa0,0xa4,0xa0,0xa0,0xa4,0xac,0xa8,0xa8,0xac,0xa8,0xac,0xac,0xa8,
+    /* c0 */ 0x84,0x80,0x80,0x84,0x80,0x84,0x84,0x80,0x88,0x8c,0x8c,0x88,0x8c,0x88,0x88,0x8c,
+    /* d0 */ 0x80,0x84,0x84,0x80,0x84,0x80,0x80,0x84,0x8c,0x88,0x88,0x8c,0x88,0x8c,0x8c,0x88,
+    /* e0 */ 0xa0,0xa4,0xa4,0xa0,0xa4,0xa0,0xa0,0xa4,0xac,0xa8,0xa8,0xac,0xa8,0xac,0xac,0xa8,
+    /* f0 */ 0xa4,0xa0,0xa0,0xa4,0xa0,0xa4,0xa4,0xa0,0xa8,0xac,0xac,0xa8,0xac,0xa8,0xa8,0xac,
+};
+
+static inline void set_flags_logical(uint8_t result, uint8_t set)
+{
+    set_flags(logical_flags[result] | set);
+}
+
+/*
  * T-states (clock cycles) for various instructions.
  * This reflects the base clock count; in particular:
  * - JR, DJNZ, RET, and CALL need to be adjusted to assume not taken,
@@ -446,28 +500,6 @@ static const uint8_t subtract_half_carry_table[] = {
     HALF_CARRY_MASK,
 };
 
-static inline bool const_func even_parity(uint8_t value)
-{
-#ifdef HAVE___BUILTIN_PARITY
-    return !__builtin_parity(value);
-#elif defined(HAVE_STDC_COUNT_ONES)
-    return !(stdc_count_ones(value) & 1);
-#elif defined(HAVE___BUILTIN_POPCNT)
-    return !(__builtin_popcnt(value) & 1);
-#elif defined(HAVE___POPCNT)
-    return !(__popcnt(value) & 1);
-#elif defined(__GNUC__) && (defined(__i386__) || defined(__x86_64__))
-    bool out;
-    asm("test %1,%1" : "=@ccp" (out) : "q" (value));
-    return out;
-#else
-    value ^= (value << 4);
-    value ^= (value << 2);
-    value ^= (value << 1);
-    return (int8_t)value >= 0;
-#endif
-}
-
 static void do_add_flags(int a, int b, int result)
 {
     /*
@@ -647,64 +679,25 @@ static void do_inc_dec_byte(uint8_t op)
 static void do_and_byte(int value)
 {
     int result;
-    uint8_t clear, set;
 
     result = (REG_A &= value);
-
-    clear = CARRY_MASK | SUBTRACT_MASK | PARITY_MASK | ZERO_MASK | SIGN_MASK |
-        XY_MASK;
-    set = HALF_CARRY_MASK;
-
-    if (even_parity(result))
-        set |= PARITY_MASK;
-    if (result == 0)
-        set |= ZERO_MASK;
-    if (result & 0x80)
-        set |= SIGN_MASK;
-
-    set_flags((REG_F & ~clear) | set | (result & XY_MASK));
+    set_flags_logical(result, HALF_CARRY_MASK);
 }
 
 static void do_or_byte(int value)
 {
     int result;                 /* the result of the or operation */
-    uint8_t clear, set;
 
     result = (REG_A |= value);
-
-    clear = CARRY_MASK | SUBTRACT_MASK | PARITY_MASK
-        | HALF_CARRY_MASK | ZERO_MASK | SIGN_MASK | XY_MASK;
-    set = 0;
-
-    if (even_parity(result))
-        set |= PARITY_MASK;
-    if (result == 0)
-        set |= ZERO_MASK;
-    if (result & 0x80)
-        set |= SIGN_MASK;
-
-    set_flags((REG_F & ~clear) | set | (result & XY_MASK));
+    set_flags_logical(result, 0);
 }
 
 static void do_xor_byte(int value)
 {
     int result;                 /* the result of the xor operation */
-    uint8_t clear, set;
 
     result = (REG_A ^= value);
-
-    clear = CARRY_MASK | SUBTRACT_MASK | PARITY_MASK
-        | HALF_CARRY_MASK | ZERO_MASK | SIGN_MASK | XY_MASK;
-    set = 0;
-
-    if (even_parity(result))
-        set |= PARITY_MASK;
-    if (result == 0)
-        set |= ZERO_MASK;
-    if (result & 0x80)
-        set |= SIGN_MASK;
-
-    set_flags((REG_F & ~clear) | set | (result & XY_MASK));
+    set_flags_logical(result, 0);
 }
 
 static void do_add_byte(int value)
@@ -837,132 +830,52 @@ static uint8_t do_test_bit(uint8_t value, unsigned int bit)
     return value;
 }
 
-static int rl_byte(int value)
+static int rl_byte(uint8_t value)
 {
     /*
      * Compute rotate-left-through-carry
      * operation, setting flags as appropriate.
      */
+    uint8_t result;
 
-    uint8_t clear, set;
-    int result;
-
-    clear = SIGN_MASK | ZERO_MASK | HALF_CARRY_MASK | PARITY_MASK |
-        SUBTRACT_MASK | CARRY_MASK | XY_MASK;
-    set = 0;
-
-    if (CARRY_FLAG) {
-        result = ((value << 1) & 0xFF) | 1;
-    } else {
-        result = (value << 1) & 0xFF;
-    }
-
-    if (result & 0x80)
-        set |= SIGN_MASK;
-    if (result == 0)
-        set |= ZERO_MASK;
-    if (even_parity(result))
-        set |= PARITY_MASK;
-    if (value & 0x80)
-        set |= CARRY_MASK;
-
-    set_flags((REG_F & ~clear) | set | (result & XY_MASK));
-
+    result = (value << 1) | CARRY_FLAG; /* CARRY_MASK == 0x01 */
+    set_flags_logical(result, value & 0x80 ? CARRY_MASK : 0);
     return result;
 }
 
-static int rr_byte(int value)
+static int rr_byte(uint8_t value)
 {
     /*
      * Compute rotate-right-through-carry
      * operation, setting flags as appropriate.
      */
+    uint8_t result;
 
-    uint8_t clear, set;
-    int result;
-
-    clear = SIGN_MASK | ZERO_MASK | HALF_CARRY_MASK | PARITY_MASK |
-        SUBTRACT_MASK | CARRY_MASK | XY_MASK;
-    set = 0;
-
-    if (CARRY_FLAG) {
-        result = (value >> 1) | 0x80;
-    } else {
-        result = (value >> 1);
-    }
-
-    if (result & 0x80)
-        set |= SIGN_MASK;
-    if (result == 0)
-        set |= ZERO_MASK;
-    if (even_parity(result))
-        set |= PARITY_MASK;
-    if (value & 0x1)
-        set |= CARRY_MASK;
-
-    set_flags((REG_F & ~clear) | set | (result & XY_MASK));
-
+    result = (value >> 1) | (CARRY_FLAG << 7); /* CARRY_MASK == 0x01 */
+    set_flags_logical(result, value & 0x01 ? CARRY_MASK : 0);
     return result;
 }
 
-static int rlc_byte(int value)
+static int rlc_byte(uint8_t value)
 {
     /*
      * Compute the result of an RLC operation and set the flags appropriately.
      * This does not do the right thing for the RLCA instruction.
      */
 
-    uint8_t clear, set;
-    int result;
+    uint8_t result;
 
-    clear = SIGN_MASK | ZERO_MASK | HALF_CARRY_MASK | PARITY_MASK |
-        SUBTRACT_MASK | CARRY_MASK | XY_MASK;
-    set = 0;
-
-    if (value & 0x80) {
-        result = ((value << 1) & 0xFF) | 1;
-        set |= CARRY_MASK;
-    } else {
-        result = (value << 1) & 0xFF;
-    }
-
-    if (result & 0x80)
-        set |= SIGN_MASK;
-    if (result == 0)
-        set |= ZERO_MASK;
-    if (even_parity(result))
-        set |= PARITY_MASK;
-
-    set_flags((REG_F & ~clear) | set | (result & XY_MASK));
-
+    result = (value << 1)|(value >> 7);
+    set_flags_logical(result, value & 0x80 ? CARRY_MASK : 0);
     return result;
 }
 
-static int rrc_byte(int value)
+static int rrc_byte(uint8_t value)
 {
-    uint8_t clear, set;
-    int result;
+    uint8_t result;
 
-    clear = SIGN_MASK | ZERO_MASK | HALF_CARRY_MASK | PARITY_MASK |
-        SUBTRACT_MASK | CARRY_MASK | XY_MASK;
-    set = 0;
-
-    if (value & 0x1) {
-        result = (value >> 1) | 0x80;
-        set |= CARRY_MASK;
-    } else {
-        result = (value >> 1);  /* fixed /jonas-y */
-    }
-
-    if (result & 0x80)
-        set |= SIGN_MASK;
-    if (result == 0)
-        set |= ZERO_MASK;
-    if (even_parity(result))
-        set |= PARITY_MASK;
-
-    set_flags((REG_F & ~clear) | set | (result & XY_MASK));
-
+    result = (value >> 1) | (value << 7);
+    set_flags_logical(result, value & 0x01 ? CARRY_MASK : 0);
     return result;
 }
 
@@ -1039,107 +952,40 @@ static void do_rrca(void)
     set_flags((REG_F & ~clear) | set | (REG_A & XY_MASK));
 }
 
-static int sla_byte(int value)
+static int sla_byte(uint8_t value)
 {
-    uint8_t clear, set;
-    int result;
-
-    clear = SIGN_MASK | ZERO_MASK | HALF_CARRY_MASK | PARITY_MASK |
-        SUBTRACT_MASK | CARRY_MASK | XY_MASK;
-    set = 0;
+    uint8_t result;
 
     result = value << 1;
-
-    if (result & 0x80)
-        set |= SIGN_MASK;
-    if (result == 0)
-        set |= ZERO_MASK;
-    if (even_parity(result))
-        set |= PARITY_MASK;
-    if (value & 0x80)
-        set |= CARRY_MASK;
-
-    set_flags((REG_F & ~clear) | set | (result & XY_MASK));
-
+    set_flags_logical(result, value & 0x80 ? CARRY_MASK : 0);
     return result;
 }
 
 /* SLL is an undocumented instruction which shifts left and sets the LSB */
-static int sll_byte(int value)
+static int sll_byte(uint8_t value)
 {
-    uint8_t clear, set;
-    int result;
-
-    clear = SIGN_MASK | ZERO_MASK | HALF_CARRY_MASK | PARITY_MASK |
-        SUBTRACT_MASK | CARRY_MASK | XY_MASK;
-    set = 0;
+    uint8_t result;
 
     result = (value << 1) | 1;
-
-    if (result & 0x80)
-        set |= SIGN_MASK;
-    if (result == 0)
-        set |= ZERO_MASK;
-    if (even_parity(result))
-        set |= PARITY_MASK;
-    if (value & 0x80)
-        set |= CARRY_MASK;
-
-    set_flags((REG_F & ~clear) | set | (result & XY_MASK));
-
+    set_flags_logical(result, value & 0x80 ? CARRY_MASK : 0);
     return result;
 }
 
-static int sra_byte(int value)
+static int sra_byte(uint8_t value)
 {
-    uint8_t clear, set;
-    int result;
+    uint8_t result;
 
-    clear = SIGN_MASK | ZERO_MASK | HALF_CARRY_MASK | PARITY_MASK |
-        SUBTRACT_MASK | CARRY_MASK | XY_MASK;
-    set = 0;
-
-    if (value & 0x80) {
-        result = (value >> 1) & 0x80;
-        set |= SIGN_MASK;
-    } else {
-        result = value >> 1;
-    }
-
-    if (result == 0)
-        set |= ZERO_MASK;
-    if (even_parity(result))
-        set |= PARITY_MASK;
-    if (value & 0x1)
-        set |= CARRY_MASK;
-
-    set_flags((REG_F & ~clear) | set | (result & XY_MASK));
-
+    result = (int8_t)value >> 1; /* Signed shift */
+    set_flags_logical(result, value & 0x01 ? CARRY_MASK : 0);
     return result;
 }
 
-static int srl_byte(int value)
+static int srl_byte(uint8_t value)
 {
-    uint8_t clear, set;
-    int result;
+    uint8_t result;
 
-    clear = SIGN_MASK | ZERO_MASK | HALF_CARRY_MASK | PARITY_MASK |
-        SUBTRACT_MASK | CARRY_MASK | XY_MASK;
-    set = 0;
-
-    result = value >> 1;
-
-    if (result & 0x80)
-        set |= SIGN_MASK;
-    if (result == 0)
-        set |= ZERO_MASK;
-    if (even_parity(result))
-        set |= PARITY_MASK;
-    if (value & 0x1)
-        set |= CARRY_MASK;
-
-    set_flags((REG_F & ~clear) | set | (result & XY_MASK));
-
+    result = (uint8_t)value >> 1; /* Unsigned shift */
+    set_flags_logical(result, value & 0x01 ? CARRY_MASK : 0);
     return result;
 }
 
@@ -1276,10 +1122,9 @@ static void do_daa(void)
 
     do_add_byte(add);           /* adjust the value */
 
-    if (even_parity(REG_A))          /* This seems odd -- is it a mistake? */
-        SET_PARITY();
-    else
-        CLEAR_PARITY();
+    /* This seems wrong? Shouldn't this be overflow? */
+    REG_F &= ~PARITY_MASK;
+    REG_F |= parity_flag(REG_A);
 
     if (subtract_flag)          /* leave the subtract flag intact (right?) */
         SET_SUBTRACT();
@@ -1298,11 +1143,6 @@ static void do_rld(void)
      * Rotate-left-decimal.
      */
     int old_value, new_value;
-    uint8_t clear, set;
-
-    clear = SIGN_MASK | ZERO_MASK | HALF_CARRY_MASK | PARITY_MASK |
-        SUBTRACT_MASK | XY_MASK;
-    set = 0;
 
     old_value = mem_read(REG_HL);
 
@@ -1312,14 +1152,8 @@ static void do_rld(void)
     /* rotate high bits of old value into low bits of a */
     REG_A = (REG_A & 0xf0) | (old_value >> 4);
 
-    if (REG_A & 0x80)
-        set |= SIGN_MASK;
-    if (REG_A == 0)
-        set |= ZERO_MASK;
-    if (even_parity(REG_A))
-        set |= PARITY_MASK;
+    set_flags_logical(REG_A, 0);
 
-    set_flags((REG_F & ~clear) | set | (REG_A & XY_MASK));
     mem_write(REG_HL, new_value);
     REG_WZ = REG_HL + 1;
 }
@@ -1330,11 +1164,6 @@ static void do_rrd(void)
      * Rotate-right-decimal.
      */
     int old_value, new_value;
-    uint8_t clear, set;
-
-    clear = SIGN_MASK | ZERO_MASK | HALF_CARRY_MASK | PARITY_MASK |
-        SUBTRACT_MASK | XY_MASK;
-    set = 0;
 
     old_value = mem_read(REG_HL);
 
@@ -1344,14 +1173,8 @@ static void do_rrd(void)
     /* rotate low bits of old value into low bits of a */
     REG_A = (REG_A & 0xf0) | (old_value & 0x0f);
 
-    if (REG_A & 0x80)
-        set |= SIGN_MASK;
-    if (REG_A == 0)
-        set |= ZERO_MASK;
-    if (even_parity(REG_A))
-        set |= PARITY_MASK;
+    set_flags_logical(REG_A, 0);
 
-    set_flags((REG_F & ~clear) | set | (REG_A & XY_MASK));
     mem_write(REG_HL, new_value);
     REG_WZ = REG_HL + 1;
 }
@@ -1385,25 +1208,9 @@ static uint8_t in_with_flags(uint16_t port)
      */
 
     uint8_t value;
-    uint8_t clear, set;
-
-    clear = SIGN_MASK | ZERO_MASK | HALF_CARRY_MASK |
-        PARITY_MASK | SUBTRACT_MASK | XY_MASK;
-    set = 0;
 
     value = z80_in(port);
-
-    if (value & 0x80)
-        set |= SIGN_MASK;
-    if (value == 0)
-        set |= ZERO_MASK;
-    if (even_parity(value))
-        set |= PARITY_MASK;
-
-    /* What should the half-carry do?  Is this a mistake? */
-
-    set_flags((REG_F & ~clear) | set | (value & XY_MASK));
-
+    set_flags_logical(value, 0);
     return value;
 }
 

@@ -187,8 +187,7 @@ enum uncond {
 #define XY_MASK			(X_MASK | Y_MASK)
 #define ZERO_MASK		(0x40)
 #define	SIGN_MASK		(0x80)
-#define ALL_FLAGS_MASK		(CARRY_MASK | SUBTRACT_MASK | OVERFLOW_MASK | \
-				 HALF_CARRY_MASK | ZERO_MASK | SIGN_MASK | XY_MASK)
+#define XYS_MASK		(X_MASK | Y_MASK | SIGN_MASK)
 
 #define MODIFY_F(op)		do { REG_F op; z80_state.q = true; } while (0)
 #define SET_SIGN()		MODIFY_F(|= SIGN_MASK)
