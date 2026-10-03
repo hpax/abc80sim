@@ -743,8 +743,6 @@ static void do_negate(void)
     a = REG_A;
     REG_A = -a;
     do_sub_flags(0, a, REG_A);
-    if (a == 0)
-        SET_CARRY();
 }
 
 static void do_sbc_byte(int value)
@@ -1347,6 +1345,11 @@ static enum z80_cond check_cpu_events(void)
 	    ucevent = atomic_load(&z80_state.uncond);
 	}
 
+	if (unlikely(ucevent & UCEV_PRINT_STATS)) {
+	    print_cpu_hz_stats(stderr);
+	    atomic_fetch_and(&z80_state.uncond, ~UCEV_PRINT_STATS);
+	}
+
 	if (unlikely(ucevent & UCEV_RESET)) {
 	    do_reset();
 	    cond = Z80_RESET|Z80_RUNNING;
@@ -1745,6 +1748,8 @@ enum z80_cond z80_run(enum z80_cond condrq)
     uint8_t op;
     enum z80_cond cond;
     bool call_ret;
+
+    start_cpu_timing();
 
     cond = z80_state.running ? Z80_RUNNING : 0;
     z80_state.brkpt = 0;	/* No breakpoints hit */
@@ -2156,6 +2161,8 @@ enum z80_cond z80_run(enum z80_cond condrq)
 		z80_dumpregs(tracef, "               - ");
         }
     } while (!(cond & condrq));
+
+    stop_cpu_timing();
 
     return cond;
 }

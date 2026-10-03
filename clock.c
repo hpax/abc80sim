@@ -10,6 +10,17 @@ static void abc80_clock_tick(void);
 static void abc800_clock_tick(void);
 static struct abctimer *ctc_timer[4];
 
+struct time_chkpt {
+    uint64_t ns;		/* Nanosecond counter */
+    uint64_t ts;		/* T-state counter */
+};
+
+struct hz_stats {
+    struct time_chkpt active;	/* Currently active counting */
+    struct time_chkpt cumul;	/* Accumulated runtime */
+};
+static struct hz_stats hz_stats;
+
 /*
  * Initialize the time for next event
  */
@@ -19,6 +30,50 @@ struct abctimer {
     uint64_t ltst;              /* TSTATE value for last checkpoint */
     void (*func) (void);
 };
+
+static void snapshot_time(struct time_chkpt *cp)
+{
+    cp->ns = nstime();
+    cp->ts = TSTATE;
+}
+
+static void snapshot_cpu_timing(void)
+{
+    struct time_chkpt now;
+    snapshot_time(&now);
+    if (now.ts > hz_stats.active.ts) {
+	hz_stats.active.ts = hz_stats.cumul.ts = now.ts;
+	hz_stats.cumul.ns += (now.ns - hz_stats.active.ns);
+    }
+}
+
+void start_cpu_timing(void)
+{
+    snapshot_cpu_timing();
+}
+
+void stop_cpu_timing(void)
+{
+    snapshot_cpu_timing();
+}
+
+void print_cpu_hz_stats(FILE *out)
+{
+    snapshot_cpu_timing();
+
+    if (!hz_stats.cumul.ns) {
+	fprintf(out, "0 instructions executed\n");
+    } else {
+	double MHz = (hz_stats.cumul.ts * 1.0e+3)/hz_stats.cumul.ns;
+	fprintf(out,
+		"%"PRIu64" cycles executed in "
+		"%"PRIu64".%09"PRIu64" s, %.1f MHz\n",
+		hz_stats.cumul.ts,
+		hz_stats.cumul.ns / UINT64_C(1000000000),
+		hz_stats.cumul.ns % UINT64_C(1000000000),
+		MHz);
+    }
+}
 
 #define MAX_TIMERS 2
 static struct abctimer timers[MAX_TIMERS];

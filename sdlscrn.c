@@ -994,6 +994,9 @@ static void do_magic_from_event_loop(int abcsym)
     case 'd':
 	z80_trigger_uncond(UCEV_DUMP_ALL);
 	break;
+    case 't':
+	z80_trigger_uncond(UCEV_PRINT_STATS);
+	break;
     case 'f':
 	opts.faketype = !opts.faketype;
 	break;
