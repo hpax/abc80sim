@@ -1062,101 +1062,33 @@ static void do_ld_a_ir(uint8_t val)
 
 static void do_daa(void)
 {
-    /*
-     * The bizzare decimal-adjust-accumulator instruction....
-     */
+    uint8_t a  = REG_A;
+    uint8_t al = a & 15;	/* Low nybble */
+    uint8_t f  = REG_F & (CARRY_MASK | HALF_CARRY_MASK | SUBTRACT_MASK);
+    uint8_t diff = 0;
 
-    int high_nibble, low_nibble, add, carry, subtract_flag;
+    if (a > 0x99)
+	f |= CARRY_MASK;
 
-    high_nibble = REG_A >> 4;
-    low_nibble = REG_A & 0xf;
-    subtract_flag = SUBTRACT_FLAG;
+    if (f & CARRY_MASK)
+	diff += 0x60;
 
-    if (subtract_flag == 0) {   /* add, adc, inc */
-        if (CARRY_FLAG == 0) {  /* no carry */
-            if (HALF_CARRY_FLAG == 0) { /* no half-carry */
-                if (low_nibble < 10) {
-                    if (high_nibble < 10) {
-                        add = 0x00;
-                        carry = 0;
-                    } else {
-                        add = 0x60;
-                        carry = 1;
-                    }
-                } else {
-                    if (high_nibble < 9) {
-                        add = 0x06;
-                        carry = 0;
-                    } else {
-                        add = 0x66;
-                        carry = 1;
-                    }
-                }
-            } else {            /* half-carry */
+    if ((al + (f & HALF_CARRY_MASK)) > 9)
+	diff += 0x06;
 
-                if (high_nibble < 10) {
-                    add = 0x06;
-                    carry = 0;
-                } else {
-                    add = 0x66;
-                    carry = 1;
-                }
-            }
-        } else {                /* carry */
-
-            if (HALF_CARRY_FLAG == 0) { /* no half-carry */
-                if (low_nibble < 10) {
-                    add = 0x60;
-                    carry = 1;
-                } else {
-                    add = 0x66;
-                    carry = 1;
-                }
-            } else {            /* half-carry */
-
-                add = 0x66;
-                carry = 1;
-            }
-        }
-    } else {                    /* sub, sbc, dec, neg */
-
-        if (CARRY_FLAG == 0) {  /* no carry */
-            if (HALF_CARRY_FLAG == 0) { /* no half-carry */
-                add = 0x00;
-                carry = 0;
-            } else {            /* half-carry */
-
-                add = 0xFA;
-                carry = 0;
-            }
-        } else {                /* carry */
-
-            if (HALF_CARRY_FLAG == 0) { /* no half-carry */
-                add = 0xA0;
-                carry = 1;
-            } else {            /* half-carry */
-
-                add = 0x9A;
-                carry = 1;
-            }
-        }
+    if (f & SUBTRACT_MASK) {
+	if (al > 5)
+	    f &= ~HALF_CARRY_MASK;
+	a -= diff;
+    } else {
+	f &= ~HALF_CARRY_MASK;
+	if (al > 9)
+	    f |= HALF_CARRY_MASK;
+	a += diff;
     }
 
-    do_add_byte(add);           /* adjust the value */
-
-    /* This seems wrong? Shouldn't this be overflow? */
-    REG_F &= ~PARITY_MASK;
-    REG_F |= parity_flag(REG_A);
-
-    if (subtract_flag)          /* leave the subtract flag intact (right?) */
-        SET_SUBTRACT();
-    else
-        CLEAR_SUBTRACT();
-
-    if (carry)
-        SET_CARRY();
-    else
-        CLEAR_CARRY();
+    REG_A = a;
+    set_flags_logical(a, f);
 }
 
 static void do_rld(void)
