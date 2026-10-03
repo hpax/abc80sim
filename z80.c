@@ -1816,7 +1816,8 @@ enum z80_cond z80_run(enum z80_cond condrq)
             if (cond & Z80_RUNNING)
                 break;
 
-	    /* Halt cycle */
+	    /* Halt cycle. XXX: should perform bus transactions here. */
+	    z80_state.q = false;
             TSTATE += 4;
 	    cond |= Z80_STEP;
 
@@ -1891,7 +1892,7 @@ enum z80_cond z80_run(enum z80_cond condrq)
 
 	    case 0x08:	       /* ex af, af' */
 		SWAPW(REG_AF, REG_AFx);
-		z80_state.q = true;
+		/* z80_state.q = true; -- check to see if this is correct or not */
 		break;
 
 	    CASE8x(0x04):      /* inc xx */
