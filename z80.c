@@ -1271,11 +1271,11 @@ static void do_im2(void)
     z80_state.interrupt_mode = 2;
 }
 
+/* Handle a non-maskable interrupt */
 static void do_nmi(void)
 {
-    return;
+#if !COSIMULATE			/* No support for NMI in cosimulation yet */
 
-    /* handle a non-maskable interrupt */
     if (tracing(TRACE_IO | TRACE_CPU)) {
         fprintf(tracef, "[%12" PRIu64 "] NMI: PC=%04x\n", TSTATE, REG_PC);
     }
@@ -1289,6 +1289,8 @@ static void do_nmi(void)
     REG_PC = 0x66;
     rfsh();
     TSTATE += 11;
+
+#endif
 
     atomic_fetch_and(&z80_state.uncond, ~UCEV_NMI);
 }
