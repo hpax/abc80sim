@@ -1094,7 +1094,7 @@ static void do_rld(void)
     /*
      * Rotate-left-decimal.
      */
-    int old_value, new_value;
+    uint8_t old_value, new_value;
 
     old_value = mem_read(REG_HL);
 
@@ -1104,7 +1104,7 @@ static void do_rld(void)
     /* rotate high bits of old value into low bits of a */
     REG_A = (REG_A & 0xf0) | (old_value >> 4);
 
-    set_flags_logical(REG_A, 0);
+    set_flags_logical(REG_A, REG_F & CARRY_MASK);
 
     mem_write(REG_HL, new_value);
     REG_WZ = REG_HL + 1;
@@ -1115,7 +1115,7 @@ static void do_rrd(void)
     /*
      * Rotate-right-decimal.
      */
-    int old_value, new_value;
+    uint8_t old_value, new_value;
 
     old_value = mem_read(REG_HL);
 
@@ -1125,7 +1125,7 @@ static void do_rrd(void)
     /* rotate low bits of old value into low bits of a */
     REG_A = (REG_A & 0xf0) | (old_value & 0x0f);
 
-    set_flags_logical(REG_A, 0);
+    set_flags_logical(REG_A, REG_F & CARRY_MASK);
 
     mem_write(REG_HL, new_value);
     REG_WZ = REG_HL + 1;
