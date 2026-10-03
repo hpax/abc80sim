@@ -28,6 +28,7 @@
 /* Copyright (C) 2026 H. Peter Anvin <hpa@zytor.com> */
 #include "z80.h"
 #include "z80irq.h"
+#include "options.h"
 #include "sysload.h"
 #include "clock.h"
 #include "debug.h"
@@ -1216,23 +1217,21 @@ static void do_im2(void)
 /* Handle a non-maskable interrupt */
 static void do_nmi(void)
 {
-#if !COSIMULATE			/* No support for NMI in cosimulation yet */
+    if (opts.nmi) {
+	if (tracing(TRACE_IO | TRACE_CPU)) {
+	    fprintf(tracef, "[%12" PRIu64 "] NMI: PC=%04x\n", TSTATE, REG_PC);
+	}
 
-    if (tracing(TRACE_IO | TRACE_CPU)) {
-        fprintf(tracef, "[%12" PRIu64 "] NMI: PC=%04x\n", TSTATE, REG_PC);
+	REG_SP -= 2;
+	mem_write_word(REG_SP, REG_PC);
+	z80_state.iff2 = z80_state.iff1;
+	z80_state.iff1 = false;
+	z80_state.nmi_in_progress = true;
+	z80_state.running = true;
+	REG_PC = 0x66;
+	rfsh();
+	TSTATE += 11;
     }
-
-    REG_SP -= 2;
-    mem_write_word(REG_SP, REG_PC);
-    z80_state.iff2 = z80_state.iff1;
-    z80_state.iff1 = false;
-    z80_state.nmi_in_progress = true;
-    z80_state.running = true;
-    REG_PC = 0x66;
-    rfsh();
-    TSTATE += 11;
-
-#endif
 
     atomic_fetch_and(&z80_state.uncond, ~UCEV_NMI);
 }
@@ -1963,11 +1962,12 @@ enum z80_cond z80_run(enum z80_cond condrq)
 	    case 0x37:             /* scf */
 	    {
 		uint8_t f = REG_F & ~(SUBTRACT_MASK | HALF_CARRY_MASK);
-		f |= CARRY_MASK;
 
 		if (!COSIMULATE && prev_q)
 		    f &= ~XY_MASK;
 		f |= REG_A & XY_MASK;
+
+		f |= CARRY_MASK;
 
 		set_flags(f);
 		break;
@@ -1975,16 +1975,15 @@ enum z80_cond z80_run(enum z80_cond condrq)
 
 	    case 0x3F:             /* ccf */
 	    {
-		uint8_t f = REG_F & ~(SUBTRACT_MASK | CARRY_MASK |
-				      HALF_CARRY_MASK);
-		if (CARRY_FLAG)
-		    f |= HALF_CARRY_MASK;
-		else
-		    f |= CARRY_MASK;
+		uint8_t cf = REG_F & CARRY_MASK;
+		uint8_t f  = REG_F & ~(SUBTRACT_MASK | CARRY_MASK |
+				       HALF_CARRY_MASK);
 
 		if (!COSIMULATE && prev_q)
 		    f &= ~XY_MASK;
 		f |= REG_A & XY_MASK;
+
+		f |= cf ? HALF_CARRY_MASK : CARRY_MASK;
 
 		set_flags(f);
 		break;

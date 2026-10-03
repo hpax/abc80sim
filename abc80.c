@@ -244,6 +244,7 @@ struct opts opts = {
     .magic              = true,
     .filedir_net        = true,
     .net_pr             = true,
+    .nmi                = true,
     .faketype		= A_AUTO,
     .memflags           = MEMFL_DEFAULT,
     .bootmap            = -1,
@@ -443,6 +444,8 @@ int main(int argc, char **argv)
 		    opts.meg80_config = optarg;
 	    } else if (!strcmp(optstr, "bootmap")) {
                 opts.bootmap = strtoul(LONG_ARG(), NULL, 0);
+	    } else if (!strcmp(optstr, "nmi")) {
+		opts.nmi = enable;
 	    } else if (!strcmp(optstr, "console")) {
 		opts.console = enable;
 		parse_volname(opts.console_dev, optarg);

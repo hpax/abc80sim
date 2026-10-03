@@ -73,6 +73,7 @@ struct opts {
     bool color;			/* Color screen */
     bool hr;			/* High resolution graphics (ABC800C/M) */
     bool magic;			/* Allow magic I/O port */
+    bool nmi;			/* Allow NMI */
     bool console;		/* Console device (PRC:) */
     char console_dev[4];	/* Name of console device */
     bool filedir_net;		/* Network export filedir */
