@@ -731,16 +731,22 @@ void screen_init(bool width40, bool color)
     }
 
     if (!opts.headless) {
-	screen_window = SDL_CreateWindow("abc80sim", PX_WIDTH, PX_HEIGHT, 0);
-	if (screen_window)
-	    screen_renderer = SDL_CreateRenderer(screen_window, NULL);
-	if (screen_renderer)
-	    screen_texture = SDL_CreateTexture(screen_renderer,
-					       SDL_PIXELFORMAT_ARGB8888,
-					       SDL_TEXTUREACCESS_STREAMING,
-					       PX_WIDTH, PX_HEIGHT);
+	if (!SDL_CreateWindowAndRenderer("abc80sim", PX_WIDTH, PX_HEIGHT, 0,
+					 &screen_window, &screen_renderer)) {
+	    fprintf(stderr, "%s: unable to create SDL window: %s\n",
+		    program_name, SDL_GetError());
+	    screen_reset();
+	    return;
+	}
+
+	SDL_SetWindowSurfaceVSync(screen_window, 1);
+
+	screen_texture = SDL_CreateTexture(screen_renderer,
+					   SDL_PIXELFORMAT_ARGB8888,
+					   SDL_TEXTUREACCESS_STREAMING,
+					   PX_WIDTH, PX_HEIGHT);
 	if (!screen_texture) {
-	    fprintf(stderr, "%s: unable to create SDL renderer: %s\n",
+	    fprintf(stderr, "%s: unable to create SDL texture: %s\n",
 		    program_name, SDL_GetError());
 	    screen_reset();
 	    return;
