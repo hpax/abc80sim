@@ -4,8 +4,10 @@ included but may not apply anymore.
 
 See the file HELP.txt for quick usage information.
 
+This version of abc80sim requires SDL 3.2 or newer.
+
 This version includes support for undocumented Z80 instructions, and
-uses SDL for output.  It supports ABC80 display in 40- or 80-character
+uses SDL3 for output.  It supports ABC80 display in 40- or 80-character
 (TKN80) modes, ABC800C, ABC800M, and ABC802 (ABC806 hopefully in the
 future), as well as Mikrodatorn's 64K extension and the MEG80 megabyte
 card (https://www.abc80.org/meg80/).
