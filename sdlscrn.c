@@ -890,6 +890,10 @@ static int sym_to_abc(const SDL_KeyboardEvent *key)
 	    abcsym &= 0x1f;
 	break;
 
+    case '-':			/* Tread Ctrl+- as Ctrl+_  */
+	abcsym = (kshift & KSH_CTRL) ? 0x1f : code;
+	break;
+
     case SDLK_END:		/* Alt-End -> Alt-q */
 	if (kshift & KSH_ALT)
 	    abcsym = 'q';
