@@ -843,6 +843,15 @@ static int sym_to_abc(const SDL_KeyboardEvent *key)
     mod = key->mod & ~(SDL_KMOD_CTRL | SDL_KMOD_ALT);
     code = SDL_GetKeyFromScancode(key->scancode, mod, false);
 
+#if 0
+    printf("Scan: %08x (%s)  Mod: %08x  ",
+	   key->scancode, SDL_GetScancodeName(key->scancode), key->mod);
+    printf("Key: %08x (%s)  ",
+	   key->key, SDL_GetKeyName(key->key));
+    printf("Code: %08x (%s)\n",
+	   code, SDL_GetKeyName(code));
+#endif
+
     kshift = ((key->mod & SDL_KMOD_ALT) ? KSH_ALT : 0)
 	| ((key->mod & SDL_KMOD_CTRL) ? KSH_CTRL : 0)
 	| ((key->mod & SDL_KMOD_SHIFT) ? KSH_SHIFT : 0);
@@ -881,7 +890,7 @@ static int sym_to_abc(const SDL_KeyboardEvent *key)
 	break;
 
     case SDLK_END:		/* Alt-End -> Alt-q */
-	if (KSH_ALT)
+	if (kshift & KSH_ALT)
 	    abcsym = 'q';
 	break;
 
@@ -893,6 +902,14 @@ static int sym_to_abc(const SDL_KeyboardEvent *key)
     case '|':
 	/* Forcibly make these behave like letters */
 	abcsym = ((code & ~0x20) | lower) & ctlmask;
+	break;
+
+	/* Make the §½ key an alias of the <> key */
+    case L'§':
+	abcsym = (kshift & KSH_CTRL) ? 127 : '<';
+	break;
+    case L'½':
+	abcsym = (kshift & KSH_CTRL) ? 127 : '>';
 	break;
 
     default:
