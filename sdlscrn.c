@@ -831,7 +831,6 @@ static int sym_to_abc(const SDL_KeyboardEvent *key)
 {
     int abcsym;
     enum kshift kshift;
-    unsigned int ctlmask;
     SDL_Keycode code;
     SDL_Keymod mod;
     unsigned int lower;
@@ -855,7 +854,6 @@ static int sym_to_abc(const SDL_KeyboardEvent *key)
     kshift = ((key->mod & SDL_KMOD_ALT) ? KSH_ALT : 0)
 	| ((key->mod & SDL_KMOD_CTRL) ? KSH_CTRL : 0)
 	| ((key->mod & SDL_KMOD_SHIFT) ? KSH_SHIFT : 0);
-    ctlmask = (key->mod & SDL_KMOD_CTRL) ? 0x1f : 0xff;
     lower = !!(key->mod & SDL_KMOD_SHIFT) == !!(key->mod & SDL_KMOD_CAPS)
 	? 0x20 : 0x00;
 
@@ -885,8 +883,11 @@ static int sym_to_abc(const SDL_KeyboardEvent *key)
 	abcsym = 127;
 	break;
 
-    case SDLK_SPACE:		/* Ctrl+Space -> NUL */
-	abcsym = ' ' & ctlmask;
+    case ' ':			/* These honor Ctrl but not Shift+Ctrl */
+    case '_':
+	abcsym = code;
+	if (kshift & KSH_CTRL)
+	    abcsym &= 0x1f;
 	break;
 
     case SDLK_END:		/* Alt-End -> Alt-q */
@@ -901,7 +902,7 @@ static int sym_to_abc(const SDL_KeyboardEvent *key)
     case '\\':
     case '|':
 	/* Forcibly make these behave like letters */
-	abcsym = ((code & ~0x20) | lower) & ctlmask;
+	abcsym = (code & ~0x20) | lower;
 	break;
 
 	/* Make the §½ key an alias of the <> key */
@@ -917,10 +918,10 @@ static int sym_to_abc(const SDL_KeyboardEvent *key)
 	    /* Key that are dead keys on Swedish keyboards */
 	    switch (key->scancode) {
 	    case SDL_SCANCODE_EQUALS:
-		abcsym = (0x40 | lower) & ctlmask; /* ´ ` -> É */
+		abcsym = 0x40 | lower;		/* ´ ` -> É */
 		break;
 	    case SDL_SCANCODE_RIGHTBRACKET:
-		abcsym = (0x5e | lower) & ctlmask; /* ¨ ^ -> Ü */
+		abcsym = 0x5e | lower;		/* ¨ ^ -> Ü */
 		break;
 	    default:
 		break;
@@ -933,7 +934,8 @@ static int sym_to_abc(const SDL_KeyboardEvent *key)
 	abcsym = unicode_to_abc(code);
 	switch (abcsym) {
 	case ' ':
-	    abcsym &= ctlmask;
+	    if (kshift & KSH_CTRL)
+		abcsym = 0;
 	    break;
 	case '<':
 	case '>':
