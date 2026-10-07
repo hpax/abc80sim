@@ -110,6 +110,8 @@ static struct xy addr_to_xy_tbl[2][2048];
 struct surface {
     uint32_t pixels[SCREEN_WIDTH * SCREEN_HEIGHT];
     uint32_t colors[NCOLORS];
+    SDL_Texture *texture;
+    SDL_Renderer *renderer;
 };
 
 static struct surface rscreen;
@@ -430,18 +432,27 @@ put_screen(struct surface *s, unsigned int tx, unsigned int ty, bool blink)
 
 static void update_screen(struct surface *s)
 {
-    if (!screen_renderer || !screen_texture)
+    if (!s->texture)
 	return;
 
-    if (!SDL_UpdateTexture(screen_texture, NULL, s->pixels,
-			   SCREEN_WIDTH * sizeof s->pixels[0]) ||
-	!SDL_RenderClear(screen_renderer) ||
-	!SDL_RenderTexture(screen_renderer, screen_texture, NULL, NULL)) {
-	fprintf(stderr, "%s: screen update failed: %s\n",
-		program_name, SDL_GetError());
+    if (!SDL_UpdateTexture(s->texture, NULL, s->pixels,
+			   SCREEN_WIDTH * sizeof s->pixels[0]))
+	goto err;
+
+    if (!s->renderer)
 	return;
-    }
-    SDL_RenderPresent(screen_renderer);
+
+    if (!SDL_RenderClear(s->renderer) ||
+	!SDL_RenderTexture(s->renderer, s->texture, NULL, NULL))
+	goto err;
+
+    SDL_RenderPresent(s->renderer);
+    return;
+
+err:
+    fprintf(stderr, "%s: screen update failed: %s\n",
+	    program_name, SDL_GetError());
+    return;
 }
 
 /*
@@ -492,6 +503,9 @@ static struct surface *init_surface(struct surface *s)
 	    rgbcolors[i].b;
     }
 
+    s->texture = NULL;
+    s->renderer = NULL;
+
     return s;
 }
 
@@ -500,14 +514,33 @@ static struct surface *init_surface(struct surface *s)
  */
 void abc_screenshot(const char *path)
 {
+    /* PNG pHYs isn't well supported, so pre-scale the image */
+    const unsigned int total_x = 2 * SCREEN_WIDTH;
+    const unsigned int total_y = 3 * SCREEN_HEIGHT;
     struct surface s;
+    SDL_Surface *s1, *s2;
 
     memset(&s, 0, sizeof s);
     if (!init_surface(&s))
 	return;
+
     refresh_screen(&s, true);	/* Always snapshot with blink on */
 
-    screenshot(s.pixels, SCREEN_WIDTH, SCREEN_HEIGHT, path);
+    s1 = SDL_CreateSurfaceFrom(SCREEN_WIDTH, SCREEN_HEIGHT,
+			       SDL_PIXELFORMAT_ARGB8888, s.pixels,
+			       SCREEN_WIDTH * sizeof(uint32_t));
+    if (!s1)
+	return;
+
+    /* Scale the surface */
+    s2 = SDL_ScaleSurface(s1, total_x, total_y, SDL_SCALEMODE_LINEAR);
+    SDL_DestroySurface(s1);
+    if (!s2)
+	return;
+
+    SDL_LockSurface(s2);
+    screenshot(s2->pixels, total_x, total_y, path);
+    SDL_DestroySurface(s2);
 }
 
 /*
@@ -598,8 +631,11 @@ void screen_init(bool width40, bool color)
     }
 
     if (!opts.headless) {
+	if (!init_surface(&rscreen))
+	    return;
+
 	if (!SDL_CreateWindowAndRenderer("abc80sim", WINDOW_WIDTH, WINDOW_HEIGHT, 0,
-					 &screen_window, &screen_renderer)) {
+					 &screen_window, &rscreen.renderer)) {
 	    fprintf(stderr, "%s: unable to create SDL window: %s\n",
 		    program_name, SDL_GetError());
 	    screen_reset();
@@ -608,24 +644,22 @@ void screen_init(bool width40, bool color)
 
 	SDL_SetWindowSurfaceVSync(screen_window, 1);
 
-	screen_texture = SDL_CreateTexture(screen_renderer,
-					   SDL_PIXELFORMAT_ARGB8888,
-					   SDL_TEXTUREACCESS_STREAMING,
-					   SCREEN_WIDTH, SCREEN_HEIGHT);
-	if (!screen_texture) {
+	rscreen.texture = SDL_CreateTexture(rscreen.renderer,
+					    SDL_PIXELFORMAT_ARGB8888,
+					    SDL_TEXTUREACCESS_STREAMING,
+					    SCREEN_WIDTH, SCREEN_HEIGHT);
+	if (!rscreen.texture) {
 	    fprintf(stderr, "%s: unable to create SDL texture: %s\n",
 		    program_name, SDL_GetError());
 	    screen_reset();
 	    return;
 	}
-	if (!SDL_SetTextureScaleMode(screen_texture, SDL_SCALEMODE_LINEAR)) {
+	if (!SDL_SetTextureScaleMode(rscreen.texture, SDL_SCALEMODE_LINEAR)) {
 	    fprintf(stderr, "%s: unable to set screen texture scale mode: %s\n",
 		    program_name, SDL_GetError());
 	    screen_reset();
 	    return;
 	}
-	if (!init_surface(&rscreen))
-	    return;
     }
 
     /* If not color, then overwrite colors 1-6 with white */
