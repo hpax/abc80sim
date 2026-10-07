@@ -133,11 +133,12 @@ static inline struct xy addr_to_xy(const uint8_t * p)
 /*
  * Compute the screen offset for a specific x,y coordinates
  */
-static inline unsigned int screenoffs(uint8_t y, uint8_t x, bool m40)
+static inline unsigned int
+screenoffs(uint8_t y, uint8_t x, bool m40, enum model model)
 {
     size_t offs = -1;
 
-    switch (opts.model) {
+    switch (model) {
     case MODEL_ABC80:
     case MODEL_ABC800C:
 	if (m40)
@@ -158,9 +159,10 @@ static inline unsigned int screenoffs(uint8_t y, uint8_t x, bool m40)
 /*
  * Return a specific character
  */
-static inline uint8_t screendata(uint8_t y, uint8_t x)
+static inline uint8_t screendata(uint8_t y, uint8_t x, enum model model)
 {
-    return vdu.vram[(screenoffs(y, x, vdu.mode40) + vdu.startaddr) & VRAM_MASK];
+    return vdu.vram[(screenoffs(y, x, vdu.mode40, model) + vdu.startaddr)
+		    & VRAM_MASK];
 }
 
 /*
@@ -190,7 +192,7 @@ struct vid_attrib {
 static struct vid_attrib attrib[TS_HEIGHT+1][TS_WIDTH];
 
 /* Attributes for ABC80/800M/800C/802 */
-static void make_attributes(void)
+static inline void make_attributes(enum model model)
 {
     static const uint32_t attrib_masks[] = {
 	[MODEL_ABC80]	= 0x00fe00fe,
@@ -199,7 +201,7 @@ static void make_attributes(void)
 	[MODEL_ABC802]	= 0x00fe00fe,
 	[MODEL_ABC806]	= 0xffffffff /* Should come from attribute memory */
     };
-    const uint32_t attrib_mask = attrib_masks[opts.model];
+    const uint32_t attrib_mask = attrib_masks[model];
     static const uint8_t inv_aboves[] = {
 	[MODEL_ABC80]	= 0x9f,
 	[MODEL_ABC800C] = 0x7f,
@@ -207,7 +209,7 @@ static void make_attributes(void)
 	[MODEL_ABC802]	= 0x7f,
 	[MODEL_ABC806]	= 0x7f	/* ? */
     };
-    const uint8_t inv_above = inv_aboves[opts.model];
+    const uint8_t inv_above = inv_aboves[model];
     const unsigned int m40 = vdu.mode40;
     const unsigned int width = TS_WIDTH >> m40;
     unsigned int x, y;
@@ -224,7 +226,7 @@ static void make_attributes(void)
 	for (x = 0; x < width; x++) {
 	    struct vid_attrib a;
 
-	    uint8_t ch = screendata(y, x);
+	    uint8_t ch = screendata(y, x, model);
 
 	    if (!(ch & 0x60)) {
 		uint8_t ctl = ch & 0x1f;
@@ -329,8 +331,9 @@ static void make_attributes(void)
  * for character (tx,ty), but don't refresh the rectangle just
  * yet. These are 80-column coordinates even in 40-column mode!!
  */
-static void
-put_screen(struct surface *s, unsigned int tx, unsigned int ty, bool blink)
+static inline void
+put_screen(struct surface *s, unsigned int tx, unsigned int ty, bool blink,
+	   enum model model)
 {
     const unsigned char *fontp;
     unsigned int voffs, fgoffs, fgshift;
@@ -357,7 +360,7 @@ put_screen(struct surface *s, unsigned int tx, unsigned int ty, bool blink)
     if (va.flags & GMODE_DBL2)
 	fontp += FONT_YSIZE >> 1; /* Second half */
 
-    invmask = (va.inv && (!is_abc80() || blink)) ? 7 : 0;
+    invmask = (va.inv && (model == MODEL_ABC80 || blink)) ? 7 : 0;
 
     if (vdu.fgctl & 0x80) {
 	bgp = fgp = 0;
@@ -374,7 +377,9 @@ put_screen(struct surface *s, unsigned int tx, unsigned int ty, bool blink)
 	(tx * FONT_XSIZE);
 
     curmask = 0;
-    voffs = screenoffs(ty, tx >> vdu.mode40, vdu.mode40) + vdu.startaddr;
+    voffs = vdu.startaddr +
+	screenoffs(ty, tx >> vdu.mode40, vdu.mode40, model);
+
     if (unlikely(voffs == vdu.curaddr)) {
 	uint8_t curmode = vdu.crtc.r.curstart & 0x60;
 
@@ -455,13 +460,56 @@ err:
     return;
 }
 
+static inline void
+draw_screen_model(struct surface *s, bool blink, enum model model)
+{
+    unsigned int x, y;
+    for (y = 0; y < TS_HEIGHT; y++)
+	for (x = 0; x < TS_WIDTH; x++)
+	    put_screen(s, x, y, blink, model);
+}
+static void draw_screen_abc80(struct surface *s, bool blink)
+{
+    make_attributes(MODEL_ABC80);
+    draw_screen_model(s, blink, MODEL_ABC80);
+}
+static void draw_screen_abc800c(struct surface *s, bool blink)
+{
+    make_attributes(MODEL_ABC800C);
+    draw_screen_model(s, blink, MODEL_ABC800C);
+}
+static void draw_screen_abc800m(struct surface *s, bool blink)
+{
+    make_attributes(MODEL_ABC800M);
+    draw_screen_model(s, blink, MODEL_ABC800M);
+}
+static void draw_screen_abc802(struct surface *s, bool blink)
+{
+    make_attributes(MODEL_ABC802);
+    draw_screen_model(s, blink, MODEL_ABC802);
+}
+static void draw_screen_abc806(struct surface *s, bool blink)
+{
+    make_attributes(MODEL_ABC806);
+    draw_screen_model(s, blink, MODEL_ABC806);
+}
+
+typedef void (*draw_screen_func)(struct surface *s, bool blink);
+
+static const draw_screen_func draw_screen[] = {
+    [MODEL_ABC80]   = draw_screen_abc80,
+    [MODEL_ABC800C] = draw_screen_abc800c,
+    [MODEL_ABC800M] = draw_screen_abc800m,
+    [MODEL_ABC802]  = draw_screen_abc802,
+    [MODEL_ABC806]  = draw_screen_abc806
+};
+
 /*
  * Refresh the entire screen or recreate the screen on another surface.
  * If "force_blink" is true, always draw blinking elements visible.
  */
 static void refresh_screen(struct surface *s, bool force_blink)
 {
-    unsigned int x, y;
     bool blink;
 
     if (unlikely(!s))
@@ -473,10 +521,7 @@ static void refresh_screen(struct surface *s, bool force_blink)
 
     blink = force_blink | vdu.blink_on;
 
-    make_attributes();
-    for (y = 0; y < TS_HEIGHT; y++)
-	for (x = 0; x < TS_WIDTH; x++)
-	    put_screen(s, x, y, blink);
+    draw_screen[opts.model](s, blink);
 
     update_screen(s);
 }
@@ -526,6 +571,7 @@ void abc_screenshot(const char *path)
     if (!sd)
 	return;
 
+    sd->path = NULL;
     if (path)
 	sd->path = strdup(path);
 
@@ -613,7 +659,7 @@ void dump_txt_screen(const char *path, const char *file)
     vdu = cpu;
     SDL_UnlockMutex(screen_mutex);
 
-    make_attributes();
+    make_attributes(opts.model);
     for (ty = 0; ty < TS_HEIGHT; ty++) {
 	for (tx = 0; tx < TS_WIDTH; tx++) {
 	    unsigned char ch;
@@ -730,7 +776,7 @@ void screen_init(bool width40, bool color)
     for (i = 0; i < 2; i++) {
 	for (y = 0; y < TS_HEIGHT; y++) {
 	    for (x = 0; x < (TS_WIDTH >> i); x++) {
-		size_t p = screenoffs(y, x, i);
+		size_t p = screenoffs(y, x, i, opts.model);
 		addr_to_xy_tbl[i][p].x = x;
 		addr_to_xy_tbl[i][p].y = y;
 	    }
