@@ -512,35 +512,79 @@ static struct surface *init_surface(struct surface *s)
 /*
  * Screenshot setup
  */
+struct screenshot_data {
+    struct surface s;
+    char *path;
+};
+
+static int do_abc_screenshot(void *data);
 void abc_screenshot(const char *path)
 {
+    SDL_Thread *th;
+    struct screenshot_data *sd = malloc(sizeof *sd);
+
+    if (!sd)
+	return;
+
+    if (path)
+	sd->path = strdup(path);
+
+    if (!init_surface(&sd->s))
+	goto fail;
+
+    refresh_screen(&sd->s, true); /* Always snapshot with blink on */
+
+    /*
+     * The rest can be safely run in a subthread so as to not block the
+     * main event thread.
+     */
+    th = SDL_CreateThread(do_abc_screenshot, "screenshot", sd);
+    if (!th)
+	goto fail;
+
+    SDL_DetachThread(th);
+    return;
+
+fail:
+    free(sd);
+}
+
+static int do_abc_screenshot(void *sdv)
+{
+    struct screenshot_data *sd = sdv;
     /* PNG pHYs isn't well supported, so pre-scale the image */
     const unsigned int total_x = 2 * SCREEN_WIDTH;
     const unsigned int total_y = 3 * SCREEN_HEIGHT;
-    struct surface s;
-    SDL_Surface *s1, *s2;
 
-    memset(&s, 0, sizeof s);
-    if (!init_surface(&s))
-	return;
-
-    refresh_screen(&s, true);	/* Always snapshot with blink on */
+    SDL_Surface *s1 = NULL;
+    SDL_Surface *s2 = NULL;
 
     s1 = SDL_CreateSurfaceFrom(SCREEN_WIDTH, SCREEN_HEIGHT,
-			       SDL_PIXELFORMAT_ARGB8888, s.pixels,
+			       SDL_PIXELFORMAT_ARGB8888, sd->s.pixels,
 			       SCREEN_WIDTH * sizeof(uint32_t));
     if (!s1)
-	return;
+	goto cleanup;
 
     /* Scale the surface */
     s2 = SDL_ScaleSurface(s1, total_x, total_y, SDL_SCALEMODE_LINEAR);
     SDL_DestroySurface(s1);
+    s1 = NULL;
     if (!s2)
-	return;
+	goto cleanup;
 
     SDL_LockSurface(s2);
-    screenshot(s2->pixels, total_x, total_y, path);
-    SDL_DestroySurface(s2);
+    screenshot(s2->pixels, total_x, total_y, sd->path);
+    SDL_UnlockSurface(s2);
+
+cleanup:
+    if (s2)
+	SDL_DestroySurface(s2);
+    if (s1)
+	SDL_DestroySurface(s1);
+    if (sd->path)
+	free(sd->path);
+    free(sd);
+    return 0;
 }
 
 /*
