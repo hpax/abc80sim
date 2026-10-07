@@ -24,14 +24,13 @@
 
 /*
  * The ABC80/800 screen pixels have a 4:3 aspect ratio in 40-column
- * mode and 2:3 in 80-column mode. This reflects 80-column mode, with
- * 40 columns simply being duplicated pixels thereof.
+ * mode and 2:3 in 80-column mode. The window's 2:3 scaling preserves
+ * the latter, with 40 columns simply being duplicated pixels thereof.
  */
-#define FONT_XDUP  2		/* For 80-column mode */
-#define FONT_YDUP  3
-
-#define PX_WIDTH  (TS_WIDTH*FONT_XSIZE*FONT_XDUP)
-#define PX_HEIGHT (TS_HEIGHT*FONT_YSIZE*FONT_YDUP)
+#define SCREEN_WIDTH  (TS_WIDTH*FONT_XSIZE)
+#define SCREEN_HEIGHT (TS_HEIGHT*FONT_YSIZE)
+#define WINDOW_WIDTH  (SCREEN_WIDTH*2)
+#define WINDOW_HEIGHT (SCREEN_HEIGHT*3)
 
 extern const unsigned char abc_font[512][FONT_YSIZE];
 
@@ -109,7 +108,7 @@ static struct xy addr_to_xy_tbl[2][2048];
 
 /* A local framebuffer used for rendering and screenshots */
 struct surface {
-    uint32_t pixels[PX_WIDTH * PX_HEIGHT];
+    uint32_t pixels[SCREEN_WIDTH * SCREEN_HEIGHT];
     uint32_t colors[NCOLORS];
 };
 
@@ -335,7 +334,7 @@ put_screen(struct surface *s, unsigned int tx, unsigned int ty, bool blink)
     unsigned int voffs, fgoffs, fgshift;
     unsigned char v, vv;
     uint32_t *pixelp, *pixelpp, fgp, bgp, fg_color[4];
-    unsigned int x, xx, y, yy, gx;
+    unsigned int x, y, gx;
     struct vid_attrib va;
     uint32_t curmask;
     uint8_t invmask;
@@ -369,8 +368,8 @@ put_screen(struct surface *s, unsigned int tx, unsigned int ty, bool blink)
 	fg_color[i] = s->colors[fgcolor[vdu.fgctl & 0x7f][i]];
 
     pixelp = s->pixels +
-	(ty * PX_WIDTH * FONT_YSIZE * FONT_YDUP) +
-	(tx * FONT_XSIZE * FONT_XDUP);
+	(ty * SCREEN_WIDTH * FONT_YSIZE) +
+	(tx * FONT_XSIZE);
 
     curmask = 0;
     voffs = screenoffs(ty, tx >> vdu.mode40, vdu.mode40) + vdu.startaddr;
@@ -409,7 +408,7 @@ put_screen(struct surface *s, unsigned int tx, unsigned int ty, bool blink)
 	    vv = ~0;
 	curmask >>= 1;
 
-	for (yy = 0; yy < FONT_YDUP; yy++) {
+	{
 	    uint16_t fgdtmp = fgdata;
 	    unsigned int fgshtmp = fgshift;
 	    v = vv;
@@ -421,143 +420,13 @@ put_screen(struct surface *s, unsigned int tx, unsigned int ty, bool blink)
 		if (x & 1)
 		    fgshtmp -= 2;
 		px = hrp | ((v & 0x80) ? fgp : bgp);
-		for (xx = 0; xx < FONT_XDUP; xx++)
-		    *pixelpp++ = px;
+		*pixelpp++ = px;
 		v <<= (notel | x) & 1;
 	    }
-	    pixelp += PX_WIDTH;
+	    pixelp += SCREEN_WIDTH;
 	}
     }
 }
-
-/* Smoothen the screen content by pixel interpolation
- * XXX: this code currently assumes FONT_XDUP = 2 FONT_YDUP = 3
- *
- * This uses raised cosine interpolation between each two points; it
- * just conveniently happens such that for two points:
- *
- *	y = x0/2 + x1/2
- * ... and for three points ...
- *	y = x0/4 + x1/2 + x2/4
- * In this application, either x0 = x1 or x1 = x2.
- *
- * This does not attempt to compensate for gamma during the averaging.
- * The results seem OK without it, and may help separate thin lines.
- */
-#if FONT_XDUP != 2 || FONT_YDUP != 3
-
-static void interpolate_screen(struct surface *s)
-{
-    (void)s;
-}
-
-#else
-
-static inline uint32_t avg2(uint32_t p0, uint32_t p1)
-{
-    uint32_t p;
-    p0 = (p0 >> 1) & 0x7f7f7f7f;
-    p1 = (p1 >> 1) & 0x7f7f7f7f;
-    p = p0 + p1;
-    return p + ((p >> 7) & 0x01010101);
-}
-/*
- * This implementations uses masking to implement pixelwise division,
- * since the only possible inputs are 0 and 255. The masks are
- * intentionally slightly unbalanced to make sure they add to 255.
- *
- * This is NOT true for avg2()!
- */
-static inline uint32_t avg3(uint32_t p0, uint32_t p1, uint32_t p2)
-{
-    return (p0 & 0x40404040) + (p2 & 0x3f3f3f3f) + (p1 & 0x80808080);
-}
-
-static void interpolate_screen(struct surface *s)
-{
-    uint32_t *p0, *p1, *p2;	/* Physical pixels of the current row */
-    const uint32_t *lu, *ld;	/* Logical pixels one row up/down */
-    uint32_t pp0, pp1, pp2;	/* Previous pixel */
-
-    /* Logical pixels per line */
-    const size_t lxwidth = TS_WIDTH * FONT_XSIZE;
-    /* Physical pixels per physical (post-scale) pixel line */
-    const size_t pxwidth = lxwidth * FONT_XDUP;
-    /* Physical pixels per logical (pre-scale) pixel line */
-    const size_t pxline  = pxwidth * FONT_YDUP;
-    /* Total logical lines */
-    const size_t lxheight = TS_HEIGHT*FONT_YSIZE;
-
-    p0 = s->pixels;
-    p1 = p0 + pxwidth;
-    p2 = p1 + pxwidth;
-
-    /* First row has no row above it */
-    ld = p1 + pxline + 1;
-    pp0 = pp1 = pp2 = 0;
-    for (unsigned int x = 0; x < lxwidth; x++) {
-	p0[1] = avg3(0, p1[1], p1[1]);
-	p2[1] = avg3(p1[1], p1[1], *ld);
-	p0[0] = avg2(pp0, p0[1]);
-	p1[0] = avg2(pp1, p1[1]);
-	p2[0] = avg2(pp2, p2[1]);
-	pp0 = p0[1];
-	pp1 = p1[1];
-	pp2 = p2[1];
-	p0 += FONT_XDUP;
-	p1 += FONT_XDUP;
-	p2 += FONT_XDUP;
-	ld += FONT_XDUP;
-    }
-
-    p0 += pxwidth*(FONT_YDUP-1);
-    p1 += pxwidth*(FONT_YDUP-1);
-    p2 += pxwidth*(FONT_YDUP-1);
-
-    for (unsigned int y = 1; y < lxheight-1; y++) {
-	lu = p1 - pxline + 1;
-	ld = p1 + pxline + 1;
-	pp0 = pp1 = pp2 = 0;
-	for (unsigned int x = 0; x < lxwidth; x++) {
-	    p0[1] = avg3(*lu, p1[1], p1[1]);
-	    p2[1] = avg3(p1[1], p1[1], *ld);
-	    p0[0] = avg2(pp0, p0[1]);
-	    p1[0] = avg2(pp1, p1[1]);
-	    p2[0] = avg2(pp2, p2[1]);
-	    pp0 = p0[1];
-	    pp1 = p1[1];
-	    pp2 = p2[1];
-	    p0 += FONT_XDUP;
-	    p1 += FONT_XDUP;
-	    p2 += FONT_XDUP;
-	    lu += FONT_XDUP;
-	    ld += FONT_XDUP;
-	}
-	p0 += pxwidth*(FONT_YDUP-1);
-	p1 += pxwidth*(FONT_YDUP-1);
-	p2 += pxwidth*(FONT_YDUP-1);
-    }
-
-    /* Last row has no row below it */
-    lu = p1 - pxline + 1;
-    pp0 = pp1 = pp2 = 0;
-    for (unsigned int x = 0; x < lxwidth; x++) {
-	p0[1] = avg3(*lu, p1[1], p1[1]);
-	p2[1] = avg3(p1[1], p1[1], 0);
-	p0[0] = avg2(pp0, p0[1]);
-	p1[0] = avg2(pp1, p1[1]);
-	p2[0] = avg2(pp2, p2[1]);
-	pp0 = p0[1];
-	pp1 = p1[1];
-	pp2 = p2[1];
-	p0 += FONT_XDUP;
-	p1 += FONT_XDUP;
-	p2 += FONT_XDUP;
-	lu += FONT_XDUP;
-    }
-}
-
-#endif
 
 static void update_screen(struct surface *s)
 {
@@ -565,7 +434,7 @@ static void update_screen(struct surface *s)
 	return;
 
     if (!SDL_UpdateTexture(screen_texture, NULL, s->pixels,
-			   PX_WIDTH * sizeof s->pixels[0]) ||
+			   SCREEN_WIDTH * sizeof s->pixels[0]) ||
 	!SDL_RenderClear(screen_renderer) ||
 	!SDL_RenderTexture(screen_renderer, screen_texture, NULL, NULL)) {
 	fprintf(stderr, "%s: screen update failed: %s\n",
@@ -597,8 +466,6 @@ static void refresh_screen(struct surface *s, bool force_blink)
     for (y = 0; y < TS_HEIGHT; y++)
 	for (x = 0; x < TS_WIDTH; x++)
 	    put_screen(s, x, y, blink);
-
-    interpolate_screen(s);
 
     update_screen(s);
 }
@@ -640,7 +507,7 @@ void abc_screenshot(const char *path)
 	return;
     refresh_screen(&s, true);	/* Always snapshot with blink on */
 
-    screenshot(s.pixels, PX_WIDTH, PX_HEIGHT, path);
+    screenshot(s.pixels, SCREEN_WIDTH, SCREEN_HEIGHT, path);
 }
 
 /*
@@ -731,7 +598,7 @@ void screen_init(bool width40, bool color)
     }
 
     if (!opts.headless) {
-	if (!SDL_CreateWindowAndRenderer("abc80sim", PX_WIDTH, PX_HEIGHT, 0,
+	if (!SDL_CreateWindowAndRenderer("abc80sim", WINDOW_WIDTH, WINDOW_HEIGHT, 0,
 					 &screen_window, &screen_renderer)) {
 	    fprintf(stderr, "%s: unable to create SDL window: %s\n",
 		    program_name, SDL_GetError());
@@ -744,9 +611,15 @@ void screen_init(bool width40, bool color)
 	screen_texture = SDL_CreateTexture(screen_renderer,
 					   SDL_PIXELFORMAT_ARGB8888,
 					   SDL_TEXTUREACCESS_STREAMING,
-					   PX_WIDTH, PX_HEIGHT);
+					   SCREEN_WIDTH, SCREEN_HEIGHT);
 	if (!screen_texture) {
 	    fprintf(stderr, "%s: unable to create SDL texture: %s\n",
+		    program_name, SDL_GetError());
+	    screen_reset();
+	    return;
+	}
+	if (!SDL_SetTextureScaleMode(screen_texture, SDL_SCALEMODE_LINEAR)) {
+	    fprintf(stderr, "%s: unable to set screen texture scale mode: %s\n",
 		    program_name, SDL_GetError());
 	    screen_reset();
 	    return;
