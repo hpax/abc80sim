@@ -57,6 +57,8 @@ extern void rtc_init(void);
 extern pure_func uint8_t abc806_rtc_in(uint16_t port);
 extern void abc806_rtc_out(uint16_t port, uint8_t value);
 
+extern uint8_t abc806_attribute_latch;
+
 extern void abc800_ctc_out(uint16_t, uint8_t);
 extern uint8_t abc800_ctc_in(uint16_t);
 extern void abc800_ctc_init(void);

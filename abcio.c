@@ -408,6 +408,20 @@ static uint8_t dart_keyb_in(uint16_t port)
     return v;
 }
 
+uint8_t abc806_attribute_latch;
+
+static void abc806_attrib_out(uint16_t port, uint8_t value)
+{
+    (void)port;
+    abc806_attribute_latch = value;
+}
+
+static uint8_t abc806_attrib_in(uint16_t port)
+{
+    (void)port;
+    return abc806_attribute_latch;
+}
+
 static void abc800_register_ioports(void)
 {
     register_ioport(0x00,  0xf0, ~0, abcbus_out, abcbus_in);
@@ -426,6 +440,10 @@ static void abc800_register_ioports(void)
     register_ioport(0x42, 0xf2, 0x01, abc800_sio_cas_out, abc800_sio_cas_in);
 
     register_ioport(0x60, 0xf0, 0x03, abc800_ctc_out, abc800_ctc_in);
+
+    if (opts.model == MODEL_ABC806) {
+	register_ioport(0x35, 0xff, 0x01, abc806_attrib_out, abc806_attrib_in);
+    }
 
     /* Magic events */
     if (opts.magic)

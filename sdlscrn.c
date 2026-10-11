@@ -36,19 +36,6 @@ extern const unsigned char abc_font[512][FONT_YSIZE];
 
 #define NCOLORS 8
 
-static struct argb {
-    uint8_t a, r, g, b;
-} rgbcolors[NCOLORS] = {
-    {0x00, 0x00, 0x00, 0x00},	 /* black */
-    {0x00, 0xff, 0x00, 0x00},	 /* red */
-    {0x00, 0x00, 0xff, 0x00},	 /* green */
-    {0x00, 0xff, 0xff, 0x00},	 /* yellow */
-    {0x00, 0x00, 0x00, 0xff},	 /* blue */
-    {0x00, 0xff, 0x00, 0xff},	 /* purple */
-    {0x00, 0x00, 0xff, 0xff},	 /* cyan */
-    {0x00, 0xff, 0xff, 0xff},	 /* white */
-};
-
 /* Mutexes for interaction with the CPU thread */
 static SDL_Mutex *screen_mutex;	/* Lock screen operation */
 static SDL_Mutex *magic_mutex;		/* "Magic" operation started */
@@ -95,6 +82,7 @@ struct video_state {
     uint8_t fgctl;		/* FG memory color control */
     uint8_t fgstart;		/* Start fg memory scanning */
     uint8_t vram[VRAM_SIZE];
+    uint8_t vattr[VRAM_SIZE];	/* For ABC806; MUST FOLLOW vram[] */
     uint8_t fgram[FGRAM_SIZE];
 };
 static struct video_state cpu, xfr, vdu;
@@ -106,19 +94,54 @@ struct xy {
 };
 static struct xy addr_to_xy_tbl[2][2048];
 
+/* Text attributes */
+enum vid_attrib_flags {
+    GMODE_GFX	 = 1,		/* Graphics active - must be 1 */
+    GMODE_SEP	 = 2,		/* Separated graphics - must be 2 */
+    GMODE_HIDE	 = 4,		/* Hidden text (render as space) */
+    GMODE_HOLD	 = 8,		/* Repeat prev character if control */
+    GMODE_EL	 = 16,		/* Double width active */
+    GMODE_EL2	 = 32,		/* Double width, second half */
+    GMODE_UL     = 64,		/* Underline, must be 64 */
+    GMODE_FLSH	 = 128,		/* Flashing, must be 128 */
+    GMODE_DBLE	 = 256,		/* Double height active */
+    GMODE_DBL2	 = 512,		/* Double height, lower half */
+};
+struct vid_attrib {
+    unsigned int ch    :  9;
+    unsigned int flags : 15;
+    unsigned int fg    :  3;
+    unsigned int bg    :  3;
+    unsigned int inv   :  1;	/* Character may be inverted */
+};
+
 /* A local framebuffer used for rendering and screenshots */
 struct surface {
-    uint32_t pixels[SCREEN_WIDTH * SCREEN_HEIGHT];
-    uint32_t colors[NCOLORS];
+    uint32_t *pixels;		/* == surface->pixels except for type */
+    SDL_Surface *surface;
     SDL_Texture *texture;
     SDL_Renderer *renderer;
+    uint32_t colors[NCOLORS];
+    struct vid_attrib attrib[TS_HEIGHT+1][TS_WIDTH];
 };
+
+static void configure_colors(uint32_t colors[NCOLORS]);
 
 static struct surface rscreen;
 static SDL_Window *screen_window;
 static SDL_Renderer *screen_renderer;
-static SDL_Texture *screen_texture;
 static Uint32 user_event_base;
+
+static inline void lock_surface(SDL_Surface *s)
+{
+    if (SDL_MUSTLOCK(s))
+	SDL_LockSurface(s);
+}
+static inline void unlock_surface(SDL_Surface *s)
+{
+    if (SDL_MUSTLOCK(s))
+	SDL_UnlockSurface(s);
+}
 
 /*
  * Give the x,y coordinates for a given location in shadow video RAM
@@ -168,38 +191,17 @@ static inline uint8_t screendata(uint8_t y, uint8_t x, enum model model)
 /*
  * Compute text attributes
  */
-enum vid_attrib_flags {
-    GMODE_GFX	 = 1,		/* Graphics active - must be 1 */
-    GMODE_SEP	 = 2,		/* Separated graphics - must be 2 */
-    GMODE_HIDE	 = 4,		/* Hidden text (render as space) */
-    GMODE_HOLD	 = 8,		/* Repeat prev character if control */
-    GMODE_FLSH	 = 16,		/* Flashing */
-    GMODE_DBLE	 = 32,		/* Double height active */
-    GMODE_DBL2	 = 64,		/* Double width, lower half */
-    GMODE_EL	 = 128,		/* Double width active */
-    GMODE_EL2	 = 256		/* Double width, second half */
-};
-struct vid_attrib {
-    unsigned int ch    :  9;
-    unsigned int flags : 15;
-    unsigned int fg    :  3;
-    unsigned int bg    :  3;
-    unsigned int inv   :  1;	/* Character may be inverted */
-};
-
-
-/* Row indicies are offset by 1; row 0 (= "-1") is always blank */
-static struct vid_attrib attrib[TS_HEIGHT+1][TS_WIDTH];
+/* attrib[] row indicies are offset by 1; row 0 (= "-1") is always blank */
 
 /* Attributes for ABC80/800M/800C/802 */
-static inline void make_attributes(enum model model)
+static inline void
+make_attributes_teledata(struct surface *s, enum model model)
 {
     static const uint32_t attrib_masks[] = {
 	[MODEL_ABC80]	= 0x00fe00fe,
 	[MODEL_ABC800C] = 0xf7fe33fe,
 	[MODEL_ABC800M] = 0x00000000,
 	[MODEL_ABC802]	= 0x00fe00fe,
-	[MODEL_ABC806]	= 0xffffffff /* Should come from attribute memory */
     };
     const uint32_t attrib_mask = attrib_masks[model];
     static const uint8_t inv_aboves[] = {
@@ -207,13 +209,14 @@ static inline void make_attributes(enum model model)
 	[MODEL_ABC800C] = 0x7f,
 	[MODEL_ABC800M] = 0xff,
 	[MODEL_ABC802]	= 0x7f,
-	[MODEL_ABC806]	= 0x7f	/* ? */
     };
     const uint8_t inv_above = inv_aboves[model];
     const unsigned int m40 = vdu.mode40;
     const unsigned int width = TS_WIDTH >> m40;
     unsigned int x, y;
-    struct vid_attrib *vap = attrib[1]; /* First row */
+    struct vid_attrib *vap = s->attrib[1]; /* First row */
+
+    memset(s->attrib, 0, sizeof(s->attrib[0])); /* "Zeroeth" row is blank */
 
     for (y = 0; y < TS_HEIGHT; y++) {
 	struct vid_attrib va;
@@ -326,6 +329,85 @@ static inline void make_attributes(enum model model)
     }
 }
 
+static inline void
+make_attributes_abc806(struct surface *s, enum model model)
+{
+    const unsigned int m40 = vdu.mode40;
+    const unsigned int width = TS_WIDTH >> m40;
+    unsigned int x, y;
+    struct vid_attrib *vap = s->attrib[1]; /* First row */
+
+    memset(s->attrib, 0, sizeof(s->attrib[0])); /* "Zeroeth" row is blank */
+
+    for (y = 0; y < TS_HEIGHT; y++) {
+	struct vid_attrib va;
+	va.fg	 = 7;
+	va.bg	 = 0;
+	va.flags = 0;
+	va.ch	 = ' ';
+	va.inv	 = 0;
+
+	for (x = 0; x < width; x++) {
+	    struct vid_attrib a;
+	    size_t offs = (screenoffs(y, x, vdu.mode40, model) + vdu.startaddr)
+		& VRAM_MASK;
+	    uint8_t ch = vdu.vram[offs];
+	    uint8_t at = vdu.vattr[offs];
+	    unsigned int fg, bg;
+
+	    a.flags = 0;
+	    a.fg = fg = at & 7;
+	    a.bg = bg = (at >> 3) & 7;
+	    if (fg != bg) {
+		a.flags = at & (GMODE_UL | GMODE_FLSH);
+	    } else {
+		/* Special codes */
+		switch (at >> 6) {
+		case 0:		/* "Last attribute" */
+		case 1:		/* "Reserved" ???? */
+		    a = va;
+		    break;
+		case 2:		/* "Blank" ???? */
+		    break;
+		case 3:
+		    switch (fg) {
+		    case 5:	/* EL */
+			a.flags = GMODE_EL;
+			break;
+		    case 6:
+			a.flags = GMODE_EL | GMODE_DBLE;
+			break;
+		    case 7:
+			a.flags = GMODE_EL | GMODE_DBLE | GMODE_DBL2;
+			break;
+		    default:
+			break;
+		    }
+		}
+	    }
+
+	    a.inv = ch >= 0x80;
+	    a.ch  = ch & 0x7f;
+	    if (a.ch < 0x20)
+		a.ch += 0xa0;	/* Graphics! */
+
+	    if ((va.flags & (GMODE_EL|GMODE_EL2)) == GMODE_EL) {
+		a.flags |= va.flags & (GMODE_EL|GMODE_DBLE|GMODE_DBL2);
+		a.flags |= GMODE_EL2;
+		va.fg = a.fg;
+		va.bg = a.bg;
+		va.flags &= ~(GMODE_FLSH|GMODE_UL);
+		va.flags |= a.flags & (GMODE_FLSH|GMODE_UL);
+		a.inv = va.inv;
+		a.ch  = va.ch;
+		vap[-1] = va;	/* Feed attributes back to previous half! */
+	    }
+
+	    *vap++ = va = a;
+	}
+    }
+}
+
 /*
  * Update the on-screen structure to match the screendata[]
  * for character (tx,ty), but don't refresh the rectangle just
@@ -351,7 +433,7 @@ put_screen(struct surface *s, unsigned int tx, unsigned int ty, bool blink,
 	return;
 
     /* Decoded characters & attributes */
-    va = attrib[ty+1][tx];
+    va = s->attrib[ty+1][tx];
 
     fontp = abc_font[va.ch];
     if (!blink && (va.flags & GMODE_FLSH))
@@ -360,7 +442,17 @@ put_screen(struct surface *s, unsigned int tx, unsigned int ty, bool blink,
     if (va.flags & GMODE_DBL2)
 	fontp += FONT_YSIZE >> 1; /* Second half */
 
-    invmask = (va.inv && (model == MODEL_ABC80 || blink)) ? 7 : 0;
+    switch (model) {
+    case MODEL_ABC80:
+	invmask = va.inv && blink ? 7 : 0;
+	break;
+    case MODEL_ABC806:
+	invmask = va.inv ? va.fg ^ va.bg : 0;
+	break;
+    default:
+	invmask = va.inv ? 7 : 0;
+	break;
+    }
 
     if (vdu.fgctl & 0x80) {
 	bgp = fgp = 0;
@@ -464,33 +556,42 @@ static inline void
 draw_screen_model(struct surface *s, bool blink, enum model model)
 {
     unsigned int x, y;
+
+    if (!s->surface)
+	return;
+
+    lock_surface(s->surface);
+
     for (y = 0; y < TS_HEIGHT; y++)
 	for (x = 0; x < TS_WIDTH; x++)
 	    put_screen(s, x, y, blink, model);
+
+    unlock_surface(s->surface);
 }
+
 static void draw_screen_abc80(struct surface *s, bool blink)
 {
-    make_attributes(MODEL_ABC80);
+    make_attributes_teledata(s, MODEL_ABC80);
     draw_screen_model(s, blink, MODEL_ABC80);
 }
 static void draw_screen_abc800c(struct surface *s, bool blink)
 {
-    make_attributes(MODEL_ABC800C);
+    make_attributes_teledata(s, MODEL_ABC800C);
     draw_screen_model(s, blink, MODEL_ABC800C);
 }
 static void draw_screen_abc800m(struct surface *s, bool blink)
 {
-    make_attributes(MODEL_ABC800M);
+    make_attributes_teledata(s, MODEL_ABC800M);
     draw_screen_model(s, blink, MODEL_ABC800M);
 }
 static void draw_screen_abc802(struct surface *s, bool blink)
 {
-    make_attributes(MODEL_ABC802);
+    make_attributes_teledata(s, MODEL_ABC802);
     draw_screen_model(s, blink, MODEL_ABC802);
 }
 static void draw_screen_abc806(struct surface *s, bool blink)
 {
-    make_attributes(MODEL_ABC806);
+    make_attributes_abc806(s, MODEL_ABC806);
     draw_screen_model(s, blink, MODEL_ABC806);
 }
 
@@ -508,7 +609,8 @@ static const draw_screen_func draw_screen[] = {
  * Refresh the entire screen or recreate the screen on another surface.
  * If "force_blink" is true, always draw blinking elements visible.
  */
-static void refresh_screen(struct surface *s, bool force_blink)
+static void refresh_screen(struct surface *s, bool force_blink,
+			   struct video_state *from)
 {
     bool blink;
 
@@ -516,7 +618,7 @@ static void refresh_screen(struct surface *s, bool force_blink)
 	    return;		/* Nothing to do */
 
     SDL_LockMutex(screen_mutex);
-    vdu = xfr;
+    vdu = *from;
     SDL_UnlockMutex(screen_mutex);
 
     blink = force_blink | vdu.blink_on;
@@ -534,24 +636,57 @@ void setmode40(bool m40)
 	abc80_mem_mode80(!m40);
 }
 
-static struct surface *init_surface(struct surface *s)
+static void destroy_surface(struct surface *s);
+
+static struct surface *
+init_surface(struct surface *s, bool graphics, SDL_Renderer *renderer)
 {
-    int i;
+    const SDL_PixelFormat fmt = WORDS_LITTLEENDIAN
+	? SDL_PIXELFORMAT_BGRA8888 : SDL_PIXELFORMAT_ARGB8888;
 
     if (unlikely(!s))
 	return NULL;
 
-    for (i = 0; i < NCOLORS; i++) {
-	s->colors[i] = UINT32_C(0xff000000) |
-	    ((uint32_t)rgbcolors[i].r << 16) |
-	    ((uint32_t)rgbcolors[i].g << 8) |
-	    rgbcolors[i].b;
+    s->pixels   = NULL;
+    s->surface  = NULL;
+    s->texture  = NULL;
+    s->renderer = renderer;
+
+    if (!graphics)
+	return s;
+
+    configure_colors(s->colors);
+
+    s->surface = SDL_CreateSurface(SCREEN_WIDTH, SCREEN_HEIGHT, fmt);
+    if (!s->surface)
+	return NULL;
+
+    s->pixels = (uint32_t *) s->surface->pixels;
+
+    if (s->renderer) {
+	s->texture = SDL_CreateTextureFromSurface(renderer, s->surface);
+	if (!s->texture)
+	    goto fail;
+	if (!SDL_SetTextureScaleMode(rscreen.texture, SDL_SCALEMODE_LINEAR))
+	    goto fail;
     }
 
-    s->texture = NULL;
-    s->renderer = NULL;
-
     return s;
+fail:
+    destroy_surface(s);
+    return NULL;
+}
+
+static void destroy_surface(struct surface *s)
+{
+    if (s->surface) {
+	SDL_DestroySurface(s->surface);
+	s->surface = NULL;
+    }
+    if (s->texture) {
+	SDL_DestroyTexture(s->texture);
+	s->texture = NULL;
+    }
 }
 
 /*
@@ -575,10 +710,10 @@ void abc_screenshot(const char *path)
     if (path)
 	sd->path = strdup(path);
 
-    if (!init_surface(&sd->s))
+    if (!init_surface(&sd->s, false, NULL))
 	goto fail;
 
-    refresh_screen(&sd->s, true); /* Always snapshot with blink on */
+    refresh_screen(&sd->s, true, &xfr); /* Always snapshot with blink on */
 
     /*
      * The rest can be safely run in a subthread so as to not block the
@@ -598,35 +733,24 @@ fail:
 static int do_abc_screenshot(void *sdv)
 {
     struct screenshot_data *sd = sdv;
+    SDL_Surface *ss = NULL;	/* Scaled surface */
+
     /* PNG pHYs isn't well supported, so pre-scale the image */
-    const unsigned int total_x = 2 * SCREEN_WIDTH;
-    const unsigned int total_y = 3 * SCREEN_HEIGHT;
-
-    SDL_Surface *s1 = NULL;
-    SDL_Surface *s2 = NULL;
-
-    s1 = SDL_CreateSurfaceFrom(SCREEN_WIDTH, SCREEN_HEIGHT,
-			       SDL_PIXELFORMAT_ARGB8888, sd->s.pixels,
-			       SCREEN_WIDTH * sizeof(uint32_t));
-    if (!s1)
-	goto cleanup;
 
     /* Scale the surface */
-    s2 = SDL_ScaleSurface(s1, total_x, total_y, SDL_SCALEMODE_LINEAR);
-    SDL_DestroySurface(s1);
-    s1 = NULL;
-    if (!s2)
+    ss = SDL_ScaleSurface(sd->s.surface, WINDOW_WIDTH, WINDOW_HEIGHT,
+			  SDL_SCALEMODE_LINEAR);
+    if (!ss)
 	goto cleanup;
 
-    SDL_LockSurface(s2);
-    screenshot(s2->pixels, total_x, total_y, sd->path);
-    SDL_UnlockSurface(s2);
+    lock_surface(ss);
+    screenshot(ss->pixels, ss->w, ss->h, sd->path);
+    unlock_surface(ss);
 
 cleanup:
-    if (s2)
-	SDL_DestroySurface(s2);
-    if (s1)
-	SDL_DestroySurface(s1);
+    if (ss)
+	SDL_DestroySurface(ss);
+    destroy_surface(&sd->s);
     if (sd->path)
 	free(sd->path);
     free(sd);
@@ -641,6 +765,13 @@ void dump_txt_screen(const char *path, const char *file)
     unsigned int tx, ty;
     struct host_file *hf = NULL;
     FILE *f = NULL;
+    struct surface s;
+
+    /* Text surface only */
+    if (!init_surface(&s, false, NULL))
+	return;
+
+    refresh_screen(&s, true, &cpu);
 
     if (path)
 	hf = dump_file(HF_TEXT, path, NULL, "scrn", ".txt");
@@ -655,17 +786,12 @@ void dump_txt_screen(const char *path, const char *file)
 	f = hf->f;
     }
 
-    SDL_LockMutex(screen_mutex);
-    vdu = cpu;
-    SDL_UnlockMutex(screen_mutex);
-
-    make_attributes(opts.model);
     for (ty = 0; ty < TS_HEIGHT; ty++) {
 	for (tx = 0; tx < TS_WIDTH; tx++) {
 	    unsigned char ch;
 	    struct vid_attrib va;
 
-	    va = attrib[ty+1][tx];
+	    va = s.attrib[ty+1][tx];
 	    ch = va.ch & 0x7f;
 	    if (ch < ' ' || (va.flags & GMODE_DBL2))
 		ch = ' ';
@@ -680,6 +806,8 @@ void dump_txt_screen(const char *path, const char *file)
 	    keep_file(hf);
 	close_file(&hf);
     }
+
+    destroy_surface(&s);
 }
 
 enum user_event {
@@ -689,13 +817,43 @@ enum user_event {
     UEV_END
 };
 
+static void configure_colors(uint32_t colors[NCOLORS])
+{
+    int i;
+
+    for (i = 0; i < NCOLORS; i++) {
+	uint32_t c = UINT32_C(0xff000000);	/* A channel */
+
+	if (opts.color) {
+	    if (i & 1)
+		c |= UINT32_C(0x00ff0000);	/* R channel */
+	    if (i & 2)
+		c |= UINT32_C(0x0000ff00);	/* G channel */
+	    if (i & 4)
+		c |= UINT32_C(0x000000ff);	/* B channel */
+	} else {
+	    if (i)
+		c |= UINT32_C(0x00ffffff);	/* RGB == Y */
+	}
+
+	colors[i] = c;
+    }
+}
+
 /*
  * Initialize SDL and the data structures
  */
-void screen_init(bool width40, bool color)
+void screen_init(void)
 {
     int i, x, y;
     Uint32 sdlinit = opts.headless ? SDL_INIT_EVENTS : SDL_INIT_VIDEO;
+    static const char * const modelname[] = {
+	[MODEL_ABC80]   = "ABC80",
+	[MODEL_ABC800C] = "ABC800C",
+	[MODEL_ABC800M] = "ABC800M",
+	[MODEL_ABC802]  = "ABC802",
+	[MODEL_ABC806]  = "ABC806"
+    };
 
     if (!SDL_Init(sdlinit)) {
 	fprintf(stderr, "%s: unable to initialize SDL: %s\n",
@@ -721,41 +879,26 @@ void screen_init(bool width40, bool color)
     }
 
     if (!opts.headless) {
-	if (!init_surface(&rscreen))
-	    return;
-
-	if (!SDL_CreateWindowAndRenderer("abc80sim", WINDOW_WIDTH, WINDOW_HEIGHT, 0,
-					 &screen_window, &rscreen.renderer)) {
+	Uint64 windowflags = SDL_WINDOW_HIGH_PIXEL_DENSITY;
+	if (!SDL_CreateWindowAndRenderer(modelname[opts.model],
+					 WINDOW_WIDTH, WINDOW_HEIGHT,
+					 windowflags,
+					 &screen_window, &screen_renderer)) {
 	    fprintf(stderr, "%s: unable to create SDL window: %s\n",
 		    program_name, SDL_GetError());
 	    screen_reset();
 	    return;
 	}
 
+	SDL_SetWindowResizable(screen_window, true);
 	SDL_SetWindowSurfaceVSync(screen_window, 1);
 
-	rscreen.texture = SDL_CreateTexture(rscreen.renderer,
-					    SDL_PIXELFORMAT_ARGB8888,
-					    SDL_TEXTUREACCESS_STREAMING,
-					    SCREEN_WIDTH, SCREEN_HEIGHT);
-	if (!rscreen.texture) {
-	    fprintf(stderr, "%s: unable to create SDL texture: %s\n",
+	if (!init_surface(&rscreen, true, screen_renderer)) {
+	    fprintf(stderr, "%s: unable to initialize screen: %s\n",
 		    program_name, SDL_GetError());
 	    screen_reset();
 	    return;
 	}
-	if (!SDL_SetTextureScaleMode(rscreen.texture, SDL_SCALEMODE_LINEAR)) {
-	    fprintf(stderr, "%s: unable to set screen texture scale mode: %s\n",
-		    program_name, SDL_GetError());
-	    screen_reset();
-	    return;
-	}
-    }
-
-    /* If not color, then overwrite colors 1-6 with white */
-    if (!color) {
-	    for (i = 1; i < NCOLORS - 1; i++)
-		    rgbcolors[i] = rgbcolors[NCOLORS - 1];
     }
 
     /*
@@ -768,7 +911,7 @@ void screen_init(bool width40, bool color)
     cpu.crtc.r.vscantotal = 24;
     cpu.crtc.r.vdisplay = 24;
     cpu.crtc.r.curstart = 0x1f; /* No CRTC cursor */
-    setmode40(width40);
+    setmode40(opts.startup_width40);
     vdu = xfr = cpu;
 
     /* Initialize reverse mapping table */
@@ -784,7 +927,7 @@ void screen_init(bool width40, bool color)
     }
 
     /* Draw initial screen */
-    refresh_screen(&rscreen, false);
+    refresh_screen(&rscreen, false, &xfr);
 }
 
 /*
@@ -792,8 +935,7 @@ void screen_init(bool width40, bool color)
  */
 void screen_reset(void)
 {
-    if (screen_texture)
-	SDL_DestroyTexture(screen_texture);
+    destroy_surface(&rscreen);
     if (screen_renderer)
 	SDL_DestroyRenderer(screen_renderer);
     if (screen_window)
@@ -804,7 +946,6 @@ void screen_reset(void)
 	SDL_DestroyMutex(magic_mutex);
     if (screen_mutex)
 	SDL_DestroyMutex(screen_mutex);
-    screen_texture = NULL;
     screen_renderer = NULL;
     screen_window = NULL;
     magic_done = NULL;
@@ -813,24 +954,21 @@ void screen_reset(void)
     SDL_Quit();
 }
 
-enum kshift {
-    KSH_SHIFT = 1,
-    KSH_CTRL = 2,
-    KSH_ALT = 4
-};
-
 /*
  * Returns an ABC80/800 keycode (0-255), or -1 if unavailable.
  * This is done regardless of the Alt status, so it can be used
  * to decode Alt magic operations, too.
+ *
+ * Add +256 to the keycode if it is to be interpreted as a magic
+ * (Alt) key.
  */
 static int sym_to_abc(const SDL_KeyboardEvent *key)
 {
     int abcsym;
-    enum kshift kshift;
     SDL_Keycode code;
     SDL_Keymod mod;
     unsigned int lower;
+    bool alt, ctrl, shift, caps;
 
     /*
      * Get the key symbol associated with the *modified* key,
@@ -848,11 +986,16 @@ static int sym_to_abc(const SDL_KeyboardEvent *key)
 	   code, SDL_GetKeyName(code));
 #endif
 
-    kshift = ((key->mod & SDL_KMOD_ALT) ? KSH_ALT : 0)
-	| ((key->mod & SDL_KMOD_CTRL) ? KSH_CTRL : 0)
-	| ((key->mod & SDL_KMOD_SHIFT) ? KSH_SHIFT : 0);
-    lower = !!(key->mod & SDL_KMOD_SHIFT) == !!(key->mod & SDL_KMOD_CAPS)
-	? 0x20 : 0x00;
+    shift = !!(key->mod & SDL_KMOD_SHIFT);
+    ctrl  = !!(key->mod & SDL_KMOD_CTRL);
+    alt   = !!(key->mod & SDL_KMOD_ALT);
+    caps  = !!(key->mod & SDL_KMOD_CAPS);
+
+    /*
+     * This generates the lower case bit (0x20) for alphabetic
+     * keys (sensitive to both shift and caps lock.)
+     */
+    lower = (unsigned int)(shift ^ caps) << 5;
 
     abcsym = -1;
 
@@ -873,57 +1016,124 @@ static int sym_to_abc(const SDL_KeyboardEvent *key)
     case SDLK_F6:
     case SDLK_F7:
     case SDLK_F8:
-	abcsym = (key->key - SDLK_F1 + 192) + ((int)kshift << 3);
+	abcsym = (key->key - SDLK_F1 + 192) + (ctrl << 4) + (shift << 3);
+	break;
+
+    case SDLK_F11:
+	abcsym = 256 + 'w';
+	break;
+
+    case SDLK_PRINTSCREEN:
+    case SDLK_F12:
+	abcsym = 256 + 's';
 	break;
 
     case SDLK_ESCAPE:		/* Equal to Ctrl-< */
 	abcsym = 127;
 	break;
 
-    case ' ':			/* These honor Ctrl but not Shift+Ctrl */
-    case '_':
+    case L' ':			/* These honor Ctrl but not Shift+Ctrl */
+    case L'_':
 	abcsym = code;
-	if (kshift & KSH_CTRL)
+	if (ctrl)
 	    abcsym &= 0x1f;
 	break;
 
-    case '-':			/* Tread Ctrl+- as Ctrl+_  */
-	abcsym = (kshift & KSH_CTRL) ? 0x1f : code;
+    case L'-':			/* Tread Ctrl+- as Ctrl+_  */
+	abcsym = ctrl ? 0x1f : code;
 	break;
 
     case SDLK_END:		/* Alt-End -> Alt-q */
-	if (kshift & KSH_ALT)
+	if (alt)
 	    abcsym = 'q';
 	break;
 
-    case '[':
-    case '{':
-    case ']':
-    case '}':
-    case '\\':
-    case '|':
+    case L'[':
+    case L'{':
+    case L']':
+    case L'}':
+    case L'\\':
+    case L'|':
 	/* Forcibly make these behave like letters */
 	abcsym = (code & ~0x20) | lower;
 	break;
 
 	/* Make the §½ key an alias of the <> key */
     case L'§':
-	abcsym = (kshift & KSH_CTRL) ? 127 : '<';
-	break;
     case L'½':
-	abcsym = (kshift & KSH_CTRL) ? 127 : '>';
+	abcsym = shift ? '>' : '<';
+	break;
+
+	/* Dead keys -> É Ü */
+    case L'´':
+    case L'`':
+	abcsym = 0x40 | lower;	/* ´ ` -> É */
+	break;
+
+    case L'¨':
+    case L'^':
+	abcsym = 0x5e | lower;	/* ¨ ^ -> Ü */
+	break;
+
+    case L'¤':
+	abcsym = '$';
+	break;
+    case L'É':
+	abcsym = '@';
+	break;
+    case L'Å':
+	abcsym = ']';
+	break;
+    case L'Ä':
+    case L'Æ':
+	abcsym = '[';
+	break;
+    case L'Ö':
+    case L'Ø':
+	abcsym = '\\';
+	break;
+    case L'Ü':
+	abcsym = '^';
+	break;
+    case L'é':
+	abcsym = '`';
+	break;
+    case L'å':
+	abcsym = '}';
+	break;
+    case L'ä':
+    case L'æ':
+	abcsym = '{';
+	break;
+    case L'ö':
+    case L'ø':
+	abcsym = '|';
+	break;
+    case L'ü':
+	abcsym = '~';
 	break;
 
     default:
-	if (code > 0x1fffff) {
-	    /* Key that are dead keys on Swedish keyboards */
+	if (code <= 127) {
+	    abcsym = code;
+	} else if (code > 0x1fffff) {
+	    /*
+	     * Non-Unicode key codes; check the scan code for specific
+	     * subcases.
+	     */
+
 	    switch (key->scancode) {
+		/*
+		 * Key that are dead keys on Swedish keyboards.
+		 * SDL < 3.6 got these wrong on some platforms.
+		 */
 	    case SDL_SCANCODE_EQUALS:
 		abcsym = 0x40 | lower;		/* ´ ` -> É */
 		break;
 	    case SDL_SCANCODE_RIGHTBRACKET:
 		abcsym = 0x5e | lower;		/* ¨ ^ -> Ü */
 		break;
+
 	    default:
 		break;
 	    }
@@ -931,32 +1141,33 @@ static int sym_to_abc(const SDL_KeyboardEvent *key)
 	break;
     }
 
-    if (abcsym < 0) {
-	abcsym = unicode_to_abc(code);
+    if (abcsym < 0)
+	return abcsym;
+
+    if (alt)
+	return abcsym | 256;
+
+    if (ctrl) {
 	switch (abcsym) {
 	case ' ':
-	    if (kshift & KSH_CTRL)
-		abcsym = 0;
+	    abcsym = 0;
 	    break;
-	case '<':
-	case '>':
-	    if (kshift & KSH_CTRL)
-		abcsym = 127;
+	case L'-':		/* - _ is usually the same key */
+	    abcsym = 0x1f;
+	    break;
+	case L'<':
+	case L'>':
+	    abcsym = 127;
 	    break;
 	default:
-	    if ((unsigned int)abcsym > 127)
-		abcsym = -1;
-	    break;
-	}
-    }
-
-    if (abcsym >= '@' && abcsym < 127) {
-	if (kshift & KSH_CTRL) {
-	    abcsym &= 0x1f;
-	    if (kshift & KSH_SHIFT) {
-		/* ABC-specific: Ctrl-Shift flips bit 4 */
-		abcsym ^= 0x10;
+	    if (abcsym >= '@' && abcsym < 127) {
+		abcsym &= 0x1f;
+		if (shift) {
+		    /* ABC-specific: Ctrl-Shift flips bit 4 */
+		    abcsym ^= 0x10;
+		}
 	    }
+	    break;
 	}
     }
 
@@ -1026,6 +1237,13 @@ static void do_magic_from_event_loop(int abcsym)
     case 'f':
 	opts.faketype = !opts.faketype;
 	break;
+    case 'w':
+	if (screen_window) {
+	    SDL_SetWindowFullscreen(screen_window,
+				    !(SDL_GetWindowFlags(screen_window)
+				      & SDL_WINDOW_FULLSCREEN));
+	}
+	break;
     default:
 	break;
     }
@@ -1040,7 +1258,7 @@ void event_loop(void)
 
     while (SDL_WaitEvent(&event)) {
 	if (event.type == user_event_base + UEV_REFRESH_SCREEN) {
-	    refresh_screen(&rscreen, false);
+	    refresh_screen(&rscreen, false, &xfr);
 	    continue;
 	}
 	if (event.type == user_event_base + UEV_ENABLE_KEYBOARD) {
@@ -1060,8 +1278,8 @@ void event_loop(void)
 	case SDL_EVENT_KEY_DOWN:
 	    abcsym = sym_to_abc(&event.key);
 	    if (abcsym >= 0) {
-		if ((event.key.mod & SDL_KMOD_ALT) && !event.key.repeat) {
-		    do_magic_from_event_loop(abcsym);
+		if (abcsym >= 256 && !event.key.repeat) {
+		    do_magic_from_event_loop(abcsym & 255);
 		} else if (keyboard_enabled) {
 		    /*
 		     * Remember which key so we can tell

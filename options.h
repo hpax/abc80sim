@@ -71,6 +71,7 @@ struct opts {
     bool headless;		/* Headless, no screen output */
     bool batch;			/* Quit after end of script */
     bool color;			/* Color screen */
+    bool fullscreen;		/* Start in full screen mode */
     bool hr;			/* High resolution graphics (ABC800C/M) */
     bool magic;			/* Allow magic I/O port */
     bool nmi;			/* Allow NMI */

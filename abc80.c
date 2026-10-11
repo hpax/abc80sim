@@ -459,6 +459,10 @@ int main(int argc, char **argv)
 		opts.net_legacy = enable;
 	    } else if (!strcmp(optstr, "headless")) {
 		opts.headless = enable;
+	    } else if (!strcmp(optstr, "fullscreen")) {
+		opts.fullscreen = enable;
+	    } else if (!strcmp(optstr, "window")) {
+		opts.fullscreen = !enable;
 	    } else if (!strcmp(optstr, "batch")) {
 		opts.batch = enable;
 	    } else if (!strcmp(optstr, "output")) {
@@ -529,6 +533,9 @@ int main(int argc, char **argv)
                     }
 		case 'H':
 		    opts.headless = true;
+		    break;
+		case 'f':
+		    opts.fullscreen = true;
 		    break;
 		case 'B':
 		    opts.batch = true;
@@ -652,7 +659,7 @@ int main(int argc, char **argv)
 	opts.hr = false;
 	break;
     }
-    screen_init(opts.startup_width40, opts.color);
+    screen_init();
 
     mem_init(opts.memflags, memfile);
     io_init();

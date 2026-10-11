@@ -27,6 +27,7 @@ Options (defaults in brackets):
   -s,  --speed #.#|max     set the CPU frequency to #.# MHz [original]
        --color             allow ABC800C-style color (default)
        --no-color          black and white only
+  -f,  --fullscreen        start in full screen mode
        --magic             enable magic I/O port 184 (default)
        --no-magic          disable magic I/O port 184
   -H,  --headless          run headless (no screen/keyboard support)
@@ -177,5 +178,6 @@ be triggered by outputting the equivalent ASCII byte (lower case!) to
   Alt-p    (112) dump primary RAM (64K, even nonexistent)
   Alt-q    (113) quit the simulator
   Alt-r    (114) CPU reset
-  Alt-s    (115) take a screenshot
+  Alt-s    (115) take a screenshot (also PrtSc or F12)
+  Alt-w    (119) switch full screen mode (also F11)
   Alt-x    (120) dump extended/graphics RAM (if any)

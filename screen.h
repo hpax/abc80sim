@@ -5,7 +5,7 @@
 
 #include <SDL3/SDL.h>
 
-extern void screen_init(bool, bool);
+extern void screen_init(void);
 extern void screen_reset(void);
 extern void screen_write(int, int);
 extern void screen_flush(void);

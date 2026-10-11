@@ -769,9 +769,42 @@ static inline void init_vram_abc800c(void)
 }
 
 /*
+ * On ABC806, the vram also has to handle the attribute latch.
+ */
+extern uint8_t abc806_attribute_latch;
+
+static uint8_t abc806_vram_as_read(struct as *as, size_t faddr)
+{
+    uint8_t v = as->p.data[faddr];
+    abc806_attribute_latch = as->p.data[faddr + as->len];
+    return v;
+}
+
+static void abc806_vram_as_write(struct as *as, size_t faddr, uint8_t val)
+{
+    as->p.data[faddr] = val;
+    as->p.data[faddr + as->len] = abc806_attribute_latch;
+}
+
+
+static const struct as_ops abc806_vram_ops = {
+    .read  = abc806_vram_as_read,
+    .write = abc806_vram_as_write,
+    .dump  = mem_as_dump,
+    .load  = NULL,
+    .sync  = NULL,
+    .init  = -1
+};
+
+static inline void init_vram_abc806(void)
+{
+    vram_as->nmaps  = 2;	/* Attribute buffer as second page */
+    vram_as->ops    = &abc806_vram_ops;
+}
+
+/*
  * ABC80 memory initialization
  */
-
 struct romset {
     struct rom nonv, nv20, nv22;
 };
@@ -1088,6 +1121,11 @@ void mem_init(enum memflags flags, const char *memfile)
 	mem_init_abc800cm(flags, rom_abc800_abc800mrom);
 	break;
 
+    case MODEL_ABC806:
+	init_vram_abc806();
+	/* THE REST ISN'T YET IMPLEMENTED PRETEND IT IS ABC802 */
+	/* fall through */
+
     case MODEL_ABC802:
 	mem_init_abc800(flags, rom_abc800_abc802rom);
 
@@ -1104,8 +1142,5 @@ void mem_init(enum memflags flags, const char *memfile)
 	/* If we have a MEM: file from the command line, load it */
 	load_memfile(memfile);
         break;
-
-    case MODEL_ABC806:
-	break;			/* Not implemented yet */
     }
 }
