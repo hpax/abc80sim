@@ -31,8 +31,8 @@ Options (defaults in brackets):
        --amber             amber screen (ABC800M/ABC815, ABC802)
        --green             green screen (ABC80 with external monitor)
   -f,  --fullscreen        start in full screen mode
-       --magic             enable magic I/O port 184 (default)
-       --no-magic          disable magic I/O port 184
+       --magic             enable magic I/O ports 184-185 (default)
+       --no-magic          disable magic I/O ports
   -H,  --headless          run headless (no screen/keyboard support)
   -B,  --batch             quit after scripts have been executed
   -Dd, --diskdir dir       set directory for disk images [abcdisk]
@@ -184,3 +184,5 @@ be triggered by outputting the equivalent ASCII byte (lower case!) to
   Alt-s    (115) take a screenshot (also PrtSc or F12)
   Alt-w    (119) switch full screen mode (also F11)
   Alt-x    (120) dump extended/graphics RAM (if any)
+
+Data output to "magic" I/O port 185 are written to standard output.
