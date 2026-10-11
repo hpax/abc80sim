@@ -817,13 +817,29 @@ enum user_event {
     UEV_END
 };
 
+struct screen_mask_colors {
+    uint32_t lo, hi;
+};
+enum screen_mask {
+    SM_PURE,
+    SM_GREY,
+    SM_GREEN,
+    SM_AMBER
+};
+static const struct screen_mask_colors masks[] = {
+    [SM_PURE]  = { 0xff000000, 0xffffffff },
+    [SM_GREY]  = { 0xff202020, 0xffc0c0c0 },
+    [SM_AMBER] = { 0xff302000, 0xffd8b000 },
+    [SM_GREEN] = { 0xff001400, 0xff00e800 },
+};
+
 static void configure_colors(uint32_t colors[NCOLORS])
 {
     int i;
+    const struct screen_mask_colors *mask = &masks[SM_PURE];
 
     for (i = 0; i < NCOLORS; i++) {
-	uint32_t c = UINT32_C(0xff000000);	/* A channel */
-
+	uint32_t c = 0;
 	if (opts.color) {
 	    if (i & 1)
 		c |= UINT32_C(0x00ff0000);	/* R channel */
@@ -836,7 +852,7 @@ static void configure_colors(uint32_t colors[NCOLORS])
 		c |= UINT32_C(0x00ffffff);	/* RGB == Y */
 	}
 
-	colors[i] = c;
+	colors[i] = (mask->lo & ~c) | (mask->hi & c);
     }
 }
 
