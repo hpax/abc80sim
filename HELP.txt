@@ -6,7 +6,7 @@ Most long options can be prefixed with --no- to negate.
 Options (defaults in brackets):
        --abc80             simulate an ABC80 (default)
        --abc800c           simulate an ABC800C
-       --abc800m           simulate an ABC800C
+       --abc800m           simulate an ABC800M
        --abc802            simulate an ABC802
   -FS, --server port       run as a PUN80 file/print server
   -LS, --serverlist file   read server ports from a file
