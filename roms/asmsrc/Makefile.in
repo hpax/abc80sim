@@ -16,7 +16,7 @@ PRINT    = ../$(D)print80_29.rom ../$(D)print80_30.rom ../$(D)print80_28.rom
 ROMS     = $(UFDDOS) $(PRINT)
 HDRS80   = $(D)nvram.inc abc80/abc80.inc abc80/auxram.inc abc80/print80.inc
 HDRS     = z80.inc $(HDRS80)
-TESTS	 = zexall/zexall.bin
+TESTS	 = zexall/zexall.bin abc800/parsetst.bin
 
 D	 = ./
 
@@ -43,8 +43,10 @@ $(D)%.s: %.asm $(HDRS)
 %.o: %.s
 	$(Z80_AS) $(ASFLAGS) -o $@ $<
 
+LDFLAGS_abc800/parsetst.elf = -Ttext=0x8008
+
 %.elf: %.o z80.ld z80ld.conf
-	$(Z80_LD) $(LDFLAGS) -Map=$*.map -o $@ $<
+	$(Z80_LD) $(LDFLAGS) $(LDFLAGS_$@) -Map=$*.map -o $@ $<
 
 %.bin: %.elf
 	$(Z80_OBJCOPY) -O binary $< $@

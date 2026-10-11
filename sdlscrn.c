@@ -482,48 +482,62 @@ put_screen(struct surface *s, unsigned int tx, unsigned int ty, bool blink,
     }
 
     /* ABC800C/M "fine graphics" */
+    switch (model) {
+    case MODEL_ABC80:
+    case MODEL_ABC802:
+	break;			/* Fine graphics not possible */
 
-    /* tx >> 1 needed because tx is in 80-char units */
-    gx = (tx*FONT_XSIZE) >> 1;
+    case MODEL_ABC800C:
+    case MODEL_ABC800M:
+	if (likely(opts.hr)) {
+	    /* tx >> 1 needed because tx is in 80-char units */
+	    gx = (tx*FONT_XSIZE) >> 1;
 
-    fgoffs = (((vdu.fgstart + ty*FONT_YSIZE) << 6) +
-	      (gx >> 2)) & FGRAM_MASK;
+	    fgoffs = (((vdu.fgstart + ty*FONT_YSIZE) << 6) +
+		      (gx >> 2)) & FGRAM_MASK;
 
-    /* Sigh. Bigendian bit order. Why? */
-    fgshift = (7-(gx & 3)) << 1;
+	    /* Sigh. Bigendian bit order. Why? */
+	    fgshift = (7-(gx & 3)) << 1;
 
-    notdble = !(va.flags & (GMODE_DBLE|GMODE_DBL2));
-    notel   = !(va.flags & (GMODE_EL|GMODE_EL2));
-    xshift  = (va.flags & GMODE_EL2) ? (FONT_XSIZE >> 1) : 0;
+	    notdble = !(va.flags & (GMODE_DBLE|GMODE_DBL2));
+	    notel   = !(va.flags & (GMODE_EL|GMODE_EL2));
+	    xshift  = (va.flags & GMODE_EL2) ? (FONT_XSIZE >> 1) : 0;
 
-    for (y = 0; y < FONT_YSIZE; y++) {
-	fgdata = (vdu.fgram[fgoffs] << 8) + vdu.fgram[fgoffs+1];
-	fgoffs = (fgoffs + 64) & FGRAM_MASK;
+	    for (y = 0; y < FONT_YSIZE; y++) {
+		fgdata = (vdu.fgram[fgoffs] << 8) + vdu.fgram[fgoffs+1];
+		fgoffs = (fgoffs + 64) & FGRAM_MASK;
 
-	vv = *fontp << xshift;
-	fontp += (y | notdble) & 1;
+		vv = *fontp << xshift;
+		fontp += (y | notdble) & 1;
 
-	if (curmask & 1)
-	    vv = ~0;
-	curmask >>= 1;
+		if (curmask & 1)
+		    vv = ~0;
+		curmask >>= 1;
 
-	{
-	    uint16_t fgdtmp = fgdata;
-	    unsigned int fgshtmp = fgshift;
-	    v = vv;
-	    pixelpp = pixelp;
-	    for (x = 0; x < FONT_XSIZE; x++) {
-		uint32_t hrp, px;
+		{
+		    uint16_t fgdtmp = fgdata;
+		    unsigned int fgshtmp = fgshift;
+		    v = vv;
+		    pixelpp = pixelp;
+		    for (x = 0; x < FONT_XSIZE; x++) {
+			uint32_t hrp, px;
 
-		hrp = fg_color[(fgdtmp >> fgshtmp) & 3];
-		if (x & 1)
-		    fgshtmp -= 2;
-		px = hrp | ((v & 0x80) ? fgp : bgp);
-		*pixelpp++ = px;
-		v <<= (notel | x) & 1;
+			hrp = fg_color[(fgdtmp >> fgshtmp) & 3];
+			if (x & 1)
+			    fgshtmp -= 2;
+			px = hrp | ((v & 0x80) ? fgp : bgp);
+			*pixelpp++ = px;
+			v <<= (notel | x) & 1;
+		    }
+		    pixelp += SCREEN_WIDTH;
+		}
 	    }
-	    pixelp += SCREEN_WIDTH;
 	}
+	break;
+
+    case MODEL_ABC806:
+	/* Add ABC806 graphics support */
+	break;
     }
 }
 
