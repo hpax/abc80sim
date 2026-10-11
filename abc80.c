@@ -240,14 +240,14 @@ struct opts opts = {
     .tkn80		= TKN80_MYAB,
     .startup_width40	= false,
     .hr                 = true,
-    .color		= true,
+    .color		= A_AUTO,
     .magic              = true,
     .filedir_net        = true,
     .net_pr             = true,
     .nmi                = true,
     .faketype		= A_AUTO,
     .memflags           = MEMFL_DEFAULT,
-    .bootmap            = -1,
+    .bootmap            = -1
 };
 
 /* Helper functions that error out on a missing argument */
@@ -463,6 +463,12 @@ int main(int argc, char **argv)
 		opts.fullscreen = enable;
 	    } else if (!strcmp(optstr, "window")) {
 		opts.fullscreen = !enable;
+	    } else if (!strcmp(optstr, "grey") || !strcmp(optstr, "gray")) {
+		opts.screen = enable ? SCRN_GREY : SCRN_PURE;
+	    } else if (!strcmp(optstr, "amber")) {
+		opts.screen = enable ? SCRN_AMBER : SCRN_PURE;
+	    } else if (!strcmp(optstr, "green")) {
+		opts.screen = enable ? SCRN_GREEN : SCRN_PURE;
 	    } else if (!strcmp(optstr, "batch")) {
 		opts.batch = enable;
 	    } else if (!strcmp(optstr, "output")) {
@@ -562,6 +568,9 @@ int main(int argc, char **argv)
 
     if (opts.faketype == A_AUTO)
         opts.faketype = !limit_speed || (ns_per_tstate < 1000.0 / 12.5);
+
+    if (opts.color == A_AUTO)
+	opts.color = opts.model == MODEL_ABC800C || opts.model == MODEL_ABC806;
 
     /* If no --casdir has been given, default to --filedir */
     if (!cas_path)

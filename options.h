@@ -56,6 +56,14 @@ enum smartaid {
     SA_ABC80L
 };
 
+/* Screen types */
+enum screen_type {
+    SCRN_PURE,			/* Use pure RGB colors */
+    SCRN_GREY,			/* Grey (ABC80, ABC810, ABC812?) */
+    SCRN_GREEN,			/* Green (common with later ABC80s) */
+    SCRN_AMBER			/* Amber (ABC815, ABC802) */
+};
+
 /* System options set on the command line */
 struct opts {
     enum model model;
@@ -70,7 +78,8 @@ struct opts {
     char *nvramfile;		/* NVRAM backing store */
     bool headless;		/* Headless, no screen output */
     bool batch;			/* Quit after end of script */
-    bool color;			/* Color screen */
+    enum autobool color;	/* Color screen */
+    enum screen_type screen;	/* Screen type */
     bool fullscreen;		/* Start in full screen mode */
     bool hr;			/* High resolution graphics (ABC800C/M) */
     bool magic;			/* Allow magic I/O port */

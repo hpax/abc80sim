@@ -25,8 +25,11 @@ Options (defaults in brackets):
   -v, - -version           print the version string
   -h,  --help              print this help message
   -s,  --speed #.#|max     set the CPU frequency to #.# MHz [original]
-       --color             allow ABC800C-style color (default)
-       --no-color          black and white only
+       --color             allow ABC800C-style color [ABC800C, ABC806]
+       --no-color          black and white only [ABC80, ABC800M, ABC802]
+       --grey              grey or imperfect colors (ABC80, ABC810)
+       --amber             amber screen (ABC800M/ABC815, ABC802)
+       --green             green screen (ABC80 with external monitor)
   -f,  --fullscreen        start in full screen mode
        --magic             enable magic I/O port 184 (default)
        --no-magic          disable magic I/O port 184
