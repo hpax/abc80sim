@@ -880,6 +880,7 @@ void screen_init(void)
 
     if (!opts.headless) {
 	Uint64 windowflags = SDL_WINDOW_HIGH_PIXEL_DENSITY;
+	const float aspect = (double)WINDOW_WIDTH / WINDOW_HEIGHT;
 	if (!SDL_CreateWindowAndRenderer(modelname[opts.model],
 					 WINDOW_WIDTH, WINDOW_HEIGHT,
 					 windowflags,
@@ -890,6 +891,8 @@ void screen_init(void)
 	    return;
 	}
 
+	/* Force aspect ratio */
+	SDL_SetWindowAspectRatio(screen_window, aspect, aspect);
 	SDL_SetWindowResizable(screen_window, true);
 	SDL_SetWindowSurfaceVSync(screen_window, 1);
 
