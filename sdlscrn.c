@@ -409,27 +409,23 @@ make_attributes_abc806(struct surface *s, enum model model)
 }
 
 /*
- * Update the on-screen structure to match the screendata[]
- * for character (tx,ty), but don't refresh the rectangle just
- * yet. These are 80-column coordinates even in 40-column mode!!
+ * Draw the text character for cell (tx,ty).
+ * These are 80-column coordinates even in 40-column mode!!
  */
 static inline void
-put_screen(struct surface *s, unsigned int tx, unsigned int ty, bool blink,
-	   enum model model)
+put_screen(struct surface *s, unsigned int tx, unsigned int ty,
+	   bool blink, enum model model)
 {
     const unsigned char *fontp;
-    unsigned int voffs, fgoffs, fgshift;
+    size_t voffs;
     unsigned char v, vv;
     uint8_t *pixelp, *pixelpp;
     uint8_t fgpx, bgpx, invpx;
-    const uint8_t *fg_color;
-    unsigned int x, y, gx;
+    unsigned int x, y;
     struct vid_attrib va;
     uint32_t curmask;
-    uint16_t fgdata;
     unsigned int notdble, notel, xshift;
     const bool has_crtc  = model != MODEL_ABC80 && model != MODEL_ABC800C;
-    const bool has_fg    = model != MODEL_ABC80;
 
     if (tx >= (unsigned int)TS_WIDTH || ty >= (unsigned int)TS_HEIGHT)
 	return;
@@ -468,13 +464,6 @@ put_screen(struct surface *s, unsigned int tx, unsigned int ty, bool blink,
 	break;
     }
 
-    fg_color = NULL;
-    if (has_fg) {
-	if (vdu.fgctl & 0x80)
-	    fgpx = bgpx = 0;
-	fg_color = fgcolor[vdu.fgctl & 0x7f];
-    }
-
     pixelp = s->pixels +
 	(ty * SCREEN_WIDTH * FONT_YSIZE) +
 	(tx * FONT_XSIZE);
@@ -494,23 +483,11 @@ put_screen(struct surface *s, unsigned int tx, unsigned int ty, bool blink,
 	}
     }
 
-    /* tx >> 1 needed because tx is in 80-char units */
-    gx = (tx*FONT_XSIZE) >> 1;
-
-    fgoffs = (((vdu.fgstart + ty*FONT_YSIZE) << 6) +
-	      (gx >> 2)) & FGRAM_MASK;
-
-    /* Sigh. Bigendian bit order. Why? */
-    fgshift = (7-(gx & 3)) << 1;
-
     notdble = !(va.flags & (GMODE_DBLE|GMODE_DBL2));
     notel   = !(va.flags & (GMODE_EL|GMODE_EL2));
     xshift  = (va.flags & GMODE_EL2) ? (FONT_XSIZE >> 1) : 0;
 
     for (y = 0; y < FONT_YSIZE; y++) {
-	fgdata = has_fg ? (vdu.fgram[fgoffs] << 8) + vdu.fgram[fgoffs+1] : 0;
-	fgoffs = (fgoffs + 64) & FGRAM_MASK;
-
 	vv = *fontp << xshift;
 	fontp += (y | notdble) & 1;
 
@@ -518,25 +495,44 @@ put_screen(struct surface *s, unsigned int tx, unsigned int ty, bool blink,
 	    vv = ~0;
 	curmask >>= 1;
 
-	uint16_t fgdtmp = fgdata;
-	unsigned int fgshtmp = fgshift;
 	v = vv;
 	pixelpp = pixelp;
 	for (x = 0; x < FONT_XSIZE; x++) {
 	    uint8_t px = (v & 0x80) ? fgpx : bgpx;
-
-	    if (has_fg) {
-		if (x & 1)
-		    fgshtmp -= 2;
-		px |= fg_color[(fgdtmp >> fgshtmp) & 3];
-	    }
-
 	    px ^= invpx;
-
 	    *pixelpp++ = px;
 	    v <<= (notel | x) & 1;
 	}
 	pixelp += SCREEN_WIDTH;
+    }
+}
+
+static void draw_fg_abc800x(struct surface *s)
+{
+    unsigned int x, y, xx;
+    const uint8_t *fg_color;
+    uint8_t fgctl = vdu.fgctl & 0x7f;
+    uint8_t *pp;
+
+    if (!fgctl)
+	return;
+
+    fg_color = fgcolor[fgctl];
+
+    pp = s->pixels;
+
+    for (y = 0; y < SCREEN_HEIGHT; y++) {
+	const uint8_t *fgdata =
+	    &vdu.fgram[((vdu.fgstart + y) << 6) & FGRAM_MASK];
+	for (x = 0; x < (SCREEN_WIDTH >> 3); x++) {
+	    uint8_t fgbyte = *fgdata++;
+	    for (xx = 0; xx < 4; xx++) {
+		uint8_t fgc = fg_color[fgbyte >> 6];
+		*pp++ |= fgc;
+		*pp++ |= fgc;
+		fgbyte <<= 2;
+	    }
+	}
     }
 }
 
@@ -569,46 +565,85 @@ err:
 }
 
 static inline void
-draw_screen_model(struct surface *s, bool blink, enum model model)
+draw_text_model(struct surface *s, bool blink, enum model model)
 {
     unsigned int x, y;
-
-    if (!s->surface)
-	return;
-
-    lock_surface(s->surface);
 
     for (y = 0; y < TS_HEIGHT; y++)
 	for (x = 0; x < TS_WIDTH; x++)
 	    put_screen(s, x, y, blink, model);
-
-    unlock_surface(s->surface);
 }
 
 static void draw_screen_abc80(struct surface *s, bool blink)
 {
     make_attributes_teledata(s, MODEL_ABC80);
-    draw_screen_model(s, blink, MODEL_ABC80);
+
+    if (!s->surface)
+	return;
+    lock_surface(s->surface);
+
+    draw_text_model(s, blink, MODEL_ABC80);
+
+    unlock_surface(s->surface);
 }
 static void draw_screen_abc800c(struct surface *s, bool blink)
 {
     make_attributes_teledata(s, MODEL_ABC800C);
-    draw_screen_model(s, blink, MODEL_ABC800C);
+
+    if (!s->surface)
+	return;
+    lock_surface(s->surface);
+
+    if (vdu.fgctl & 0x80)
+	memset(s->pixels, 0, SCREEN_WIDTH*SCREEN_HEIGHT);
+    else
+	draw_text_model(s, blink, MODEL_ABC800C);
+
+    draw_fg_abc800x(s);
+
+    unlock_surface(s->surface);
 }
 static void draw_screen_abc800m(struct surface *s, bool blink)
 {
     make_attributes_teledata(s, MODEL_ABC800M);
-    draw_screen_model(s, blink, MODEL_ABC800M);
+    if (!s->surface)
+	return;
+
+    lock_surface(s->surface);
+
+    if (vdu.fgctl & 0x80)
+	memset(s->pixels, 0, SCREEN_WIDTH*SCREEN_HEIGHT);
+    else
+	draw_text_model(s, blink, MODEL_ABC800M);
+
+    draw_fg_abc800x(s);
+
+    unlock_surface(s->surface);
 }
 static void draw_screen_abc802(struct surface *s, bool blink)
 {
     make_attributes_teledata(s, MODEL_ABC802);
-    draw_screen_model(s, blink, MODEL_ABC802);
+
+    if (!s->surface)
+	return;
+    lock_surface(s->surface);
+
+    draw_text_model(s, blink, MODEL_ABC802);
+
+    unlock_surface(s->surface);
 }
 static void draw_screen_abc806(struct surface *s, bool blink)
 {
     make_attributes_abc806(s, MODEL_ABC806);
-    draw_screen_model(s, blink, MODEL_ABC806);
+
+    if (!s->surface)
+	return;
+    lock_surface(s->surface);
+
+    draw_text_model(s, blink, MODEL_ABC806);
+    /* draw_fg_abc806(s) */
+
+    unlock_surface(s->surface);
 }
 
 typedef void (*draw_screen_func)(struct surface *s, bool blink);
