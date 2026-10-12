@@ -117,19 +117,19 @@ struct vid_attrib {
 
 /* A local framebuffer used for rendering and screenshots */
 struct surface {
-    uint32_t *pixels;		/* == surface->pixels except for type */
+    uint8_t *pixels;		/* == surface->pixels except for type */
     SDL_Surface *surface;
     SDL_Texture *texture;
     SDL_Renderer *renderer;
-    uint32_t colors[NCOLORS];
     struct vid_attrib attrib[TS_HEIGHT+1][TS_WIDTH];
 };
 
-static void configure_colors(uint32_t colors[NCOLORS]);
+static SDL_Palette *configure_colors(void);
 
 static struct surface rscreen;
 static SDL_Window *screen_window;
 static SDL_Renderer *screen_renderer;
+static SDL_Palette *screen_palette;
 static Uint32 user_event_base;
 
 static inline void lock_surface(SDL_Surface *s)
@@ -420,7 +420,7 @@ put_screen(struct surface *s, unsigned int tx, unsigned int ty, bool blink,
     const unsigned char *fontp;
     unsigned int voffs, fgoffs, fgshift;
     unsigned char v, vv;
-    uint32_t *pixelp, *pixelpp;
+    uint8_t *pixelp, *pixelpp;
     uint8_t fgpx, bgpx, invpx;
     const uint8_t *fg_color;
     unsigned int x, y, gx;
@@ -523,17 +523,17 @@ put_screen(struct surface *s, unsigned int tx, unsigned int ty, bool blink,
 	v = vv;
 	pixelpp = pixelp;
 	for (x = 0; x < FONT_XSIZE; x++) {
-	    uint8_t px;
+	    uint8_t px = (v & 0x80) ? fgpx : bgpx;
 
-	    if (x & 1)
-		fgshtmp -= 2;
-	    px = (v & 0x80) ? fgpx : bgpx;
-	    if (has_fg)
+	    if (has_fg) {
+		if (x & 1)
+		    fgshtmp -= 2;
 		px |= fg_color[(fgdtmp >> fgshtmp) & 3];
+	    }
 
 	    px ^= invpx;
 
-	    *pixelpp++ = s->colors[px];
+	    *pixelpp++ = px;
 	    v <<= (notel | x) & 1;
 	}
 	pixelp += SCREEN_WIDTH;
@@ -542,21 +542,24 @@ put_screen(struct surface *s, unsigned int tx, unsigned int ty, bool blink,
 
 static void update_screen(struct surface *s)
 {
-    if (!s->texture)
+    SDL_Surface *ts = NULL;
+
+    if (!s->texture || !s->renderer)
 	return;
 
-    if (!SDL_UpdateTexture(s->texture, NULL, s->pixels,
-			   SCREEN_WIDTH * sizeof s->pixels[0]))
+    if (!SDL_LockTextureToSurface(s->texture, NULL, &ts))
 	goto err;
 
-    if (!s->renderer)
-	return;
+    if (!SDL_BlitSurface(s->surface, NULL, ts, NULL))
+	goto err;
+
+    SDL_UnlockTexture(s->texture);
 
     if (!SDL_RenderClear(s->renderer) ||
-	!SDL_RenderTexture(s->renderer, s->texture, NULL, NULL))
+	!SDL_RenderTexture(s->renderer, s->texture, NULL, NULL) ||
+	!SDL_RenderPresent(s->renderer))
 	goto err;
 
-    SDL_RenderPresent(s->renderer);
     return;
 
 err:
@@ -654,10 +657,10 @@ static void destroy_surface(struct surface *s);
 static struct surface *
 init_surface(struct surface *s, bool graphics, SDL_Renderer *renderer)
 {
-    const SDL_PixelFormat fmt = WORDS_LITTLEENDIAN
-	? SDL_PIXELFORMAT_BGRA8888 : SDL_PIXELFORMAT_ARGB8888;
-
     if (unlikely(!s))
+	return NULL;
+
+    if (!screen_palette)
 	return NULL;
 
     s->pixels   = NULL;
@@ -668,23 +671,28 @@ init_surface(struct surface *s, bool graphics, SDL_Renderer *renderer)
     if (!graphics)
 	return s;
 
-    configure_colors(s->colors);
-
-    s->surface = SDL_CreateSurface(SCREEN_WIDTH, SCREEN_HEIGHT, fmt);
+    s->surface = SDL_CreateSurface(SCREEN_WIDTH, SCREEN_HEIGHT,
+				   SDL_PIXELFORMAT_INDEX8);
     if (!s->surface)
 	return NULL;
 
-    s->pixels = (uint32_t *) s->surface->pixels;
+    if (!SDL_SetSurfacePalette(s->surface, screen_palette))
+	goto fail;
+
+    s->pixels = (uint8_t *) s->surface->pixels;
 
     if (s->renderer) {
-	s->texture = SDL_CreateTextureFromSurface(renderer, s->surface);
+	s->texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888,
+				       SDL_TEXTUREACCESS_STREAMING,
+				       SCREEN_WIDTH, SCREEN_HEIGHT);
 	if (!s->texture)
 	    goto fail;
-	if (!SDL_SetTextureScaleMode(rscreen.texture, SDL_SCALEMODE_LINEAR))
+	if (!SDL_SetTextureScaleMode(s->texture, SDL_SCALEMODE_LINEAR))
 	    goto fail;
     }
 
     return s;
+
 fail:
     destroy_surface(s);
     return NULL;
@@ -750,10 +758,14 @@ static int do_abc_screenshot(void *sdv)
 
     /* PNG pHYs isn't well supported, so pre-scale the image */
 
-    /* Scale the surface */
-    ss = SDL_ScaleSurface(sd->s.surface, WINDOW_WIDTH, WINDOW_HEIGHT,
-			  SDL_SCALEMODE_LINEAR);
+    /* Scale the surface and convert it to RGB888 format */
+    ss = SDL_CreateSurface(SCREEN_WIDTH, SCREEN_HEIGHT,
+			   SDL_PIXELFORMAT_RGB24);
     if (!ss)
+	goto cleanup;
+
+    if (!SDL_BlitSurfaceScaled(sd->s.surface, NULL, ss, NULL,
+			       SDL_SCALEMODE_LINEAR))
 	goto cleanup;
 
     lock_surface(ss);
@@ -831,36 +843,43 @@ enum user_event {
 };
 
 struct screen_mask {
-    uint32_t lo, hi;
+    SDL_Color lo, hi;
 };
 static const struct screen_mask masks[] = {
-    [SCRN_PURE]  = { 0xff000000, 0xffffffff },
-    [SCRN_GREY]  = { 0xff202020, 0xffc0c0c0 },
-    [SCRN_AMBER] = { 0xff302000, 0xffd8b000 },
-    [SCRN_GREEN] = { 0xff001400, 0xff00e800 },
+    [SCRN_PURE]  = { { 0x00, 0x00, 0x00, 0xff }, { 0xff, 0xff, 0xff, 0xff } },
+    [SCRN_GREY]  = { { 0x20, 0x20, 0x20, 0xff }, { 0xc0, 0xc0, 0xc0, 0xff } },
+    [SCRN_AMBER] = { { 0x30, 0x20, 0x00, 0xff }, { 0xd8, 0xb0, 0x00, 0xff } },
+    [SCRN_GREEN] = { { 0x00, 0x14, 0x00, 0xff }, { 0x00, 0xe8, 0x00, 0xff } },
 };
-
-static void configure_colors(uint32_t colors[NCOLORS])
+static SDL_Palette *configure_colors(void)
 {
     int i;
     const struct screen_mask *mask = &masks[opts.screen];
+    SDL_Palette *palette = SDL_CreatePalette(256);
+    SDL_Color c[NCOLORS];
+
+    if (!palette)
+	return NULL;
 
     for (i = 0; i < NCOLORS; i++) {
-	uint32_t c = 0;
+	c[i].a = 0xff;
 	if (opts.color) {
-	    if (i & 1)
-		c |= UINT32_C(0x00ff0000);	/* R channel */
-	    if (i & 2)
-		c |= UINT32_C(0x0000ff00);	/* G channel */
-	    if (i & 4)
-		c |= UINT32_C(0x000000ff);	/* B channel */
+	    c[i].r = (i & 1) ? mask->hi.r : mask->lo.r;
+	    c[i].g = (i & 2) ? mask->hi.g : mask->lo.g;
+	    c[i].b = (i & 4) ? mask->hi.b : mask->lo.b;
 	} else {
-	    if (i)
-		c |= UINT32_C(0x00ffffff);	/* RGB == Y */
+	    c[i].r = i ? mask->hi.r : mask->lo.r;
+	    c[i].g = i ? mask->hi.g : mask->lo.g;
+	    c[i].b = i ? mask->hi.b : mask->lo.b;
 	}
-
-	colors[i] = (mask->lo & ~c) | (mask->hi & c);
     }
+
+    if (!SDL_SetPaletteColors(palette, c, 0, NCOLORS)) {
+	SDL_DestroyPalette(palette);
+	return NULL;
+    }
+
+    return palette;
 }
 
 /*
@@ -919,7 +938,11 @@ void screen_init(void)
 	SDL_SetWindowResizable(screen_window, true);
 	SDL_SetWindowSurfaceVSync(screen_window, 1);
 
-	if (!init_surface(&rscreen, true, screen_renderer)) {
+	/* Color setup */
+	screen_palette = configure_colors();
+
+	if (!screen_palette ||
+	    !init_surface(&rscreen, true, screen_renderer)) {
 	    fprintf(stderr, "%s: unable to initialize screen: %s\n",
 		    program_name, SDL_GetError());
 	    screen_reset();
@@ -962,21 +985,30 @@ void screen_init(void)
 void screen_reset(void)
 {
     destroy_surface(&rscreen);
-    if (screen_renderer)
+    if (screen_renderer) {
 	SDL_DestroyRenderer(screen_renderer);
-    if (screen_window)
+	screen_renderer = NULL;
+    }
+    if (screen_window) {
 	SDL_DestroyWindow(screen_window);
-    if (magic_done)
+	screen_window = NULL;
+    }
+    if (magic_done) {
 	SDL_DestroyCondition(magic_done);
-    if (magic_mutex)
+	magic_done = NULL;
+    }
+    if (magic_mutex) {
 	SDL_DestroyMutex(magic_mutex);
-    if (screen_mutex)
+	magic_mutex = NULL;
+    }
+    if (screen_mutex) {
 	SDL_DestroyMutex(screen_mutex);
-    screen_renderer = NULL;
-    screen_window = NULL;
-    magic_done = NULL;
-    magic_mutex = NULL;
-    screen_mutex = NULL;
+	screen_mutex = NULL;
+    }
+    if (screen_palette) {
+	SDL_DestroyPalette(screen_palette);
+	screen_palette = NULL;
+    }
     SDL_Quit();
 }
 

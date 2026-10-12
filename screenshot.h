@@ -3,6 +3,6 @@
 
 #include "compiler.h"
 
-int screenshot(const uint32_t *, unsigned int, unsigned int, const char *);
+int screenshot(const void *, unsigned int, unsigned int, const char *);
 
 #endif

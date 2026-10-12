@@ -26,16 +26,17 @@ static void my_png_warning(png_structp png, png_const_charp warnmsg)
     (void)warnmsg;
 }
 
-int screenshot(const uint32_t *pixels, unsigned int width, unsigned int height,
+/* Input data is expected to be in RGB888 format */
+int screenshot(const void *pixels, unsigned int width, unsigned int height,
 	       const char *path)
 {
+    const uint8_t *row;
     struct host_file *hf = NULL;
     png_structp png = NULL;
     png_infop png_info = NULL;
-    uint8_t *row = NULL;
     time_t now;
     png_time png_now;
-    unsigned int x, y;
+    unsigned int y;
     volatile int rv = -1;
     int err;
 
@@ -70,17 +71,10 @@ int screenshot(const uint32_t *pixels, unsigned int width, unsigned int height,
     png_set_compression_strategy(png, Z_FILTERED);
 
     png_write_info(png, png_info);
+    row = (const uint8_t *)pixels;
     for (y = 0; y < height; y++) {
-	const uint32_t *src = pixels + ((size_t)y * width);
-
-	for (x = 0; x < width; x++) {
-	    uint32_t pixel = src[x];
-
-	    row[3*x+0] = pixel >> 16;
-	    row[3*x+1] = pixel >> 8;
-	    row[3*x+2] = pixel;
-	}
 	png_write_row(png, row);
+	row += y * 3;
     }
     png_write_end(png, png_info);
 
@@ -91,7 +85,6 @@ exit:
     err = errno;
     if (png)
 	png_destroy_write_struct(&png, &png_info);
-    free(row);
     close_file(&hf);
     errno = err;
     return rv;
