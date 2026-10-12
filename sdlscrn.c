@@ -420,14 +420,16 @@ put_screen(struct surface *s, unsigned int tx, unsigned int ty, bool blink,
     const unsigned char *fontp;
     unsigned int voffs, fgoffs, fgshift;
     unsigned char v, vv;
-    uint32_t *pixelp, *pixelpp, fgp, bgp, fg_color[4];
+    uint32_t *pixelp, *pixelpp;
+    uint8_t fgpx, bgpx, invpx;
+    const uint8_t *fg_color;
     unsigned int x, y, gx;
     struct vid_attrib va;
     uint32_t curmask;
-    uint8_t invmask;
     uint16_t fgdata;
     unsigned int notdble, notel, xshift;
-    int i;
+    const bool has_crtc  = model != MODEL_ABC80 && model != MODEL_ABC800C;
+    const bool has_fg    = model != MODEL_ABC80;
 
     if (tx >= (unsigned int)TS_WIDTH || ty >= (unsigned int)TS_HEIGHT)
 	return;
@@ -442,27 +444,36 @@ put_screen(struct surface *s, unsigned int tx, unsigned int ty, bool blink,
     if (va.flags & GMODE_DBL2)
 	fontp += FONT_YSIZE >> 1; /* Second half */
 
+    fgpx  = va.fg;
+    bgpx  = va.bg;
+    invpx = 0;
+
     switch (model) {
     case MODEL_ABC80:
-	invmask = va.inv && blink ? 7 : 0;
+	if (va.inv && blink)
+	    invpx = 7;
+	break;
+    case MODEL_ABC800C:
+    case MODEL_ABC802:
+	if (va.inv)
+	    invpx = 7;
+	break;
+    case MODEL_ABC800M:
 	break;
     case MODEL_ABC806:
-	invmask = va.inv ? va.fg ^ va.bg : 0;
-	break;
-    default:
-	invmask = va.inv ? 7 : 0;
+	if (va.inv) {
+	    bgpx = va.fg;
+	    fgpx = va.bg;
+	}
 	break;
     }
 
-    if (vdu.fgctl & 0x80) {
-	bgp = fgp = 0;
-    } else {
-	bgp = s->colors[va.bg ^ invmask];
-	fgp = s->colors[va.fg ^ invmask];
+    fg_color = NULL;
+    if (has_fg) {
+	if (vdu.fgctl & 0x80)
+	    fgpx = bgpx = 0;
+	fg_color = fgcolor[vdu.fgctl & 0x7f];
     }
-
-    for (i = 0; i < 4; i++)
-	fg_color[i] = s->colors[fgcolor[vdu.fgctl & 0x7f][i]];
 
     pixelp = s->pixels +
 	(ty * SCREEN_WIDTH * FONT_YSIZE) +
@@ -472,72 +483,60 @@ put_screen(struct surface *s, unsigned int tx, unsigned int ty, bool blink,
     voffs = vdu.startaddr +
 	screenoffs(ty, tx >> vdu.mode40, vdu.mode40, model);
 
-    if (unlikely(voffs == vdu.curaddr)) {
-	uint8_t curmode = vdu.crtc.r.curstart & 0x60;
+    if (has_crtc) {
+	if (unlikely(voffs == vdu.curaddr)) {
+	    uint8_t curmode = vdu.crtc.r.curstart & 0x60;
 
-	if ((curmode == 0) || (blink && (curmode & 0x40))) {
-	    curmask = (~0U << (vdu.crtc.r.curstart & 0x1f));
-	    curmask &= (2U << (vdu.crtc.r.curend & 0x1f)) - 1;
+	    if ((curmode == 0) || (blink && (curmode & 0x40))) {
+		curmask = (~0U << (vdu.crtc.r.curstart & 0x1f));
+		curmask &= (2U << (vdu.crtc.r.curend & 0x1f)) - 1;
+	    }
 	}
     }
 
-    /* ABC800C/M "fine graphics" */
-    switch (model) {
-    case MODEL_ABC80:
-    case MODEL_ABC802:
-	break;			/* Fine graphics not possible */
+    /* tx >> 1 needed because tx is in 80-char units */
+    gx = (tx*FONT_XSIZE) >> 1;
 
-    case MODEL_ABC800C:
-    case MODEL_ABC800M:
-	if (likely(opts.hr)) {
-	    /* tx >> 1 needed because tx is in 80-char units */
-	    gx = (tx*FONT_XSIZE) >> 1;
+    fgoffs = (((vdu.fgstart + ty*FONT_YSIZE) << 6) +
+	      (gx >> 2)) & FGRAM_MASK;
 
-	    fgoffs = (((vdu.fgstart + ty*FONT_YSIZE) << 6) +
-		      (gx >> 2)) & FGRAM_MASK;
+    /* Sigh. Bigendian bit order. Why? */
+    fgshift = (7-(gx & 3)) << 1;
 
-	    /* Sigh. Bigendian bit order. Why? */
-	    fgshift = (7-(gx & 3)) << 1;
+    notdble = !(va.flags & (GMODE_DBLE|GMODE_DBL2));
+    notel   = !(va.flags & (GMODE_EL|GMODE_EL2));
+    xshift  = (va.flags & GMODE_EL2) ? (FONT_XSIZE >> 1) : 0;
 
-	    notdble = !(va.flags & (GMODE_DBLE|GMODE_DBL2));
-	    notel   = !(va.flags & (GMODE_EL|GMODE_EL2));
-	    xshift  = (va.flags & GMODE_EL2) ? (FONT_XSIZE >> 1) : 0;
+    for (y = 0; y < FONT_YSIZE; y++) {
+	fgdata = has_fg ? (vdu.fgram[fgoffs] << 8) + vdu.fgram[fgoffs+1] : 0;
+	fgoffs = (fgoffs + 64) & FGRAM_MASK;
 
-	    for (y = 0; y < FONT_YSIZE; y++) {
-		fgdata = (vdu.fgram[fgoffs] << 8) + vdu.fgram[fgoffs+1];
-		fgoffs = (fgoffs + 64) & FGRAM_MASK;
+	vv = *fontp << xshift;
+	fontp += (y | notdble) & 1;
 
-		vv = *fontp << xshift;
-		fontp += (y | notdble) & 1;
+	if (curmask & 1)
+	    vv = ~0;
+	curmask >>= 1;
 
-		if (curmask & 1)
-		    vv = ~0;
-		curmask >>= 1;
+	uint16_t fgdtmp = fgdata;
+	unsigned int fgshtmp = fgshift;
+	v = vv;
+	pixelpp = pixelp;
+	for (x = 0; x < FONT_XSIZE; x++) {
+	    uint8_t px;
 
-		{
-		    uint16_t fgdtmp = fgdata;
-		    unsigned int fgshtmp = fgshift;
-		    v = vv;
-		    pixelpp = pixelp;
-		    for (x = 0; x < FONT_XSIZE; x++) {
-			uint32_t hrp, px;
+	    if (x & 1)
+		fgshtmp -= 2;
+	    px = (v & 0x80) ? fgpx : bgpx;
+	    if (has_fg)
+		px |= fg_color[(fgdtmp >> fgshtmp) & 3];
 
-			hrp = fg_color[(fgdtmp >> fgshtmp) & 3];
-			if (x & 1)
-			    fgshtmp -= 2;
-			px = hrp | ((v & 0x80) ? fgp : bgp);
-			*pixelpp++ = px;
-			v <<= (notel | x) & 1;
-		    }
-		    pixelp += SCREEN_WIDTH;
-		}
-	    }
+	    px ^= invpx;
+
+	    *pixelpp++ = s->colors[px];
+	    v <<= (notel | x) & 1;
 	}
-	break;
-
-    case MODEL_ABC806:
-	/* Add ABC806 graphics support */
-	break;
+	pixelp += SCREEN_WIDTH;
     }
 }
 
